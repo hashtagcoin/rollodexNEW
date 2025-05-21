@@ -7,7 +7,7 @@ export const COLORS = {
   secondary: '#FF6347', // Example: Tomato
 
   // Specific App Colors
-  DARK_GREEN: '#006400',
+  DARK_GREEN: '#009966', // Updated to a vibrant green for selected buttons
   LIGHT_GREEN: '#90EE90',
   RED: '#FF0000',
   TEXT_INPUT_GRAY: '#D3D3D3',
@@ -23,6 +23,10 @@ export const COLORS = {
   darkGray: '#A9A9A9',
   gray: '#808080',
 };
+
+// Export DARK_GREEN as a constant for consistent use
+export const DARK_GREEN = COLORS.DARK_GREEN;
+
 
 export const SIZES = {
   // Global sizes

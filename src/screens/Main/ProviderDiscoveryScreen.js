@@ -81,11 +81,11 @@ const ProviderDiscoveryScreen = () => {
           console.log(`[NetworkDebug] Fetching data from Supabase at ${new Date().toISOString()} (fetch count: ${supabaseFetchCount.current})`);
           query = supabase.from(tableName).select('*').limit(5); // Keep your limit for testing
         } else {
-          console.log(`[ProviderDiscoveryScreen] Filtering by category (case-insensitive): ${selectedCategory}`);
+          console.log(`[ProviderDiscoveryScreen] Filtering by category (partial match): ${selectedCategory}`);
           supabaseFetchCount.current++;
           console.log(`[NetworkDebug] Fetching data from Supabase at ${new Date().toISOString()} (fetch count: ${supabaseFetchCount.current})`);
           query = supabase.from(tableName).select('*');
-          query = query.ilike('category', selectedCategory.toLowerCase());
+          query = query.ilike('category', `%${selectedCategory}%`);
           if (searchTerm) {
             console.log(`[ProviderDiscoveryScreen] Applying search term: ${searchTerm}`);
             query = query.or(`title.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`);
@@ -103,6 +103,8 @@ const ProviderDiscoveryScreen = () => {
         
         console.log('[ProviderDiscoveryScreen] Query status:', status);
         console.log('[ProviderDiscoveryScreen] Data received:', data ? `Array of ${data.length} items` : 'No data');
+        console.log('[ProviderDiscoveryScreen] Raw data from Supabase:', data);
+        console.log('[ProviderDiscoveryScreen] Category filter used:', selectedCategory);
         
         if (error) {
           console.error('[ProviderDiscoveryScreen] Supabase fetch error:', error);
