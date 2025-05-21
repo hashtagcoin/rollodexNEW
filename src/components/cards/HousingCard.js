@@ -36,8 +36,14 @@ const HousingCard = ({ item, onPress, displayAs = 'grid' }) => {
           source={imageUrl ? { uri: imageUrl } : require('../../assets/images/default-housing.png')}
           style={styles.swipeImageBackground}
           resizeMode="cover"
-          onLoadStart={() => setImageLoading(true)}
-          onLoadEnd={() => setImageLoading(false)}
+          onLoadStart={() => {
+            setImageLoading(true);
+            console.log(`[SwipeTiming] Image load START for item ${item?.id} at ${performance.now()}`);
+          }}
+          onLoadEnd={() => {
+            setImageLoading(false);
+            console.log(`[SwipeTiming] Image load END for item ${item?.id} at ${performance.now()}`);
+          }}
         >
           {imageLoading && (
             <ActivityIndicator size="large" color={COLORS.primary} style={StyleSheet.absoluteFill} />
@@ -384,4 +390,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default memo(HousingCard);
+export default React.memo(HousingCard);
