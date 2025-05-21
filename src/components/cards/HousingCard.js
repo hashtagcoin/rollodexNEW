@@ -73,28 +73,33 @@ const HousingCard = ({ item, onPress, displayAs = 'grid' }) => {
   // Grid/List Logic
   const imageContainerStyle = isList ? styles.listImageContainer : styles.gridImageContainer;
   const imageUrl = item.media_urls && item.media_urls.length > 0 ? item.media_urls[0] : null;
-  console.log(`[HousingCard] ${displayAs} Image URL: ${imageUrl}, Item ID: ${item?.id}`);
+  const displayUri = item.cachedUri || imageUrl;
+  const safeImageUrl = displayUri ? encodeURI(displayUri) : null;
+  const imageSource = React.useMemo(() => safeImageUrl ? { uri: safeImageUrl } : require('../../assets/images/default-housing.png'), [safeImageUrl]);
+  console.log(`[HousingCard] ${displayAs} Image URL: ${displayUri}, Item ID: ${item?.id}`);
 
   return (
     <TouchableOpacity 
       style={[isList ? styles.listCardContainer : styles.gridCardContainer, isList && styles.fullWidthCard]} 
       onPress={() => onPress(item)}
+      activeOpacity={0.9}
     >
       <View style={imageContainerStyle}>
         <Image 
           key={`${isList ? 'list' : 'grid'}-img-${item.id}`}
-          source={imageUrl ? { uri: imageUrl } : require('../../assets/images/default-housing.png')} 
+          source={imageSource}
           style={isList ? styles.listImage : styles.gridImage}
           onLoadStart={() => {
-            console.log(`[HousingCard] ${displayAs} Image onLoadStart. URI: ${imageUrl}, Item ID: ${item?.id}`);
+            console.log(`[HousingCard] ${displayAs} Image onLoadStart. URI: ${displayUri}, Item ID: ${item?.id}`);
             setImageLoading(true);
           }}
           onLoadEnd={() => {
-            console.log(`[HousingCard] ${displayAs} Image onLoadEnd. URI: ${imageUrl}, Item ID: ${item?.id}`);
+            console.log(`[HousingCard] ${displayAs} Image onLoadEnd. URI: ${displayUri}, Item ID: ${item?.id}`);
             setImageLoading(false);
+            if (typeof onImageLoaded === 'function') onImageLoaded(displayUri);
           }}
           onError={(e) => {
-            console.log(`[HousingCard] ${displayAs} Image onError. URI: ${imageUrl}, Error: ${e.nativeEvent.error}, Item ID: ${item?.id}`);
+            console.log(`[HousingCard] ${displayAs} Image onError. URI: ${displayUri}, Error: ${e.nativeEvent.error}, Item ID: ${item?.id}`);
             setImageLoading(false);
           }}
           resizeMode="cover"

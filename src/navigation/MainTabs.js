@@ -11,10 +11,13 @@ import DashboardScreen from '../screens/Main/DashboardScreen';
 import ExploreStackNavigator from './ExploreStackNavigator';
 import WalletScreen from '../screens/Main/WalletScreen';
 import SocialFeedScreen from '../screens/Main/SocialFeedScreen';
+import SocialStackNavigator from './SocialStackNavigator';
 import FavouritesScreen from '../screens/Main/FavouritesScreen';
-import ProfileScreen from '../screens/Main/ProfileScreen';
+import ProfileStackNavigator from './ProfileStackNavigator';
+import GroupsListScreen from '../screens/Main/GroupsListScreen';
+import GroupDetailScreen from '../screens/Main/GroupDetailScreen';
 
-
+import { createStackNavigator } from '@react-navigation/stack';
 
 const Tab = createBottomTabNavigator();
 
@@ -22,7 +25,9 @@ const DUMMY_USER_DATA = {
   name: 'James', 
 };
 
-const MainTabs = () => {
+const Stack = createStackNavigator();
+
+const MainTabsTabs = () => {
   return (
     <Tab.Navigator
       screenOptions={({ route, navigation }) => ({
@@ -62,21 +67,16 @@ const MainTabs = () => {
       <Tab.Screen 
         name="Explore" 
         component={ExploreStackNavigator} 
+        // Do NOT forcibly reset Explore stack on every tab press. This prevents unnecessary remounts and repeated data fetching.
         listeners={({ navigation, route }) => ({
           tabPress: e => {
-            e.preventDefault();
-            navigation.dispatch(
-              CommonActions.navigate({
-                name: route.name, 
-                params: { screen: 'ProviderDiscovery' } 
-              })
-            );
+            navigation.navigate(route.name);
           },
         })}
       />
       <Tab.Screen 
         name="Social" 
-        component={SocialFeedScreen} 
+        component={SocialStackNavigator} 
         listeners={({ navigation, route }) => ({
           tabPress: e => {
             e.preventDefault();
@@ -106,15 +106,24 @@ const MainTabs = () => {
       />
       <Tab.Screen 
         name="Profile" 
-        component={ProfileScreen} 
+        component={ProfileStackNavigator} 
         listeners={({ navigation, route }) => ({
           tabPress: e => {
-            e.preventDefault();
             navigation.navigate(route.name);
           },
         })}
       />
     </Tab.Navigator>
+  );
+};
+
+const MainTabs = () => {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="MainTabsTabs" component={MainTabsTabs} />
+      <Stack.Screen name="GroupsListScreen" component={GroupsListScreen} />
+      <Stack.Screen name="GroupDetailScreen" component={GroupDetailScreen} />
+    </Stack.Navigator>
   );
 };
 

@@ -42,7 +42,8 @@ const ServiceCard = ({ item, onPress, displayAs = 'grid' }) => {
 
   if (displayAs === 'swipe') {
     const imageUrl = item.media_urls && item.media_urls.length > 0 ? item.media_urls[0] : null;
-    console.log(`[ServiceCard] Swipe Image URL: ${imageUrl}, Item ID: ${item?.id}`);
+    const displayUri = item.cachedUri || imageUrl;
+    console.log(`[ServiceCard] Swipe Image URL: ${displayUri}, Item ID: ${item?.id}`);
     
     return (
       <TouchableOpacity 
@@ -51,11 +52,18 @@ const ServiceCard = ({ item, onPress, displayAs = 'grid' }) => {
         style={styles.swipeItemContainer}
       >
         <ImageBackground 
-          source={imageUrl ? { uri: imageUrl } : require('../../assets/images/placeholder.png')}
+          source={displayUri ? { uri: displayUri } : require('../../assets/images/placeholder.png')}
           style={styles.swipeImageBackground}
           resizeMode="cover"
           onLoadStart={() => setImageLoading(true)}
-          onLoadEnd={() => setImageLoading(false)}
+          onLoadEnd={() => {
+            setImageLoading(false);
+            if (typeof onImageLoaded === 'function') onImageLoaded(displayUri);
+          }}
+          onError={(e) => {
+            console.log(`[ServiceCard] ${displayAs} Image onError. URI: ${displayUri}, Error: ${e.nativeEvent.error}, Item ID: ${item?.id}`);
+            setImageLoading(false);
+          }}
         >
           {imageLoading && (
             <ActivityIndicator size="large" color={COLORS.primary} style={StyleSheet.absoluteFill} />
@@ -93,6 +101,8 @@ const ServiceCard = ({ item, onPress, displayAs = 'grid' }) => {
   const detailRowStyle = displayAs === 'list' ? styles.listDetailRow : styles.gridDetailRow;
 
   const imageUrl = item.media_urls && item.media_urls.length > 0 ? item.media_urls[0] : null;
+  const safeImageUrl = imageUrl ? encodeURI(imageUrl) : null;
+const imageSource = React.useMemo(() => safeImageUrl ? { uri: safeImageUrl } : require('../../assets/images/placeholder.png'), [safeImageUrl]);
   console.log(`[ServiceCard] ${displayAs} Image URL: ${imageUrl}, Item ID: ${item?.id}`);
 
   const handleFavoritePress = () => {
@@ -106,7 +116,7 @@ const ServiceCard = ({ item, onPress, displayAs = 'grid' }) => {
       <View style={imageContainerStyle}> 
         <Image 
           key={`${displayAs}-img-${item.id}`}
-          source={imageUrl ? { uri: imageUrl } : require('../../assets/images/placeholder.png')} 
+          source={imageSource}
           style={imageStyle}
           onLoadStart={() => {
             console.log(`[ServiceCard] ${displayAs} Image onLoadStart. URI: ${imageUrl}, Item ID: ${item?.id}`);

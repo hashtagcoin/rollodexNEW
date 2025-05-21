@@ -34,6 +34,9 @@ const BOTTOM_NAV_BAR_ESTIMATED_HEIGHT = 60;
 const CARD_MARGIN_VERTICAL = 10;
 const ACTION_BUTTON_RESERVED_SPACE = 110;
 
+// In-memory image cache (key: imageUrl, value: uri)
+const imageCache = {};
+
 const ProviderDiscoveryScreen = () => {
   console.log('[ProviderDiscoveryScreen] Rendering');
   const navigation = useNavigation();
@@ -52,6 +55,7 @@ const ProviderDiscoveryScreen = () => {
 
   // Main data fetching effect
   useEffect(() => {
+    const effectStart = Date.now();
     fetchCounter.current += 1;
     console.log(`[ProviderDiscoveryScreen] useEffect for fetchData triggered. Category: ${selectedCategory}, SearchTerm: ${searchTerm}, Fetch Count: ${fetchCounter.current}`);
     if (selectedCategory === 'Housing') {
@@ -132,6 +136,8 @@ const ProviderDiscoveryScreen = () => {
     
     // Cleanup function for this effect
     return () => {
+      const effectEnd = Date.now();
+      console.log(`[useEffect] CLEANUP for selectedCategory: ${selectedCategory}, searchTerm: ${searchTerm}. Duration: ${effectEnd - effectStart}ms`);
       isMounted = false;
       console.log(`[ProviderDiscoveryScreen] Cleanup for useEffect. Category: ${selectedCategory}, SearchTerm: ${searchTerm}. isMounted set to false.`);
     };
@@ -206,13 +212,24 @@ const ProviderDiscoveryScreen = () => {
           <FlatList
             key={'housing-grid'}
             data={currentItemsToDisplay} // Use currentItemsToDisplay
-            renderItem={({ item }) => (
-              <HousingCard 
-                item={item} 
-                onPress={() => handleHousingPress(item)} // Pass item to handler
-                displayAs="grid"
-              />
-            )}
+            renderItem={({ item }) => {
+  const imageUrl = item.media_urls && item.media_urls.length > 0 ? item.media_urls[0] : null;
+  let cachedUri = imageUrl;
+  if (imageUrl && imageCache[imageUrl]) {
+    cachedUri = imageCache[imageUrl];
+  }
+  console.log(`[FlatList][HousingCard][GRID] Rendering item.id: ${item.id}, imageUrl: ${imageUrl}`);
+  return (
+    <HousingCard 
+      item={{...item, cachedUri}} 
+      onPress={handleHousingPress} // Pass stable function
+      displayAs="grid"
+      onImageLoaded={(uri) => {
+        if (imageUrl && !imageCache[imageUrl]) imageCache[imageUrl] = uri;
+      }}
+    />
+  );
+}}
             keyExtractor={(item) => item.id.toString()}
             numColumns={2}
             contentContainerStyle={styles.gridContainer}
@@ -224,13 +241,24 @@ const ProviderDiscoveryScreen = () => {
           <FlatList
             key={'services-grid'}
             data={currentItemsToDisplay} // Use currentItemsToDisplay
-            renderItem={({ item }) => (
-              <ServiceCard 
-                item={item} 
-                onPress={() => handleServicePress(item)} // Pass item to handler
-                displayAs="grid"
-              />
-            )}
+            renderItem={({ item }) => {
+  const imageUrl = item.media_urls && item.media_urls.length > 0 ? item.media_urls[0] : null;
+  let cachedUri = imageUrl;
+  if (imageUrl && imageCache[imageUrl]) {
+    cachedUri = imageCache[imageUrl];
+  }
+  console.log(`[FlatList][ServiceCard][GRID] Rendering item.id: ${item.id}, imageUrl: ${imageUrl}`);
+  return (
+    <ServiceCard 
+      item={{...item, cachedUri}} 
+      onPress={handleServicePress} // Pass stable function
+      displayAs="grid"
+      onImageLoaded={(uri) => {
+        if (imageUrl && !imageCache[imageUrl]) imageCache[imageUrl] = uri;
+      }}
+    />
+  );
+}}
             keyExtractor={(item) => item.id.toString()}
             numColumns={2}
             contentContainerStyle={styles.gridContainer}
@@ -245,13 +273,24 @@ const ProviderDiscoveryScreen = () => {
           <FlatList
             key={'housing-list'}
             data={currentItemsToDisplay} // Use currentItemsToDisplay
-            renderItem={({ item }) => (
-              <HousingCard 
-                item={item} 
-                onPress={() => handleHousingPress(item)} // Pass item to handler
-                displayAs="list"
-              />
-            )}
+            renderItem={({ item }) => {
+  const imageUrl = item.media_urls && item.media_urls.length > 0 ? item.media_urls[0] : null;
+  let cachedUri = imageUrl;
+  if (imageUrl && imageCache[imageUrl]) {
+    cachedUri = imageCache[imageUrl];
+  }
+  console.log(`[FlatList][HousingCard][LIST] Rendering item.id: ${item.id}, imageUrl: ${imageUrl}`);
+  return (
+    <HousingCard 
+      item={{...item, cachedUri}} 
+      onPress={handleHousingPress} // Pass stable function
+      displayAs="list"
+      onImageLoaded={(uri) => {
+        if (imageUrl && !imageCache[imageUrl]) imageCache[imageUrl] = uri;
+      }}
+    />
+  );
+}}
             keyExtractor={(item) => item.id.toString()}
             contentContainerStyle={styles.listContainer} 
             showsVerticalScrollIndicator={false}
@@ -262,13 +301,24 @@ const ProviderDiscoveryScreen = () => {
           <FlatList
             key={'services-list'}
             data={currentItemsToDisplay} // Use currentItemsToDisplay
-            renderItem={({ item }) => (
-              <ServiceCard 
-                item={item} 
-                onPress={() => handleServicePress(item)} // Pass item to handler
-                displayAs="list"
-              />
-            )}
+            renderItem={({ item }) => {
+  const imageUrl = item.media_urls && item.media_urls.length > 0 ? item.media_urls[0] : null;
+  let cachedUri = imageUrl;
+  if (imageUrl && imageCache[imageUrl]) {
+    cachedUri = imageCache[imageUrl];
+  }
+  console.log(`[FlatList][ServiceCard][LIST] Rendering item.id: ${item.id}, imageUrl: ${imageUrl}`);
+  return (
+    <ServiceCard 
+      item={{...item, cachedUri}} 
+      onPress={handleServicePress} // Pass stable function
+      displayAs="list"
+      onImageLoaded={(uri) => {
+        if (imageUrl && !imageCache[imageUrl]) imageCache[imageUrl] = uri;
+      }}
+    />
+  );
+}}
             keyExtractor={(item) => item.id.toString()}
             contentContainerStyle={styles.listContainer} 
             showsVerticalScrollIndicator={false}
@@ -578,30 +628,35 @@ const ProviderDiscoveryScreen = () => {
 
       // --- Card layout: Airbnb style, image, heading, icons, etc. ---
       const renderTinderCard = (item) => {
-        // Use the same logic as list view for consistent data/image handling
+        const imageUrl = item.media_urls && item.media_urls.length > 0 ? item.media_urls[0] : null;
+        let cachedUri = imageUrl;
+        if (imageUrl && imageCache[imageUrl]) {
+          cachedUri = imageCache[imageUrl];
+        }
         if (selectedCategory === 'Housing') {
           return (
-            <HousingCard 
-              item={item} 
-              onPress={() => handleHousingPress(item)} 
+            <HousingCard
+              item={{ ...item, cachedUri }}
+              onPress={() => handleHousingPress(item)}
               displayAs="swipe"
+              onImageLoaded={(uri) => {
+                if (imageUrl && !imageCache[imageUrl]) imageCache[imageUrl] = uri;
+              }}
             />
           );
         } else {
           return (
-            <ServiceCard 
-              item={item} 
-              onPress={() => handleServicePress(item)} 
+            <ServiceCard
+              item={{ ...item, cachedUri }}
+              onPress={() => handleServicePress(item)}
               displayAs="swipe"
+              onImageLoaded={(uri) => {
+                if (imageUrl && !imageCache[imageUrl]) imageCache[imageUrl] = uri;
+              }}
             />
           );
         }
       };
-
-      // --- Minimalist, colored floating action buttons ---
-      // Update the TinderSwipeDeck floating button section (inside the deck component):
-      // (Replace the styles for the buttons with minimalist, colored, circular design)
-      // See below for updated style definitions.
 
       return (
         <View style={styles.swiperContainer}>
@@ -657,7 +712,16 @@ const ProviderDiscoveryScreen = () => {
                 <TouchableOpacity
                   key={category}
                   style={[styles.categoryButton, selectedCategory === category && styles.selectedCategoryButton]}
-                  onPress={() => setSelectedCategory(category)}
+                  onPress={() => {
+  console.log(`[FilterButton] Pressed: ${category} | Current selectedCategory: ${selectedCategory}`);
+  if (selectedCategory === category) {
+    console.log(`[FilterButton] Re-clicked SAME filter: ${category}`);
+  } else {
+    console.log(`[FilterButton] Switched to NEW filter: ${category}`);
+  }
+  setSelectedCategory(category);
+  console.log(`[FilterButton] setSelectedCategory called with: ${category}`);
+}}
                 >
                   <Text style={[styles.categoryButtonText, selectedCategory === category && styles.selectedCategoryButtonText]}>
                     {category}

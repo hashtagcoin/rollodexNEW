@@ -25,9 +25,24 @@ const AppHeader = ({
   return (
     <View style={styles.container}>
       <View style={styles.leftSection}>
-        {canGoBack && navigation ? (
+        {/* Custom back button for NDIS, Service Agreements, Group Detail screens */}
+        {(title === 'NDIS' || title === 'Service Agreements' || title === 'Group Detail') ? (
           <TouchableOpacity onPress={handleBackPress} style={styles.backButton}>
             <Feather name="arrow-left" size={26} color="#333" />
+          </TouchableOpacity>
+        ) : ((canGoBack && navigation) && !['Explore', 'Social', 'Wallet', 'Favourites', 'Profile'].includes(title)) ? (
+          <TouchableOpacity onPress={handleBackPress} style={styles.backButton}>
+            {(title === 'Groups' || title === 'Housing Groups' || title === 'Events' || (title && title.includes('HousingGroupsScreen_forceBack'))) ? (
+              <Feather name="arrow-left" size={26} color="#333" />
+            ) : ( // Main tabs: Explore, Social, Wallet, Favourites, Profile
+              <TouchableOpacity onPress={() => navigation?.navigate && navigation.navigate('DashboardScreen')}>
+                <Image 
+                  source={require('../../assets/images/logoicon.png')}
+                  style={styles.logoIcon}
+                  resizeMode="contain"
+                />
+              </TouchableOpacity>
+            )}
           </TouchableOpacity>
         ) : (
           <Image 
@@ -53,7 +68,7 @@ const AppHeader = ({
         {navigation && (
           <TouchableOpacity 
             style={styles.iconButton} 
-            onPress={() => navigation.navigate('ProfileScreen')} 
+            onPress={() => navigation.navigate('Profile')} 
           >
             <Ionicons name="person-circle-outline" size={28} color={'#333'} />
           </TouchableOpacity>
@@ -64,6 +79,10 @@ const AppHeader = ({
 };
 
 const styles = StyleSheet.create({
+  logoIcon: {
+    width: 33,
+    height: 33,
+  },
   container: {
     flexDirection: 'row',
     justifyContent: 'space-between',

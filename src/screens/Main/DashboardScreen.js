@@ -1,13 +1,15 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity } from 'react-native';
-import AntDesign from 'react-native-vector-icons/AntDesign'; 
-import MaterialIcons from 'react-native-vector-icons/MaterialIcons'; 
+import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, FlatList } from 'react-native';
 import Feather from 'react-native-vector-icons/Feather'; 
+import MaterialIcons from 'react-native-vector-icons/MaterialIcons'; 
+import Ionicons from 'react-native-vector-icons/Ionicons';
+import { AntDesign } from '@expo/vector-icons';
+
 
 // Placeholder data - this would come from API/state
 const userData = {
   name: 'James',
-  walletBalance: '8,200.50',
+  walletBalance: '8,200',
   categories: [
     { name: 'Therapy', amount: '2,500.00' },
     { name: 'Support', amount: '2,800.50' }, 
@@ -21,212 +23,339 @@ const userData = {
   }
 };
 
+const dummyAppointments = [
+  { id: '1', service: 'Physio Therapy', date: 'May 24', time: '10:00 AM', provider: 'MoveWell Clinic', note: 'Bring referral form.' },
+  { id: '2', service: 'Speech Pathology', date: 'May 25', time: '2:00 PM', provider: 'TalkRight', note: 'Session 3 of 6.' },
+  { id: '3', service: 'Support Worker', date: 'May 27', time: '9:00 AM', provider: 'CareCo', note: 'Meet at home.' },
+  { id: '4', service: 'OT Assessment', date: 'May 29', time: '1:30 PM', provider: 'Active OT', note: 'Initial consult.' },
+];
+
 const DashboardScreen = () => {
   return (
-    <ScrollView style={styles.screenContainer}> 
+    <ScrollView style={styles.screenContainer} showsVerticalScrollIndicator={false}>
       <View style={styles.contentContainer}>
-        <View style={styles.headerContainer}> 
-          <Text style={styles.welcomeTitleText}>Welcome, {userData.name}</Text>
-          <View style={styles.avatarContainer}>
-            <Image 
-              source={require('../../assets/images/placeholder-avatar.jpg')} 
-              style={styles.avatar}
-            />
+        {/* Header */}
+        <View style={styles.headerContainer}>
+          <View>
+            <Text style={styles.welcomeTitleText}>Welcome back,</Text>
+            <Text style={styles.userNameText}>{userData.name}</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' }}>
+            <TouchableOpacity style={{ marginRight: 8 }}>
+              <Ionicons name="notifications-outline" size={26} color="#222" />
+            </TouchableOpacity>
+            <View style={styles.avatarContainer}>
+              <Image
+                source={require('../../assets/images/placeholder-avatar.jpg')}
+                style={styles.avatar}
+              />
+            </View>
           </View>
         </View>
 
-        {/* Wallet Balance Card */}
-        <View style={styles.card}>
-          <Text style={styles.walletTitle}>Wallet Balance</Text>
-          <Text style={styles.walletBalance}>${userData.walletBalance}</Text>
-          <Text style={styles.categoryBreakdownText}>Category breakdown</Text>
-          {userData.categories.map((cat, index) => (
-            <View key={index} style={styles.categoryRow}>
-              <Text style={styles.categoryName}>{cat.name}</Text>
-              <Text style={styles.categoryAmount}>${cat.amount}</Text>
-            </View>
-          ))}
-        </View>
-
-        {/* Expiry Reminders */}
-        <View style={styles.expiryContainer}>
-          <Feather name="alert-triangle" size={20} color="#FFA500" style={styles.expiryIcon} />
-          <Text style={styles.expiryText}>Expiry reminders</Text>
-        </View>
-
-        {/* Dynamic Service Feed */}
-        <Text style={styles.feedTitle}>Bookings</Text>
-        <View style={[styles.card, styles.serviceCard]}>
-          {/* Placeholder for Image - ideally use an <Image> component */}
-          <View style={styles.serviceImagePlaceholder}>
-            <Text>Service Image Here</Text>
+        {/* Wallet Card */}
+        <View style={styles.walletCard}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+            <Ionicons name="wallet-outline" size={26} color="#00A36C" style={{ marginRight: 10 }} />
+            <Text style={styles.walletCardTitle}>Wallet Balance</Text>
           </View>
-          <Text style={styles.serviceTitle}>{userData.serviceFeed.title}</Text>
-          <Text style={styles.serviceFunding}>{userData.serviceFeed.fundingInfo}</Text>
+          <Text style={styles.walletCardBalance}>${parseInt(userData.walletBalance.replace(/[^\d]/g, ''), 10).toLocaleString()}</Text>
+          <FlatList
+            data={userData.categories}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyExtractor={item => item.name}
+            contentContainerStyle={styles.categoryList}
+            renderItem={({ item }) => (
+              <View style={styles.categoryPill}>
+                <Text style={styles.categoryPillName}>{item.name}</Text>
+                <Text style={styles.categoryPillAmount}>${Math.floor(Number(item.amount.replace(/,/g, ''))).toLocaleString()}</Text>
+              </View>
+            )}
+          />
         </View>
 
-        {/* Action Buttons */}
-        <View style={styles.actionsContainer}>
-          <TouchableOpacity style={styles.actionButton}>
-            <View>
-              <AntDesign name="clockcircleo" size={22} color={'#333'} style={styles.actionButtonIcon} />
-              <Text style={styles.actionButtonText}>Reorder last service</Text>
+        {/* Upcoming Appointments Carousel */}
+        <Text style={styles.carouselTitle}>Upcoming Appointments</Text>
+        <FlatList
+          data={dummyAppointments}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          keyExtractor={item => item.id}
+          contentContainerStyle={styles.carouselList}
+          renderItem={({ item }) => (
+            <View style={styles.appointmentCard}>
+              <Text style={styles.appointmentService}>{item.service}</Text>
+              <Text style={styles.appointmentDate}>{item.date} • {item.time}</Text>
+              <Text style={styles.appointmentProvider}>{item.provider}</Text>
+              <Text style={styles.appointmentNote}>{item.note}</Text>
             </View>
+          )}
+        />
+        {/* Expiry Reminder Card */}
+          <Feather name="alert-triangle" size={22} color="#FFA500" style={styles.expiryIcon} />
+          <Text style={styles.expiryText}>Some of your funding categories are expiring soon. <Text style={{fontWeight:'bold'}}>Check details</Text></Text>
+        </View>
+
+        {/* Bookings/Events Card */}
+        <View style={styles.bookingsCard}>
+          <Image
+            source={{ uri: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=400&q=80' }}
+            style={styles.bookingsImage}
+          />
+          <View style={styles.bookingsContent}>
+            <Text style={styles.bookingsTitle}>{userData.serviceFeed.title}</Text>
+            <Text style={styles.bookingsFunding}>{userData.serviceFeed.fundingInfo}</Text>
+            <TouchableOpacity style={styles.bookingsBtn}>
+              <Text style={styles.bookingsBtnText}>View Details</Text>
+              <Feather name="chevron-right" size={18} color="#fff" />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Action Buttons Row */}
+        <View style={styles.actionRow}>
+          <TouchableOpacity style={styles.actionCard}>
+            <AntDesign name="clockcircleo" size={22} color={'#007AFF'} style={styles.actionCardIcon} />
+            <Text style={styles.actionCardText}>Reorder last service</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionButton}>
-            <View>
-              <MaterialIcons name="people-outline" size={24} color={'#333'} style={styles.actionButtonIcon} />
-              <Text style={styles.actionButtonText}>Your Matches</Text>
-              <Text style={styles.actionButtonSubText}>(based on preferences)</Text>
-            </View>
+          <TouchableOpacity style={styles.actionCard}>
+            <MaterialIcons name="people-outline" size={24} color={'#007AFF'} style={styles.actionCardIcon} />
+            <Text style={styles.actionCardText}>Your Matches</Text>
           </TouchableOpacity>
         </View>
-      </View>
     </ScrollView>
   );
 };
 
 const styles = StyleSheet.create({
-  screenContainer: {
-    flex: 1,
-    backgroundColor: '#F8F7F3', 
+  carouselTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#222',
+    marginTop: 18,
+    marginBottom: 8,
+    marginLeft: 4,
   },
-  contentContainer: {
-    paddingHorizontal: 20,
-    paddingTop: 20, 
-    paddingBottom: 20, 
+  carouselList: {
+    paddingBottom: 10,
+    paddingLeft: 4,
   },
-  headerContainer: { 
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  welcomeTitleText: { 
-    fontSize: 26,
-    fontWeight: 'bold',
-    color: '#333333',
-    flex: 1,
-  },
-  avatarContainer: { 
-    marginLeft: 10,
-  },
-  avatar: { 
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    borderWidth: 2,
-    borderColor: '#E0E0E0',
-  },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 10,
-    padding: 20,
-    marginBottom: 20,
+  appointmentCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 16,
+    marginRight: 14,
+    width: 220,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 1.41,
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
     elevation: 2,
   },
-  walletTitle: {
+  appointmentService: {
     fontSize: 16,
-    color: '#666',
-    marginBottom: 5,
+    fontWeight: '700',
+    color: '#007AFF',
+    marginBottom: 2,
   },
-  walletBalance: {
-    fontSize: 36,
-    fontWeight: 'bold',
-    color: '#00A36C', 
-    marginBottom: 10,
-  },
-  categoryBreakdownText: {
-    fontSize: 12,
-    color: '#888',
-    marginBottom: 10,
-    alignSelf: 'flex-end',
-  },
-  categoryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 5,
-  },
-  categoryName: {
+  appointmentDate: {
     fontSize: 14,
-    color: '#333',
+    color: '#222',
+    marginBottom: 2,
   },
-  categoryAmount: {
-    fontSize: 14,
-    color: '#333',
-    fontWeight: '500',
-  },
-  expiryContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 15,
-    backgroundColor: '#FFF3E0', 
-    borderRadius: 8,
-    marginBottom: 20,
-  },
-  expiryIcon: {
-    marginRight: 10,
-  },
-  expiryText: {
-    fontSize: 14,
-    color: '#856404', 
-  },
-  feedTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 10,
-    color: '#333',
-  },
-  serviceCard: {
-  },
-  serviceImagePlaceholder: {
-    height: 150,
-    backgroundColor: '#E0E0E0',
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  serviceTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 5,
-  },
-  serviceFunding: {
+  appointmentProvider: {
     fontSize: 13,
     color: '#555',
+    marginBottom: 2,
   },
-  actionsContainer: {
+  appointmentNote: {
+    fontSize: 13,
+    color: '#888',
+  },
+  screenContainer: {
+    flex: 1,
+    backgroundColor: '#f8f8f8',
+    paddingHorizontal: 0,
+    paddingTop: 56,
+  },
+  contentContainer: {
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 24,
+  },
+  headerContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-  },
-  actionButton: {
-    backgroundColor: '#E9E9E9', 
-    paddingVertical: 15,
-    paddingHorizontal: 10,
-    borderRadius: 8,
-    flex: 1,
-    marginHorizontal: 5,
     alignItems: 'center',
-    justifyContent: 'center', 
+    marginBottom: 18,
   },
-  actionButtonIcon: {
-    marginBottom: 8, 
+  welcomeTitleText: {
+    fontSize: 18,
+    color: '#888',
+    fontWeight: '600',
+    marginBottom: 2,
   },
-  actionButtonText: {
+  userNameText: {
+    fontSize: 26,
+    fontWeight: 'bold',
+    color: '#222',
+  },
+  avatarContainer: {
+    marginLeft: 10,
+    borderRadius: 30,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: '#eaeaea',
+  },
+  avatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+  },
+  walletCard: {
+    backgroundColor: '#fff',
+    borderRadius: 18,
+    padding: 22,
+    marginBottom: 22,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  walletCardTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#00A36C',
+  },
+  walletCardBalance: {
+    fontSize: 34,
+    fontWeight: 'bold',
+    color: '#222',
+    marginBottom: 12,
+  },
+  categoryList: {
+    marginTop: 2,
+    paddingVertical: 2,
+  },
+  categoryPill: {
+    backgroundColor: '#f3f6fa',
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginRight: 10,
+    alignItems: 'center',
+  },
+  categoryPillName: {
     fontSize: 13,
-    fontWeight: '500',
+    color: '#666',
+    fontWeight: '600',
+  },
+  categoryPillAmount: {
+    fontSize: 15,
+    color: '#222',
+    fontWeight: 'bold',
+  },
+  expiryCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fffbe6',
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 22,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  expiryIcon: {
+    marginRight: 12,
+  },
+  expiryText: {
+    fontSize: 15,
+    color: '#b88900',
+    flex: 1,
+  },
+  bookingsCard: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    borderRadius: 18,
+    overflow: 'hidden',
+    marginBottom: 22,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  bookingsImage: {
+    width: 94,
+    height: 94,
+    borderTopLeftRadius: 18,
+    borderBottomLeftRadius: 18,
+    backgroundColor: '#eaeaea',
+  },
+  bookingsContent: {
+    flex: 1,
+    padding: 14,
+    justifyContent: 'center',
+  },
+  bookingsTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#222',
+    marginBottom: 2,
+  },
+  bookingsFunding: {
+    fontSize: 13,
+    color: '#666',
+    marginBottom: 8,
+  },
+  bookingsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#007AFF',
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 7,
+    alignSelf: 'flex-start',
+    marginTop: 2,
+  },
+  bookingsBtnText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 15,
+    marginRight: 6,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 10,
+    gap: 12,
+  },
+  actionCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 22,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  actionCardIcon: {
+    marginBottom: 6,
+  },
+  actionCardText: {
+    fontWeight: '600',
+    color: '#222',
+    fontSize: 15,
     textAlign: 'center',
   },
-  actionButtonSubText: {
-    fontSize: 10,
-    color: '#777',
-    textAlign: 'center',
-  }
 });
 
 export default DashboardScreen;

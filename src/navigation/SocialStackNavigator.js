@@ -1,0 +1,19 @@
+import React from 'react';
+import { createStackNavigator } from '@react-navigation/stack';
+import SocialFeedScreen from '../screens/Main/SocialFeedScreen';
+import HousingGroupsScreen from '../screens/Main/HousingGroupsScreen';
+import EventsListScreen from '../screens/Main/EventsListScreen';
+
+const Stack = createStackNavigator();
+
+const SocialStackNavigator = () => {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="SocialFeedScreen" component={SocialFeedScreen} />
+      <Stack.Screen name="HousingGroupsScreen" component={HousingGroupsScreen} />
+      <Stack.Screen name="EventsListScreen" component={EventsListScreen} />
+    </Stack.Navigator>
+  );
+};
+
+export default SocialStackNavigator;
