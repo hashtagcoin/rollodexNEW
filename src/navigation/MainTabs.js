@@ -70,8 +70,8 @@ const MainTabs = () => {
     >
       <Tab.Screen name="Home" component={DashboardScreen} />
       <Tab.Screen name="Explore" component={ExploreStackNavigator} />
-      <Tab.Screen name="Wallet" component={WalletScreen} />
       <Tab.Screen name="Social" component={SocialFeedScreen} />
+      <Tab.Screen name="Wallet" component={WalletScreen} />
       <Tab.Screen name="Favourites" component={FavouritesScreen} />
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>

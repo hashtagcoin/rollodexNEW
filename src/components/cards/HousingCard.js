@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, memo } from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity, Dimensions, ActivityIndicator } from 'react-native';
 import Feather from 'react-native-vector-icons/Feather';
 import AntDesign from 'react-native-vector-icons/AntDesign';
@@ -18,6 +18,7 @@ const FAVORITE_RED = '#FF6B6B';
 const FAVORITE_WHITE_OUTLINE = '#FFFFFF';
 
 const HousingCard = ({ item, onPress, displayAs = 'grid' }) => {
+  console.log(`[HousingCard] Rendering. Item ID: ${item?.id}, Display: ${displayAs}, Media: ${item?.media_urls?.[0]}`);
   const [imageLoading, setImageLoading] = useState(true); // State for image loading
 
   const isList = displayAs === 'list';
@@ -25,13 +26,27 @@ const HousingCard = ({ item, onPress, displayAs = 'grid' }) => {
 
   if (isSwipe) {
     // Swipe Card Layout for Housing (remains unchanged from previous step)
+    const imageUrl = item.media_urls && item.media_urls.length > 0 ? item.media_urls[0] : null;
+    console.log(`[HousingCard] Swipe Image URL: ${imageUrl}, Item ID: ${item?.id}`);
     return (
       <View style={styles.swipeCardContainer}>
         <Image 
-          source={item.media_urls && item.media_urls.length > 0 ? { uri: item.media_urls[0] } : require('../../assets/images/placeholder.png')} 
+          key={`swipe-img-${item.id}`}
+          source={imageUrl ? { uri: imageUrl } : require('../../assets/images/placeholder.png')} 
           style={styles.swipeImage}
-          onLoadStart={() => setImageLoading(true)}
-          onLoadEnd={() => setImageLoading(false)}
+          onLoadStart={() => {
+            console.log(`[HousingCard] Swipe Image onLoadStart. URI: ${imageUrl}, Item ID: ${item?.id}`);
+            setImageLoading(true);
+          }}
+          onLoadEnd={() => {
+            console.log(`[HousingCard] Swipe Image onLoadEnd. URI: ${imageUrl}, Item ID: ${item?.id}`);
+            setImageLoading(false);
+          }}
+          onError={(e) => {
+            console.log(`[HousingCard] Swipe Image onError. URI: ${imageUrl}, Error: ${e.nativeEvent.error}, Item ID: ${item?.id}`);
+            setImageLoading(false);
+          }}
+          resizeMode="cover"
         />
         {imageLoading && (
           <ActivityIndicator 
@@ -72,18 +87,32 @@ const HousingCard = ({ item, onPress, displayAs = 'grid' }) => {
 
   // Grid/List Logic
   const imageContainerStyle = isList ? styles.listImageContainer : styles.gridImageContainer;
+  const imageUrl = item.media_urls && item.media_urls.length > 0 ? item.media_urls[0] : null;
+  console.log(`[HousingCard] ${displayAs} Image URL: ${imageUrl}, Item ID: ${item?.id}`);
 
   return (
     <TouchableOpacity 
       style={[isList ? styles.listCardContainer : styles.gridCardContainer, isList && styles.fullWidthCard]} 
-      onPress={onPress}
+      onPress={() => onPress(item)}
     >
       <View style={imageContainerStyle}>
         <Image 
-          source={item.media_urls && item.media_urls.length > 0 ? { uri: item.media_urls[0] } : require('../../assets/images/placeholder.png')} 
-          style={isList ? styles.listImage : styles.gridImage} 
-          onLoadStart={() => setImageLoading(true)}
-          onLoadEnd={() => setImageLoading(false)}
+          key={`${isList ? 'list' : 'grid'}-img-${item.id}`}
+          source={imageUrl ? { uri: imageUrl } : require('../../assets/images/placeholder.png')} 
+          style={isList ? styles.listImage : styles.gridImage}
+          onLoadStart={() => {
+            console.log(`[HousingCard] ${displayAs} Image onLoadStart. URI: ${imageUrl}, Item ID: ${item?.id}`);
+            setImageLoading(true);
+          }}
+          onLoadEnd={() => {
+            console.log(`[HousingCard] ${displayAs} Image onLoadEnd. URI: ${imageUrl}, Item ID: ${item?.id}`);
+            setImageLoading(false);
+          }}
+          onError={(e) => {
+            console.log(`[HousingCard] ${displayAs} Image onError. URI: ${imageUrl}, Error: ${e.nativeEvent.error}, Item ID: ${item?.id}`);
+            setImageLoading(false);
+          }}
+          resizeMode="cover"
         />
         {imageLoading && (
           <ActivityIndicator 
@@ -397,4 +426,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default HousingCard;
+export default memo(HousingCard);

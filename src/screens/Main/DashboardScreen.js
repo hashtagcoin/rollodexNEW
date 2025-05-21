@@ -24,10 +24,16 @@ const userData = {
 const DashboardScreen = () => {
   return (
     <ScrollView style={styles.screenContainer}>
-      
       <View style={styles.contentContainer}>
-        {/* Welcome Message */}
-        <Text style={styles.welcomeTitleText}>Welcome, {userData.name}</Text>
+        <View style={styles.headerContainer}>
+          <Text style={styles.welcomeTitleText}>Welcome, {userData.name}</Text>
+          <View style={styles.avatarContainer}>
+            <Image 
+              source={require('../../assets/images/placeholder-avatar.jpg')} 
+              style={styles.avatar}
+            />
+          </View>
+        </View>
 
         {/* Wallet Balance Card */}
         <View style={styles.card}>
@@ -90,11 +96,27 @@ const styles = StyleSheet.create({
     paddingTop: 20, // Added top padding for breathing room
     paddingBottom: 20, // Added for consistency
   },
-  welcomeTitleText: { // Style for the welcome text
+  headerContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  welcomeTitleText: {
     fontSize: 26,
     fontWeight: 'bold',
     color: '#333333',
-    marginBottom: 20, // Space below the welcome text
+    flex: 1,
+  },
+  avatarContainer: {
+    marginLeft: 10,
+  },
+  avatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    borderWidth: 2,
+    borderColor: '#E0E0E0',
   },
   card: {
     backgroundColor: '#FFFFFF',

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, FlatList, Dimensions, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native'; 
 import { supabase } from '../../lib/supabaseClient'; 
@@ -10,6 +10,7 @@ const CATEGORIES = ['Therapy', 'Housing', 'Support', 'Transport', 'Tech', 'Perso
 const VIEW_MODES = ['Grid', 'List', 'Swipe'];
 
 const ProviderDiscoveryScreen = () => {
+  console.log('[ProviderDiscoveryScreen] Rendering');
   const navigation = useNavigation(); 
   const [selectedCategory, setSelectedCategory] = useState(CATEGORIES[0]);
   const [viewMode, setViewMode] = useState(VIEW_MODES[0]);
@@ -20,40 +21,78 @@ const ProviderDiscoveryScreen = () => {
   const swiperRef = useRef(null);
 
   useEffect(() => {
+    console.log(`[ProviderDiscoveryScreen] useEffect for fetchData triggered. Category: ${selectedCategory}, SearchTerm: ${searchTerm}`);
     fetchData(); 
   }, [selectedCategory, searchTerm]);
 
   const fetchData = async () => {
+    console.log(`[ProviderDiscoveryScreen] fetchData called. Category: ${selectedCategory}, SearchTerm: ${searchTerm}`);
     setLoading(true);
     setItems([]); 
 
-    const isHousing = selectedCategory === 'Housing';
-    const tableName = isHousing ? 'housing_listings' : 'services';
-    
-    let query = supabase.from(tableName).select('*');
-    
-    if (!isHousing) {
-      query = query.eq('category', selectedCategory);
-    }
+    try {
+      const isHousing = selectedCategory === 'Housing';
+      const tableName = isHousing ? 'housing_listings' : 'services';
+      
+      console.log(`[ProviderDiscoveryScreen] Querying table: ${tableName}`);
+      
+      let query = supabase.from(tableName).select('*');
+      
+      if (!isHousing) {
+        console.log(`[ProviderDiscoveryScreen] Filtering by category (case-insensitive): ${selectedCategory}`);
+        // Convert both the category in the database and the filter to lowercase for comparison
+        query = query.ilike('category', selectedCategory.toLowerCase());
+      }
 
-    if (searchTerm) {
-      query = query.or(`title.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`);
-    }
+      if (searchTerm) {
+        console.log(`[ProviderDiscoveryScreen] Applying search term: ${searchTerm}`);
+        query = query.or(`title.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`);
+      }
 
-    query = query.order('created_at', { ascending: false });
+      query = query.order('created_at', { ascending: false });
 
-    const { data, error } = await query.limit(20); 
-
-    if (error) {
-      console.error('Error fetching data:', error.message);
+      console.log('[ProviderDiscoveryScreen] Executing query...');
+      const { data, error, status } = await query.limit(20); 
+      
+      console.log('[ProviderDiscoveryScreen] Query status:', status);
+      console.log('[ProviderDiscoveryScreen] Data received:', data ? `Array of ${data.length} items` : 'No data');
+      
+      if (error) {
+        console.error('[ProviderDiscoveryScreen] Error fetching data:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
+        setItems([]);
+      } else {
+        console.log('[ProviderDiscoveryScreen] Setting items:', data ? data.length : 0);
+        setItems(data || []);
+      }
+    } catch (error) {
+      console.error('[ProviderDiscoveryScreen] Exception in fetchData:', {
+        message: error.message,
+        stack: error.stack
+      });
       setItems([]);
-    } else {
-      setItems(data || []);
+    } finally {
+      setLoading(false);
+      console.log('[ProviderDiscoveryScreen] Loading complete');
     }
-    setLoading(false);
   };
 
+  const handleServicePress = useCallback((item) => {
+    console.log(`[ProviderDiscoveryScreen] Navigating to ServiceDetailScreen for item ID: ${item.id}`);
+    navigation.navigate('ServiceDetail', { item: item });
+  }, [navigation]);
+
+  const handleHousingPress = useCallback((item) => {
+    console.log(`[ProviderDiscoveryScreen] Navigating to HousingDetailScreen for item ID: ${item.id}`);
+    navigation.navigate('HousingDetail', { item: item });
+  }, [navigation]);
+
   const renderContent = () => {
+    console.log(`[ProviderDiscoveryScreen] renderContent called. ViewMode: ${viewMode}, Category: ${selectedCategory}, Items: ${items.length}`);
     if (loading) {
       return <ActivityIndicator size="large" color="#3A5E49" style={styles.loadingIndicator} />;
     }
@@ -66,12 +105,13 @@ const ProviderDiscoveryScreen = () => {
       if (selectedCategory === 'Housing') {
         return (
           <FlatList
-            key={`housing-grid-${searchTerm}`}
+            key={'housing-grid'}
             data={items}
             renderItem={({ item }) => (
               <HousingCard 
                 item={item} 
-                onPress={() => navigation.navigate('HousingDetail', { item: item })}
+                onPress={handleHousingPress}
+                displayAs="grid"
               />
             )}
             keyExtractor={(item) => item.id.toString()}
@@ -83,13 +123,13 @@ const ProviderDiscoveryScreen = () => {
       } else { // Grid View for other SERVICES
         return (
           <FlatList
-            key={`services-grid-${searchTerm}`}
+            key={'services-grid'}
             data={items}
             renderItem={({ item }) => (
               <ServiceCard 
                 item={item} 
-                displayAs='grid' 
-                onPress={() => navigation.navigate('ServiceDetail', { item: item })}
+                onPress={handleServicePress}
+                displayAs="grid"
               />
             )}
             keyExtractor={(item) => item.id.toString()}
@@ -105,13 +145,13 @@ const ProviderDiscoveryScreen = () => {
       if (selectedCategory === 'Housing') {
         return (
           <FlatList
-            key={`housing-list-${searchTerm}`}
+            key={'housing-list'}
             data={items}
             renderItem={({ item }) => (
               <HousingCard 
                 item={item} 
-                displayAs='list'
-                onPress={() => navigation.navigate('HousingDetail', { item: item })}
+                onPress={handleHousingPress}
+                displayAs="list"
               />
             )}
             keyExtractor={(item) => item.id.toString()}
@@ -122,13 +162,13 @@ const ProviderDiscoveryScreen = () => {
       } else { // List View for other SERVICES
         return (
           <FlatList
-            key={`services-list-${searchTerm}`}
+            key={'services-list'}
             data={items}
             renderItem={({ item }) => (
               <ServiceCard 
                 item={item} 
-                displayAs='list'
-                onPress={() => navigation.navigate('ServiceDetail', { item: item })}
+                onPress={handleServicePress}
+                displayAs="list"
               />
             )}
             keyExtractor={(item) => item.id.toString()}
@@ -150,9 +190,9 @@ const ProviderDiscoveryScreen = () => {
             data={items}
             renderItem={({ item, index }) => (
               selectedCategory === 'Housing' ? (
-                <HousingCard item={item} displayAs='swipe' />
+                <HousingCard item={item} onPress={handleHousingPress} displayAs="swipe" />
               ) : (
-                <ServiceCard item={item} displayAs='swipe' />
+                <ServiceCard item={item} onPress={handleServicePress} displayAs="swipe" />
               )
             )}
             onSwipeRight={(index) => {
@@ -178,6 +218,7 @@ const ProviderDiscoveryScreen = () => {
 
   return (
     <View style={styles.screenContainer}>
+      {console.log('[ProviderDiscoveryScreen] Main return rendering')}
       <View style={styles.searchBarContainer}>
         <TextInput
           style={styles.searchInput}
