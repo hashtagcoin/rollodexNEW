@@ -1,5 +1,6 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { CommonActions } from '@react-navigation/native';
 
 import Feather from 'react-native-vector-icons/Feather';
 import Entypo from 'react-native-vector-icons/Entypo';
@@ -13,7 +14,7 @@ import SocialFeedScreen from '../screens/Main/SocialFeedScreen';
 import FavouritesScreen from '../screens/Main/FavouritesScreen';
 import ProfileScreen from '../screens/Main/ProfileScreen';
 
-import AppHeader from '../components/layout/AppHeader'; 
+
 
 const Tab = createBottomTabNavigator();
 
@@ -25,27 +26,6 @@ const MainTabs = () => {
   return (
     <Tab.Navigator
       screenOptions={({ route, navigation }) => ({
-        header: () => {
-          const isHomeScreen = route.name === 'Home';
-          const screenTitle = isHomeScreen ? '' : route.name;
-          const showWelcomeInHeader = false; 
-          const canGoBack = !isHomeScreen; 
-
-          const backNavigationOverride = canGoBack 
-            ? () => navigation.navigate('Home') 
-            : undefined; 
-          
-          return (
-            <AppHeader 
-              title={screenTitle} 
-              userName={isHomeScreen ? undefined : DUMMY_USER_DATA.name} 
-              showWelcomeMessage={showWelcomeInHeader} 
-              navigation={navigation} 
-              canGoBack={canGoBack}
-              onBackPressOverride={backNavigationOverride} 
-            />
-          );
-        },
         tabBarIcon: ({ focused, color, size }) => {
           let iconComponent;
 
@@ -68,12 +48,71 @@ const MainTabs = () => {
         tabBarInactiveTintColor: 'gray', 
       })}
     >
-      <Tab.Screen name="Home" component={DashboardScreen} />
-      <Tab.Screen name="Explore" component={ExploreStackNavigator} />
-      <Tab.Screen name="Social" component={SocialFeedScreen} />
-      <Tab.Screen name="Wallet" component={WalletScreen} />
-      <Tab.Screen name="Favourites" component={FavouritesScreen} />
-      <Tab.Screen name="Profile" component={ProfileScreen} />
+      <Tab.Screen 
+        name="Home" 
+        component={DashboardScreen} 
+        listeners={({ navigation, route }) => ({
+          tabPress: e => {
+            e.preventDefault();
+            navigation.navigate(route.name);
+          },
+        })}
+      />
+      <Tab.Screen 
+        name="Explore" 
+        component={ExploreStackNavigator} 
+        listeners={({ navigation, route }) => ({
+          tabPress: e => {
+            e.preventDefault();
+            navigation.dispatch(
+              CommonActions.navigate({
+                name: route.name, 
+                params: { screen: 'ProviderDiscovery' } 
+              })
+            );
+          },
+        })}
+      />
+      <Tab.Screen 
+        name="Social" 
+        component={SocialFeedScreen} 
+        listeners={({ navigation, route }) => ({
+          tabPress: e => {
+            e.preventDefault();
+            navigation.navigate(route.name);
+          },
+        })}
+      />
+      <Tab.Screen 
+        name="Wallet" 
+        component={WalletScreen} 
+        listeners={({ navigation, route }) => ({
+          tabPress: e => {
+            e.preventDefault();
+            navigation.navigate(route.name);
+          },
+        })}
+      />
+      <Tab.Screen 
+        name="Favourites" 
+        component={FavouritesScreen} 
+        listeners={({ navigation, route }) => ({
+          tabPress: e => {
+            e.preventDefault();
+            navigation.navigate(route.name);
+          },
+        })}
+      />
+      <Tab.Screen 
+        name="Profile" 
+        component={ProfileScreen} 
+        listeners={({ navigation, route }) => ({
+          tabPress: e => {
+            e.preventDefault();
+            navigation.navigate(route.name);
+          },
+        })}
+      />
     </Tab.Navigator>
   );
 };

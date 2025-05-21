@@ -47,9 +47,17 @@ const AppHeader = ({
       </View>
 
       <View style={styles.rightSection}>
-        <TouchableOpacity style={styles.notificationButton} onPress={() => alert('Notification bell pressed!')}>
+        <TouchableOpacity style={styles.iconButton} onPress={() => alert('Notification bell pressed!')}>
           <Ionicons name="notifications-outline" size={28} color={'#333'} />
         </TouchableOpacity>
+        {navigation && (
+          <TouchableOpacity 
+            style={styles.iconButton} 
+            onPress={() => navigation.navigate('ProfileScreen')} 
+          >
+            <Ionicons name="person-circle-outline" size={28} color={'#333'} />
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );
@@ -79,8 +87,9 @@ const styles = StyleSheet.create({
   },
   rightSection: {
     flex: 1,
-    alignItems: 'flex-end',
-    justifyContent: 'center',
+    flexDirection: 'row', 
+    alignItems: 'center',
+    justifyContent: 'flex-end', 
   },
   logo: {
     width: 100, 
@@ -99,8 +108,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#333',
   },
-  notificationButton: {
-    padding: 5, 
+  iconButton: { 
+    padding: 5,
+    marginLeft: 10, 
   },
 });
 

@@ -1,6 +1,8 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import Feather from 'react-native-vector-icons/Feather';
+import { useNavigation } from '@react-navigation/native';
+import AppHeader from '../../components/layout/AppHeader';
 
 // Placeholder Data (mimicking the design)
 const walletData = {
@@ -40,10 +42,22 @@ const walletData = {
   ],
 };
 
-const WalletScreen = ({ navigation }) => { // navigation prop will be passed by navigator
+const WalletScreen = () => { 
+  const navigation = useNavigation(); 
+
+  const handleBackToDashboard = () => {
+    navigation.navigate('DashboardScreen');
+  };
+
   return (
-    <View style={styles.safeArea}>
-      <ScrollView style={styles.screenContainer} contentContainerStyle={styles.scrollContentContainer}>
+    <View style={styles.screenContainer}> 
+      <AppHeader 
+        title="Wallet"
+        navigation={navigation}
+        canGoBack={true} // Show back button
+        onBackPressOverride={handleBackToDashboard} // Navigate to Dashboard
+      />
+      <ScrollView style={styles.contentScrollView} contentContainerStyle={styles.scrollContentContainer}>
         {/* Total NDIS Balance Card */}
         <View style={styles.balanceCard}>
           <Text style={styles.balanceCardTitle}>Total NDIS Balance</Text>
@@ -95,15 +109,19 @@ const WalletScreen = ({ navigation }) => { // navigation prop will be passed by 
 };
 
 const styles = StyleSheet.create({
-  safeArea: {
+  screenContainer: {
     flex: 1,
     backgroundColor: '#F8F7F3', // Light cream/off-white background from design
   },
-  screenContainer: {
+  contentScrollView: {
     flex: 1,
   },
   scrollContentContainer: {
-    paddingBottom: 30, // Ensure space for last element
+    paddingBottom: 20, // Ensure content doesn't hide behind a tab bar if any
+  },
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#F8F7F3', // Light cream/off-white background from design
   },
   balanceCard: {
     backgroundColor: '#3A5E49', // Dark green from design
@@ -136,7 +154,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginHorizontal: 20,
     paddingHorizontal: 20,
-    // paddingVertical: 10, // Vertical padding will be handled by list items if needed
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,

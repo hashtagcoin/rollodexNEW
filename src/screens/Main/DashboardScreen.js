@@ -6,16 +6,16 @@ import Feather from 'react-native-vector-icons/Feather';
 
 // Placeholder data - this would come from API/state
 const userData = {
-  name: 'James', // This name will be used by the global AppHeader via MainTabs
+  name: 'James',
   walletBalance: '8,200.50',
   categories: [
     { name: 'Therapy', amount: '2,500.00' },
-    { name: 'Support', amount: '2,800.50' }, // Corrected amount from image
+    { name: 'Support', amount: '2,800.50' }, 
     { name: 'Transport', amount: '1,400.00' },
     { name: 'Tech', amount: '1,500.00' },
   ],
   serviceFeed: {
-    imageUri: null, // Add a placeholder image or logic to load one
+    imageUri: null, 
     title: 'In-Home Care Assistance',
     fundingInfo: 'Funding available • ★ 4.7',
   }
@@ -23,9 +23,9 @@ const userData = {
 
 const DashboardScreen = () => {
   return (
-    <ScrollView style={styles.screenContainer}>
+    <ScrollView style={styles.screenContainer}> 
       <View style={styles.contentContainer}>
-        <View style={styles.headerContainer}>
+        <View style={styles.headerContainer}> 
           <Text style={styles.welcomeTitleText}>Welcome, {userData.name}</Text>
           <View style={styles.avatarContainer}>
             <Image 
@@ -93,25 +93,25 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     paddingHorizontal: 20,
-    paddingTop: 20, // Added top padding for breathing room
-    paddingBottom: 20, // Added for consistency
+    paddingTop: 20, 
+    paddingBottom: 20, 
   },
-  headerContainer: {
+  headerContainer: { 
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 20,
   },
-  welcomeTitleText: {
+  welcomeTitleText: { 
     fontSize: 26,
     fontWeight: 'bold',
     color: '#333333',
     flex: 1,
   },
-  avatarContainer: {
+  avatarContainer: { 
     marginLeft: 10,
   },
-  avatar: {
+  avatar: { 
     width: 50,
     height: 50,
     borderRadius: 25,
@@ -137,7 +137,7 @@ const styles = StyleSheet.create({
   walletBalance: {
     fontSize: 36,
     fontWeight: 'bold',
-    color: '#00A36C', // A green color from the image
+    color: '#00A36C', 
     marginBottom: 10,
   },
   categoryBreakdownText: {
@@ -164,17 +164,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: 15,
-    backgroundColor: '#FFF3E0', // Light orange background for warning
+    backgroundColor: '#FFF3E0', 
     borderRadius: 8,
     marginBottom: 20,
   },
   expiryIcon: {
-    // fontSize: 18, // Size controlled by Icon component
     marginRight: 10,
   },
   expiryText: {
     fontSize: 14,
-    color: '#856404', // Darker yellow/brown for text
+    color: '#856404', 
   },
   feedTitle: {
     fontSize: 18,
@@ -183,7 +182,6 @@ const styles = StyleSheet.create({
     color: '#333',
   },
   serviceCard: {
-    // Specific styles for service card if needed
   },
   serviceImagePlaceholder: {
     height: 150,
@@ -207,18 +205,17 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   actionButton: {
-    backgroundColor: '#E9E9E9', // Light grey, adjust as needed
+    backgroundColor: '#E9E9E9', 
     paddingVertical: 15,
     paddingHorizontal: 10,
     borderRadius: 8,
     flex: 1,
     marginHorizontal: 5,
     alignItems: 'center',
-    justifyContent: 'center', // Added to better center icon and text
+    justifyContent: 'center', 
   },
   actionButtonIcon: {
-    // fontSize: 20, // Size is now controlled by the Icon component's size prop
-    marginBottom: 8, // Adjusted spacing
+    marginBottom: 8, 
   },
   actionButtonText: {
     fontSize: 13,

@@ -1,18 +1,28 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import AppHeader from '../../components/layout/AppHeader';
 
 const HousingDetailScreen = ({ route }) => {
   const { item } = route.params;
+  const navigation = useNavigation();
 
   return (
-    <ScrollView style={styles.container}>
-      <Text style={styles.title}>{item.title || 'Housing Details'}</Text>
-      {/* More details will go here */}
-      <Text>SDA Type: {item.sda_type}</Text>
-      <Text>Bedrooms: {item.bedrooms}</Text>
-      <Text>Rent: ${item.weekly_rent || 'N/A'} per week</Text>
-      {/* Add more fields as needed */}
-    </ScrollView>
+    <View style={styles.screenContainer}>
+      <AppHeader 
+        title={item.title || 'Housing Detail'}
+        navigation={navigation}
+        canGoBack={true} 
+      />
+      <ScrollView style={styles.container}>
+        <Text style={styles.title}>{item.title || 'Housing Details'}</Text>
+        {/* More details will go here */}
+        <Text>SDA Type: {item.sda_type}</Text>
+        <Text>Bedrooms: {item.bedrooms}</Text>
+        <Text>Rent: ${item.weekly_rent || 'N/A'} per week</Text>
+        {/* Add more fields as needed */}
+      </ScrollView>
+    </View>
   );
 };
 
@@ -21,6 +31,10 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 20,
     backgroundColor: '#fff',
+  },
+  screenContainer: {
+    flex: 1,
+    backgroundColor: '#fff', 
   },
   title: {
     fontSize: 24,

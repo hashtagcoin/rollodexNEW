@@ -3,6 +3,7 @@ module.exports = function(api) {
   return {
     presets: ['babel-preset-expo'],
     plugins: [
+      '@babel/plugin-transform-runtime',
       // react-native-reanimated/plugin has to be listed last.
       'react-native-reanimated/plugin',
     ],
