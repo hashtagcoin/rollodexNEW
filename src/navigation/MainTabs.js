@@ -45,7 +45,8 @@ const MainTabs = () => {
           return iconComponent;
         },
         tabBarActiveTintColor: 'tomato', 
-        tabBarInactiveTintColor: 'gray', 
+        tabBarInactiveTintColor: 'gray',
+        headerShown: false, // Ensure no header is shown for any tab
       })}
     >
       <Tab.Screen 
