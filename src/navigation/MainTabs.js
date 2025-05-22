@@ -9,7 +9,7 @@ import Octicons from 'react-native-vector-icons/Octicons';
 
 import DashboardScreen from '../screens/Main/DashboardScreen';
 import ExploreStackNavigator from './ExploreStackNavigator';
-import WalletScreen from '../screens/Main/WalletScreen';
+import WalletStackNavigator from './WalletStackNavigator';
 import SocialFeedScreen from '../screens/Main/SocialFeedScreen';
 import SocialStackNavigator from './SocialStackNavigator';
 import FavouritesScreen from '../screens/Main/FavouritesScreen';
@@ -86,11 +86,14 @@ const MainTabsTabs = () => {
       />
       <Tab.Screen 
         name="Wallet" 
-        component={WalletScreen} 
+        component={WalletStackNavigator} 
         listeners={({ navigation, route }) => ({
           tabPress: e => {
             e.preventDefault();
-            navigation.navigate(route.name);
+            navigation.navigate(route.name, {
+              screen: 'WalletMain', 
+              // params: { /* any params */ },
+            });
           },
         })}
       />

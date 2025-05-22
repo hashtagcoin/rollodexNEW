@@ -4,6 +4,8 @@ import Feather from 'react-native-vector-icons/Feather';
 import { useNavigation } from '@react-navigation/native';
 import AppHeader from '../../components/layout/AppHeader';
 import { supabase } from '../../lib/supabaseClient';
+import { getUserClaims } from '../../services/claimsService';
+import { COLORS, SIZES, FONTS } from '../../constants/theme';
 
 const CATEGORY_LABELS = {
   core_support: 'Core Support',
@@ -16,20 +18,20 @@ const WalletScreen = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [wallet, setWallet] = useState(null);
-  const [recentClaims, setRecentClaims] = useState([]);
+  const [allUserClaims, setAllUserClaims] = useState([]);
   const [error, setError] = useState(null);
 
   const handleBackToDashboard = () => {
     navigation.navigate('DashboardScreen');
   };
 
-  const fetchWallet = useCallback(async () => {
+  const fetchWalletAndClaims = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      // Get current user
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) throw new Error('Unable to fetch user');
+      
       // Fetch wallet
       let { data: walletData, error: walletError } = await supabase
         .from('wallets')
@@ -56,15 +58,11 @@ const WalletScreen = () => {
         walletData = newWallet;
       }
       setWallet(walletData);
-      // Fetch recent claims
-      const { data: claimsData, error: claimsError } = await supabase
-        .from('claims')
-        .select('id, amount, status, expiry_date, created_at')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(5);
-      if (claimsError) throw claimsError;
-      setRecentClaims(claimsData || []);
+
+      // Fetch all claims for the user
+      const claimsData = await getUserClaims();
+      setAllUserClaims(claimsData || []);
+
     } catch (err) {
       setError(err.message || 'Failed to load wallet info');
     } finally {
@@ -74,12 +72,16 @@ const WalletScreen = () => {
   }, []);
 
   useEffect(() => {
-    fetchWallet();
-  }, [fetchWallet]);
+    fetchWalletAndClaims();
+  }, [fetchWalletAndClaims]);
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchWallet();
+    fetchWalletAndClaims();
+  };
+
+  const handleNavigateToSubmitClaim = () => {
+    navigation.navigate('SubmitClaimScreen');
   };
 
   // Payment methods are static, as in original
@@ -112,6 +114,12 @@ const WalletScreen = () => {
         canGoBack={true}
         onBackPressOverride={handleBackToDashboard}
       />
+      <TouchableOpacity
+        style={styles.viewClaimsBtn}
+        onPress={() => navigation.navigate('ViewClaimsScreen')}
+      >
+        <Text style={styles.viewClaimsBtnText}>View All Claims</Text>
+      </TouchableOpacity>
       <ScrollView
         style={styles.contentScrollView}
         contentContainerStyle={styles.scrollContentContainer}
@@ -128,6 +136,13 @@ const WalletScreen = () => {
               <Text style={styles.balanceLabel}>Total NDIS Balance</Text>
               <Text style={styles.balanceValue}>${Math.floor(wallet.total_balance)?.toLocaleString() || '0'}</Text>
             </View>
+
+            {/* Submit New Claim Button */}
+            <TouchableOpacity style={styles.submitClaimButton} onPress={handleNavigateToSubmitClaim}>
+              <Text style={styles.submitClaimButtonText}>Submit New Claim</Text>
+              <Feather name="plus-circle" size={20} color={COLORS.white} style={{ marginLeft: 8 }}/>
+            </TouchableOpacity>
+
             {/* Category Breakdown with Minimalist Horizontal Bar Graph */}
             <View style={styles.categoryBreakdownCard}>
               <Text style={styles.sectionTitle}>Category Breakdown</Text>
@@ -153,19 +168,44 @@ const WalletScreen = () => {
                 })()}
               </View>
             </View>
-            {/* Recent Claims */}
+            {/* My Claims */}
             <View style={styles.claimsCard}>
-              <Text style={styles.sectionTitle}>Recent Claims</Text>
-              {recentClaims.length === 0 ? (
-                <Text style={styles.emptyText}>No recent claims.</Text>
+              <Text style={styles.sectionTitle}>My Claims</Text>
+              {allUserClaims.length === 0 ? (
+                <Text style={styles.emptyText}>You haven't submitted any claims yet.</Text>
               ) : (
-                recentClaims.map((claim) => (
-                  <View key={claim.id} style={styles.claimRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.claimAmount}>${claim.amount?.toLocaleString() || '0.00'}</Text>
-                      <Text style={styles.claimStatus}>Status: {claim.status}</Text>
-                      <Text style={styles.claimDate}>Expires: {claim.expiry_date ? new Date(claim.expiry_date).toLocaleDateString() : 'N/A'}</Text>
+                allUserClaims.map((claim) => (
+                  <View key={claim.id} style={styles.claimItemCard}> 
+                    <View style={styles.claimItemHeader}>
+                        <Text style={styles.claimTitle}>{claim.claim_title || 'Claim'}</Text>
+                        <Text style={[styles.claimStatusBadge, styles[claim.status?.toLowerCase()]]}>
+                            {claim.status?.replace('_', ' ') || 'Unknown'}
+                        </Text>
                     </View>
+                    <View style={styles.claimItemRow}>
+                        <Feather name="dollar-sign" size={16} color={COLORS.darkgray} />
+                        <Text style={styles.claimDetailText}>Amount: ${claim.amount?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}</Text>
+                    </View>
+                    <View style={styles.claimItemRow}>
+                        <Feather name="calendar" size={16} color={COLORS.darkgray} />
+                        <Text style={styles.claimDetailText}>Service Date: {claim.service_date ? new Date(claim.service_date).toLocaleDateString() : 'N/A'}</Text>
+                    </View>
+                    {claim.ndis_category && (
+                        <View style={styles.claimItemRow}>
+                            <Feather name="tag" size={16} color={COLORS.darkgray} />
+                            <Text style={styles.claimDetailText}>Category: {claim.ndis_category}</Text>
+                        </View>
+                    )}
+                    <View style={styles.claimItemRow}>
+                        <Feather name="clock" size={16} color={COLORS.darkgray} />
+                        <Text style={styles.claimDetailText}>Submitted: {claim.created_at ? new Date(claim.created_at).toLocaleDateString() : 'N/A'}</Text>
+                    </View>
+                    {claim.document_url && (
+                         <TouchableOpacity onPress={() => Alert.alert('Open Document', `Would open: ${claim.document_url}`)} style={styles.documentLink}>
+                            <Feather name="file-text" size={16} color={COLORS.primary} />
+                            <Text style={styles.documentLinkText}>View Document</Text>
+                        </TouchableOpacity>
+                    )}
                   </View>
                 ))
               )}
@@ -192,152 +232,167 @@ const WalletScreen = () => {
   );
 };
 
-import { COLORS, SIZES, FONTS } from '../../constants/theme';
-
 const styles = StyleSheet.create({
   screenContainer: {
     flex: 1,
     backgroundColor: COLORS.lightGray,
   },
+  viewClaimsBtn: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 12,
+    margin: 16,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  viewClaimsBtnText: {
+    color: COLORS.white,
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
   contentScrollView: {
     flex: 1,
   },
   scrollContentContainer: {
-    padding: SIZES.padding,
     paddingBottom: SIZES.padding * 2,
   },
   balanceCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: SIZES.radius * 2,
-    padding: SIZES.padding,
-    marginBottom: SIZES.base * 2,
+    backgroundColor: COLORS.primary,
+    borderRadius: SIZES.radius,
+    padding: SIZES.padding * 1.5,
+    marginHorizontal: SIZES.padding,
+    marginTop: SIZES.padding,
     alignItems: 'center',
-    shadowColor: COLORS.black,
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 2,
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   balanceLabel: {
     ...FONTS.body3,
-    color: COLORS.gray,
-    marginBottom: 4,
+    color: COLORS.white,
+    marginBottom: SIZES.base,
   },
   balanceValue: {
     ...FONTS.h1,
-    color: COLORS.primary,
+    color: COLORS.white,
     fontWeight: 'bold',
-    letterSpacing: 1,
+  },
+  submitClaimButton: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.secondary,
+    paddingVertical: SIZES.padding * 0.75,
+    paddingHorizontal: SIZES.padding,
+    borderRadius: SIZES.radius,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: SIZES.padding,
+    marginTop: SIZES.padding * 1.5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  submitClaimButtonText: {
+    ...FONTS.h4,
+    color: COLORS.white,
+    fontWeight: 'bold',
   },
   categoryBreakdownCard: {
     backgroundColor: COLORS.white,
-    borderRadius: SIZES.radius * 2,
+    borderRadius: SIZES.radius,
     padding: SIZES.padding,
-    marginBottom: SIZES.base * 2,
-    shadowColor: COLORS.black,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
+    marginHorizontal: SIZES.padding,
+    marginTop: SIZES.padding * 1.5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
     elevation: 2,
-  },
-  sectionTitle: {
-    ...FONTS.h3,
-    fontWeight: '600',
-    color: COLORS.black,
-    marginBottom: SIZES.base,
-    letterSpacing: 0.5,
-  },
-  barGraphContainer: {
-    marginTop: SIZES.base,
-    marginBottom: SIZES.base,
-    gap: 10,
-  },
-  barGraphRow: {
-    marginBottom: 18,
-  },
-  barLabelAbove: {
-    ...FONTS.body4,
-    color: COLORS.gray,
-    marginBottom: 4,
-    marginLeft: 2,
-    letterSpacing: 0.2,
-  },
-  barTrackWithValueRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  barLabel: {
-    display: 'none', // deprecated, now using barLabelAbove
-  },
-  barTrack: {
-    flex: 4,
-    height: 12,
-    backgroundColor: COLORS.lightGray,
-    borderRadius: 8,
-    overflow: 'hidden',
-    marginHorizontal: 5,
-  },
-  barFill: {
-    height: '100%',
-    borderRadius: 8,
-  },
-  barValue: {
-    flex: 1,
-    ...FONTS.body4,
-    color: COLORS.black,
-    textAlign: 'right',
-    fontWeight: '600',
   },
   claimsCard: {
     backgroundColor: COLORS.white,
-    borderRadius: SIZES.radius * 2,
+    borderRadius: SIZES.radius,
     padding: SIZES.padding,
-    marginBottom: SIZES.base * 2,
-    shadowColor: COLORS.black,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
+    marginHorizontal: SIZES.padding,
+    marginTop: SIZES.padding * 1.5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
     elevation: 2,
   },
-  emptyText: {
-    ...FONTS.body4,
-    color: COLORS.darkGray,
-    textAlign: 'center',
-    marginVertical: 10,
+  claimItemCard: {
+    backgroundColor: COLORS.lightGray2,
+    borderRadius: SIZES.radius * 0.75,
+    padding: SIZES.padding * 0.75,
+    marginBottom: SIZES.padding * 0.75,
+    borderWidth: 1,
+    borderColor: COLORS.gray2,
   },
-  claimRow: {
+  claimItemHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SIZES.base,
+  },
+  claimTitle: {
+    ...FONTS.h5,
+    color: COLORS.black,
+    fontWeight: '600',
+  },
+  claimStatusBadge: {
+    ...FONTS.body5,
+    paddingHorizontal: SIZES.base,
+    paddingVertical: SIZES.base / 2,
+    borderRadius: SIZES.radius * 0.5,
+    color: COLORS.white,
+    textTransform: 'capitalize',
+    overflow: 'hidden',
+  },
+  pending: { backgroundColor: COLORS.orange },
+  approved: { backgroundColor: COLORS.green },
+  rejected: { backgroundColor: COLORS.red },
+  requires_information: { backgroundColor: COLORS.blue },
+  processing: { backgroundColor: COLORS.purple },
+  claimItemRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderColor: COLORS.lightGray,
+    marginBottom: SIZES.base / 2,
   },
-  claimAmount: {
-    ...FONTS.body3,
-    color: COLORS.primary,
-    fontWeight: 'bold',
-  },
-  claimStatus: {
+  claimDetailText: {
     ...FONTS.body4,
-    color: COLORS.gray,
-    marginTop: 2,
+    color: COLORS.darkgray,
+    marginLeft: SIZES.base,
   },
-  claimDate: {
-    ...FONTS.body5,
-    color: COLORS.darkGray,
-    marginTop: 2,
+  documentLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: SIZES.base,
+  },
+  documentLinkText: {
+    ...FONTS.body4,
+    color: COLORS.primary,
+    marginLeft: SIZES.base / 2,
+    textDecorationLine: 'underline',
+  },
+  emptyText: {
+    ...FONTS.body3,
+    color: COLORS.darkgray,
+    textAlign: 'center',
+    paddingVertical: SIZES.padding,
   },
   paymentMethodsCard: {
     backgroundColor: COLORS.white,
-    borderRadius: SIZES.radius * 2,
+    borderRadius: SIZES.radius,
     padding: SIZES.padding,
-    marginBottom: SIZES.base * 2,
-    shadowColor: COLORS.black,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
+    marginHorizontal: SIZES.padding,
+    marginTop: SIZES.padding * 1.5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
     elevation: 2,
   },
   paymentMethodRow: {

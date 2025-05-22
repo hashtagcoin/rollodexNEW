@@ -113,7 +113,12 @@ const NDISScreen = ({ navigation }) => {
           <View style={styles.walletRow}><Text style={styles.walletCategory}>Capacity Building</Text><Text style={styles.walletAmount}>${wallet.capacity_building}</Text></View>
           <View style={styles.walletRow}><Text style={styles.walletCategory}>Capital Support</Text><Text style={styles.walletAmount}>${wallet.capital_support}</Text></View>
           <Text style={styles.walletExpiry}>Expiry: {wallet.expiry}</Text>
-          <Text style={styles.walletClaimsTitle}>Recent Claims</Text>
+          <View style={{flexDirection:'row', alignItems:'center', justifyContent:'space-between'}}>
+            <Text style={styles.walletClaimsTitle}>Recent Claims</Text>
+            <TouchableOpacity onPress={() => navigation.navigate('Wallet', { screen: 'ViewClaimsScreen' })} style={styles.viewAllBtn}>
+              <Text style={styles.viewAllBtnText}>View All</Text>
+            </TouchableOpacity>
+          </View>
           {claims.map(claim => (
             <View key={claim.id} style={styles.claimRow}>
               <Text style={styles.claimAmount}>${claim.amount}</Text>
@@ -121,7 +126,9 @@ const NDISScreen = ({ navigation }) => {
               <Text style={styles.claimDate}>{claim.created_at}</Text>
             </View>
           ))}
-          <TouchableOpacity style={styles.claimActionBtn}><Text style={styles.claimActionBtnText}>Submit New Claim</Text></TouchableOpacity>
+          <TouchableOpacity style={styles.claimActionBtn} onPress={() => navigation.navigate('Wallet', { screen: 'SubmitClaimScreen' })}>
+            <Text style={styles.claimActionBtnText}>Submit New Claim</Text>
+          </TouchableOpacity>
         </View>
         {/* Bookings */}
         <Text style={styles.sectionTitle}>Bookings</Text>
