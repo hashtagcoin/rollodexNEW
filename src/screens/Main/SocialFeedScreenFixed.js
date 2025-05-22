@@ -71,7 +71,9 @@ const SocialFeedScreen = () => {
           user_id,
           caption,
           media_urls,
-          created_at
+          created_at,
+          location,
+          updated_at
         `)
         .order('created_at', { ascending: false });
       

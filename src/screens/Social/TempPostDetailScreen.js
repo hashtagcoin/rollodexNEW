@@ -265,7 +265,7 @@ const PostDetailScreen = ({ route, navigation }) => {
       keyboardVerticalOffset={keyboardVerticalOffset}
     >
       <SafeAreaView style={styles.container}>
-        <AppHeader title="Post Details" navigation={navigation} canGoBack={true} />
+        <AppHeader title="Post Details" showBackButton />
         
         <FlatList
           data={comments}

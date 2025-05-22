@@ -16,6 +16,7 @@ import { TapGestureHandler, State } from 'react-native-gesture-handler';
 import { supabase } from '../../lib/supabaseClient';
 import { COLORS, FONTS } from '../../constants/theme';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import * as FileSystem from 'expo-file-system';
 
 // Custom date formatting function
 const formatDate = (dateString) => {
@@ -25,6 +26,47 @@ const formatDate = (dateString) => {
   const day = date.getDate();
   const year = date.getFullYear();
   return `${month} ${day}, ${year}`;
+};
+
+// Helper function to process image URIs for different formats
+const processImageUri = (imageUri) => {
+  if (!imageUri) {
+    return 'https://via.placeholder.com/300';
+  }
+  
+  // Handle base64 encoded images
+  if (imageUri.startsWith('data:image')) {
+    return imageUri;
+  }
+  
+  // Handle local file paths
+  if (imageUri.startsWith('file://')) {
+    return imageUri;
+  }
+  
+  // Handle Supabase storage URLs
+  if (imageUri.includes('supabase.co/storage/v1/object/public')) {
+    return imageUri;
+  }
+  
+  // Handle relative paths from Supabase storage
+  if (imageUri.startsWith('/')) {
+    // Convert to full Supabase URL
+    return `https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public${imageUri}`;
+  }
+  
+  // Handle regular URLs (http/https)
+  if (imageUri.startsWith('http://') || imageUri.startsWith('https://')) {
+    return imageUri;
+  }
+  
+  // If it's just a filename without path, assume it's in Supabase storage
+  if (!imageUri.includes('/')) {
+    return `https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/posts/${imageUri}`;
+  }
+  
+  // Default fallback
+  return imageUri;
 };
 
 import { getUserDetails, bookmarkPost, unbookmarkPost, isPostBookmarked, getUserCollections, addPostToCollection } from '../../services/postService';
@@ -54,6 +96,7 @@ const PostCard = ({ post, onPress, showActions = true }) => {
   
   // Image loading states
   const [imageLoading, setImageLoading] = useState(true);
+  const [imageError, setImageError] = useState(false);
 
   useEffect(() => {
     fetchUserDetails();
@@ -232,6 +275,13 @@ const PostCard = ({ post, onPress, showActions = true }) => {
   // Handle image loading state
   const handleImageLoad = () => {
     setImageLoading(false);
+    setImageError(false);
+  };
+  
+  // Handle image error
+  const handleImageError = () => {
+    setImageLoading(false);
+    setImageError(true);
   };
   
   const onSingleTap = () => {
@@ -279,13 +329,23 @@ const PostCard = ({ post, onPress, showActions = true }) => {
             {post.media_urls && post.media_urls.length > 0 ? (
               <>
                 <Image
-                  source={{ uri: post.media_urls[currentImageIndex] }}
+                  source={{ uri: processImageUri(post.media_urls[currentImageIndex]) }}
                   style={styles.image}
                   onLoad={handleImageLoad}
+                  onError={(e) => {
+                    console.error('Image load error:', e.nativeEvent.error);
+                    handleImageError();
+                  }}
                 />
                 {imageLoading && (
                   <View style={styles.imageLoadingContainer}>
                     <ActivityIndicator size="large" color={COLORS.primary} />
+                  </View>
+                )}
+                {imageError && (
+                  <View style={styles.imageErrorContainer}>
+                    <Ionicons name="alert-circle-outline" size={32} color="#999" />
+                    <Text style={styles.imageErrorText}>Unable to load image</Text>
                   </View>
                 )}
                 
@@ -304,17 +364,45 @@ const PostCard = ({ post, onPress, showActions = true }) => {
                 
                 {/* Image pagination dots */}
                 {post.media_urls.length > 1 && (
-                  <View style={styles.paginationContainer}>
-                    {post.media_urls.map((_, index) => (
-                      <View
-                        key={index}
-                        style={[
-                          styles.paginationDot,
-                          currentImageIndex === index && styles.paginationDotActive,
-                        ]}
-                      />
-                    ))}
-                  </View>
+                  <>
+                    <View style={styles.paginationContainer}>
+                      {post.media_urls.map((_, index) => (
+                        <TouchableOpacity
+                          key={index}
+                          style={styles.paginationDotButton}
+                          onPress={() => setCurrentImageIndex(index)}
+                        >
+                          <View
+                            style={[
+                              styles.paginationDot,
+                              currentImageIndex === index && styles.paginationDotActive,
+                            ]}
+                          />
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                    
+                    {/* Left/Right navigation arrows */}
+                    <View style={styles.imageNavigation}>
+                      {currentImageIndex > 0 && (
+                        <TouchableOpacity 
+                          style={styles.navButton}
+                          onPress={() => setCurrentImageIndex(prev => Math.max(0, prev - 1))}
+                        >
+                          <Ionicons name="chevron-back" size={24} color="#fff" />
+                        </TouchableOpacity>
+                      )}
+                      
+                      {currentImageIndex < post.media_urls.length - 1 && (
+                        <TouchableOpacity 
+                          style={styles.navButton}
+                          onPress={() => setCurrentImageIndex(prev => Math.min(post.media_urls.length - 1, prev + 1))}
+                        >
+                          <Ionicons name="chevron-forward" size={24} color="#fff" />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </>
                 )}
               </>
             ) : (
@@ -533,6 +621,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     resizeMode: 'cover',
+    backgroundColor: '#f0f0f0', // Light background for images while loading
   },
   imageLoadingContainer: {
     position: 'absolute',
@@ -543,6 +632,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.03)',
+  },
+  imageErrorContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f0f0f0',
+  },
+  imageErrorText: {
+    marginTop: 8,
+    fontSize: 14,
+    color: '#999',
   },
   noImageContainer: {
     width: '100%',
@@ -580,6 +684,28 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
+  },
+  paginationDotButton: {
+    padding: 5,
+  },
+  imageNavigation: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+  },
+  navButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   captionContainer: {
     padding: 12,

@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, Image, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import Feather from 'react-native-vector-icons/Feather'; 
+import Feather from 'react-native-vector-icons/Feather';
+import { useUser } from '../../context/UserContext';
+import { COLORS } from '../../constants/theme';
 
 const AppHeader = ({
   title,
@@ -9,8 +11,21 @@ const AppHeader = ({
   showWelcomeMessage = false,
   navigation,
   canGoBack = false,
-  onBackPressOverride, 
+  onBackPressOverride,
+  showBackButton = true, 
 }) => {
+  // Get user profile from context
+  const { profile } = useUser();
+  
+  // For optimistic UI updates, keep local state of avatar
+  const [avatarUrl, setAvatarUrl] = useState(null);
+  
+  // Update local avatar when profile changes
+  useEffect(() => {
+    if (profile?.avatar_url) {
+      setAvatarUrl(profile.avatar_url);
+    }
+  }, [profile]);
   const handleBackPress = () => {
     if (onBackPressOverride) {
       onBackPressOverride();
@@ -25,31 +40,18 @@ const AppHeader = ({
   return (
     <View style={styles.container}>
       <View style={styles.leftSection}>
-        {/* Custom back button for NDIS, Service Agreements, Group Detail screens */}
-        {(title === 'NDIS' || title === 'Service Agreements' || title === 'Group Detail') ? (
+        {/* Main navigation tabs use logoicon.png */}
+        {['Explore', 'Social', 'Wallet', 'Favourites', 'Profile'].includes(title) ? (
+          <Image 
+            source={require('../../assets/images/logoicon.png')}
+            style={styles.logoIcon}
+            resizeMode="contain"
+          />
+        ) : (
+          /* All other screens use back button */
           <TouchableOpacity onPress={handleBackPress} style={styles.backButton}>
             <Feather name="arrow-left" size={26} color="#333" />
           </TouchableOpacity>
-        ) : ((canGoBack && navigation) && !['Explore', 'Social', 'Wallet', 'Favourites', 'Profile'].includes(title)) ? (
-          <TouchableOpacity onPress={handleBackPress} style={styles.backButton}>
-            {(title === 'Groups' || title === 'Housing Groups' || title === 'Events' || (title && title.includes('HousingGroupsScreen_forceBack'))) ? (
-              <Feather name="arrow-left" size={26} color="#333" />
-            ) : ( // Main tabs: Explore, Social, Wallet, Favourites, Profile
-              <TouchableOpacity onPress={() => navigation?.navigate && navigation.navigate('DashboardScreen')}>
-                <Image 
-                  source={require('../../assets/images/logoicon.png')}
-                  style={styles.logoIcon}
-                  resizeMode="contain"
-                />
-              </TouchableOpacity>
-            )}
-          </TouchableOpacity>
-        ) : (
-          <Image 
-            source={require('../../assets/images/logo.png')} 
-            style={styles.logo} 
-            resizeMode="contain" 
-          />
         )}
       </View>
 
@@ -70,7 +72,16 @@ const AppHeader = ({
             style={styles.iconButton} 
             onPress={() => navigation.navigate('Profile')} 
           >
-            <Ionicons name="person-circle-outline" size={28} color={'#333'} />
+            {avatarUrl ? (
+              <Image 
+                source={{ uri: avatarUrl }} 
+                style={styles.avatarImage} 
+                // Use cache policy for faster loading
+                cachePolicy="memory-disk"
+              />
+            ) : (
+              <Ionicons name="person-circle-outline" size={28} color={'#333'} />
+            )}
           </TouchableOpacity>
         )}
       </View>
@@ -80,8 +91,15 @@ const AppHeader = ({
 
 const styles = StyleSheet.create({
   logoIcon: {
-    width: 33,
-    height: 33,
+    width: 45,
+    height: 45,
+  },
+  avatarImage: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
   },
   container: {
     flexDirection: 'row',

@@ -7,6 +7,7 @@ import { COLORS, FONTS } from '../../constants/theme';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import AppHeader from '../../components/layout/AppHeader';
+import { useUser } from '../../context/UserContext';
 
 const TABS = ['Posts', 'Groups', 'Bookings', 'Friends'];
 const windowWidth = Dimensions.get('window').width;
@@ -38,20 +39,20 @@ const ProfileScreen = () => {
   const [loadingPosts, setLoadingPosts] = useState(false);
   const [showCreatePostModal, setShowCreatePostModal] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
+  
+  // Get user profile from context
+  const { user, profile: userProfile } = useUser();
 
   const handleBackToDashboard = () => {
     navigation.navigate('DashboardScreen');
   };
 
-  // Fetch current user and posts on component mount
+  // Fetch posts using the user from context
   useEffect(() => {
-    const fetchUserAndPosts = async () => {
+    const fetchPosts = async () => {
       try {
-        // Get current user
-        const { data: { user } } = await supabase.auth.getUser();
-        setCurrentUser(user);
-        
         if (user) {
+          setCurrentUser(user);
           // Fetch posts for the current user
           setLoadingPosts(true);
           const userPosts = await getUserPosts(user.id);
@@ -59,13 +60,13 @@ const ProfileScreen = () => {
           setLoadingPosts(false);
         }
       } catch (error) {
-        console.error('Error fetching user or posts:', error);
+        console.error('Error fetching posts:', error);
         setLoadingPosts(false);
       }
     };
     
-    fetchUserAndPosts();
-  }, []);
+    fetchPosts();
+  }, [user]);  // Re-fetch when user changes
 
   // Refresh posts after creating a new one
   const handlePostCreated = async () => {
@@ -391,11 +392,18 @@ const ProfileScreen = () => {
       {/* Profile Header - Fixed at top */}
       <View style={styles.profileHeader}>
         <View style={styles.profileTopSection}>
-          <Image source={{ uri: 'https://randomuser.me/api/portraits/women/44.jpg' }} style={styles.avatar} />
+          <Image 
+            source={{ 
+              uri: userProfile?.avatar_url || 'https://randomuser.me/api/portraits/women/44.jpg' 
+            }} 
+            style={styles.avatar}
+            // Use cache policy for faster loading across screen changes
+            cachePolicy="memory-disk"
+          />
           
           <View style={styles.profileInfo}>
-            <Text style={styles.profileName}>Sarah Wilson</Text>
-            <Text style={styles.username}>@sarahwilson</Text>
+            <Text style={styles.profileName}>{userProfile?.full_name || 'User'}</Text>
+            <Text style={styles.username}>@{userProfile?.username || 'username'}</Text>
             <Text style={styles.ndisParticipant}>NDIS Participant</Text>
           </View>
           
