@@ -1,9 +1,12 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, FlatList } from 'react-native';
 import Feather from 'react-native-vector-icons/Feather'; 
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons'; 
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { AntDesign } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { COLORS, FONTS } from '../../constants/theme';
+import { useUser } from '../../context/UserContext';
 
 
 // Placeholder data - this would come from API/state
@@ -31,50 +34,99 @@ const dummyAppointments = [
 ];
 
 const DashboardScreen = () => {
+  const { profile } = useUser();
   return (
     <ScrollView style={styles.screenContainer} showsVerticalScrollIndicator={false}>
       <View style={styles.contentContainer}>
-        {/* Header */}
-        <View style={styles.headerContainer}>
-          <View>
-            <Text style={styles.welcomeTitleText}>Welcome back,</Text>
-            <Text style={styles.userNameText}>{userData.name}</Text>
+        {/* Top Bar with Logo and Avatar */}
+        <View style={styles.topBar}>
+          <View style={styles.logoContainer}>
+            <Image
+              source={require('../../assets/images/logo.png')}
+              style={styles.logo}
+              resizeMode="contain"
+            />
           </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' }}>
-            <TouchableOpacity style={{ marginRight: 8 }}>
+          <View style={styles.topRightContainer}>
+            <TouchableOpacity style={{ marginRight: 12 }}>
               <Ionicons name="notifications-outline" size={26} color="#222" />
             </TouchableOpacity>
             <View style={styles.avatarContainer}>
               <Image
-                source={require('../../assets/images/placeholder-avatar.jpg')}
+                source={
+                  profile?.avatar_url
+                    ? { uri: profile.avatar_url }
+                    : require('../../assets/images/placeholder-avatar.jpg')
+                }
                 style={styles.avatar}
               />
             </View>
           </View>
         </View>
 
-        {/* Wallet Card */}
-        <View style={styles.walletCard}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
-            <Ionicons name="wallet-outline" size={26} color="#00A36C" style={{ marginRight: 10 }} />
-            <Text style={styles.walletCardTitle}>Wallet Balance</Text>
-          </View>
-          <Text style={styles.walletCardBalance}>${parseInt(userData.walletBalance.replace(/[^\d]/g, ''), 10).toLocaleString()}</Text>
-          <FlatList
-            data={userData.categories}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            keyExtractor={item => item.name}
-            contentContainerStyle={styles.categoryList}
-            renderItem={({ item }) => (
-              <View style={styles.categoryPill}>
-                <Text style={styles.categoryPillName}>{item.name}</Text>
-                <Text style={styles.categoryPillAmount}>${Math.floor(Number(item.amount.replace(/,/g, ''))).toLocaleString()}</Text>
-              </View>
-            )}
-          />
+        {/* Welcome Header */}
+        <View style={styles.welcomeContainer}>
+          <Text style={styles.welcomeTitleText}>Welcome back,</Text>
+          <Text style={styles.userNameText}>{profile?.full_name || profile?.username || userData.name}</Text>
         </View>
 
+        {/* Financial Information Group */}
+        <View style={styles.financialGroup}>
+          {/* Wallet Card */}
+          <LinearGradient
+            colors={['#3A76F0', '#1E90FF']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.walletCard}
+          >
+            <View style={styles.walletCardContent}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                <Ionicons name="wallet-outline" size={22} color="rgba(255,255,255,0.9)" style={{ marginRight: 8 }} />
+                <Text style={styles.walletCardTitle}>Wallet Balance</Text>
+              </View>
+              <Text style={styles.walletCardBalance}>${parseInt(userData.walletBalance.replace(/[^\d]/g, ''), 10).toLocaleString()}</Text>
+              <View style={styles.balanceCardChip}>
+                <Ionicons name="calendar-outline" size={14} color={COLORS.white} />
+                <Text style={styles.balanceCardChipText}>Updated Today</Text>
+              </View>
+            </View>
+            <View style={styles.walletCardIllustration}>
+              <Ionicons name="wallet" size={36} color="rgba(255,255,255,0.2)" />
+            </View>
+          </LinearGradient>
+          
+          {/* Category Pills */}
+          <View style={styles.categoryCard}>
+            <FlatList
+              data={userData.categories}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyExtractor={item => item.name}
+              contentContainerStyle={styles.categoryList}
+              renderItem={({ item, index }) => {
+                // Alternating colors for categories
+                const colorMap = ['#007AFF', '#34C759', '#FF9500', '#5856D6'];
+                const color = colorMap[index % colorMap.length];
+                
+                return (
+                  <View style={[styles.categoryPill, { borderColor: color + '30' }]}>
+                    <Text style={[styles.categoryPillName, { color }]}>{item.name}</Text>
+                    <Text style={styles.categoryPillAmount}>${Math.floor(Number(item.amount.replace(/,/g, ''))).toLocaleString()}</Text>
+                  </View>
+                );
+              }}
+            />
+          </View>
+
+          {/* Funding Expiry Notification */}
+          <View style={styles.expiryNotification}>
+            <Feather name="alert-triangle" size={18} color="#FFA500" style={{ marginRight: 8 }} />
+            <Text style={styles.expiryNotificationText}>
+              Some of your funding categories are expiring soon. <Text style={{fontWeight:'bold'}}>Check details</Text>
+            </Text>
+          </View>
+        </View>
+        
         {/* Upcoming Appointments Carousel */}
         <Text style={styles.carouselTitle}>Upcoming Appointments</Text>
         <FlatList
@@ -92,10 +144,6 @@ const DashboardScreen = () => {
             </View>
           )}
         />
-        {/* Expiry Reminder Card */}
-          <Feather name="alert-triangle" size={22} color="#FFA500" style={styles.expiryIcon} />
-          <Text style={styles.expiryText}>Some of your funding categories are expiring soon. <Text style={{fontWeight:'bold'}}>Check details</Text></Text>
-        </View>
 
         {/* Bookings/Events Card */}
         <View style={styles.bookingsCard}>
@@ -124,6 +172,7 @@ const DashboardScreen = () => {
             <Text style={styles.actionCardText}>Your Matches</Text>
           </TouchableOpacity>
         </View>
+      </View>
     </ScrollView>
   );
 };
@@ -175,7 +224,7 @@ const styles = StyleSheet.create({
   },
   screenContainer: {
     flex: 1,
-    backgroundColor: '#F0F4F8', // Slightly deeper blue-gray to contrast with white cards
+    backgroundColor: '#FFFFFF', // Changed to white background
     paddingHorizontal: 0,
     paddingTop: 56,
   },
@@ -184,11 +233,53 @@ const styles = StyleSheet.create({
     paddingTop: 18,
     paddingBottom: 24,
   },
-  headerContainer: {
+  topBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 20,
+    paddingTop: 5,
+  },
+  logoContainer: {
+    justifyContent: 'flex-start',
+  },
+  logo: {
+    height: 40,
+    width: 120,
+  },
+  topRightContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  welcomeContainer: {
     marginBottom: 18,
+  },
+  financialGroup: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    marginBottom: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  expiryNotification: {
+    backgroundColor: '#FFF9E6', // Light yellow background
+    borderRadius: 0,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 0,
+    marginBottom: 0,
+    borderTopWidth: 1,
+    borderTopColor: '#FFECB3',
+  },
+  expiryNotificationText: {
+    fontSize: 14,
+    color: '#333',
+    flex: 1,
   },
   welcomeTitleText: {
     fontSize: 18,
@@ -209,66 +300,92 @@ const styles = StyleSheet.create({
     borderColor: '#eaeaea',
   },
   avatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
   },
   walletCard: {
-    backgroundColor: '#fff',
+    flexDirection: 'row',
     borderRadius: 16,
-    padding: 20,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 3,
+    overflow: 'hidden',
+    marginBottom: 0,
+    shadowColor: '#1E90FF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
+  },
+  walletCardContent: {
+    flex: 3,
+    padding: 18,
+  },
+  walletCardIllustration: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   walletCardTitle: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '600',
-    color: '#00A36C',
+    color: 'rgba(255,255,255,0.9)',
   },
   walletCardBalance: {
-    fontSize: 34,
+    fontSize: 32,
     fontWeight: 'bold',
-    color: '#222',
+    color: '#FFFFFF',
     marginBottom: 12,
   },
-  categoryList: {
-    marginTop: 2,
-    paddingVertical: 2,
-  },
-  categoryPill: {
-    backgroundColor: '#f3f6fa',
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    marginRight: 10,
-    alignItems: 'center',
-  },
-  categoryPillName: {
-    fontSize: 13,
-    color: '#666',
-    fontWeight: '600',
-  },
-  categoryPillAmount: {
-    fontSize: 15,
-    color: '#222',
-    fontWeight: 'bold',
-  },
-  expiryCard: {
+  balanceCardChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fffbe6',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+  },
+  balanceCardChipText: {
+    fontSize: 12,
+    color: '#FFFFFF',
+    marginLeft: 4,
+  },
+  categoryCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 0,
+    padding: 12,
+    marginBottom: 0,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
+    borderTopWidth: 1,
+    borderTopColor: '#F0F0F0',
+  },
+  categoryList: {
+    paddingRight: 8,
+  },
+  categoryPill: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginRight: 10,
+    minWidth: 100,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(0,122,255,0.2)',
+  },
+  categoryPillName: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#007AFF',
+    marginBottom: 2,
+  },
+  categoryPillAmount: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#333333',
   },
   expiryIcon: {
     marginRight: 12,
