@@ -6,6 +6,8 @@ import NDISScreen from '../screens/Main/NDISScreen';
 import BookingDetailScreen from '../screens/Main/BookingDetailScreen';
 import ServiceAgreementsScreen from '../screens/Main/ServiceAgreementsScreen';
 import EditProfileScreen from '../screens/Main/EditProfileScreen';
+import UserPostsFeedScreen from '../screens/Social/UserPostsFeedScreen';
+import PostDetailScreen from '../screens/Social/PostDetailScreen';
 
 const Stack = createStackNavigator();
 
@@ -17,6 +19,8 @@ const ProfileStackNavigator = () => {
       <Stack.Screen name="NDISScreen" component={NDISScreen} />
       <Stack.Screen name="BookingDetailScreen" component={BookingDetailScreen} />
       <Stack.Screen name="ServiceAgreementsScreen" component={ServiceAgreementsScreen} />
+      <Stack.Screen name="UserPostsFeedScreen" component={UserPostsFeedScreen} />
+      <Stack.Screen name="PostDetailScreen" component={PostDetailScreen} />
     </Stack.Navigator>
   );
 };
