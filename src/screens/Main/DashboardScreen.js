@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, FlatList } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import Feather from 'react-native-vector-icons/Feather'; 
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons'; 
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -35,8 +36,23 @@ const dummyAppointments = [
 
 const DashboardScreen = () => {
   const { profile } = useUser();
+  const scrollViewRef = useRef(null);
+  
+  // Use useFocusEffect to scroll to top when screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      // When the screen is focused, scroll to top
+      if (scrollViewRef.current) {
+        scrollViewRef.current.scrollTo({ x: 0, y: 0, animated: true });
+      }
+      return () => {};
+    }, [])
+  );
   return (
-    <ScrollView style={styles.screenContainer} showsVerticalScrollIndicator={false}>
+    <ScrollView 
+      ref={scrollViewRef}
+      style={styles.screenContainer} 
+      showsVerticalScrollIndicator={false}>
       <View style={styles.contentContainer}>
         {/* Top Bar with Logo and Avatar */}
         <View style={styles.topBar}>

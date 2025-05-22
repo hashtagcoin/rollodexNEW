@@ -35,6 +35,30 @@ export default function BottomNavbar() {
   const navigation = useNavigation();
   const route = useRoute();
 
+  // Function to handle navigation with reset to ensure landing on main screen
+  const handleNavigation = (routeName) => {
+    // Check if we're already on this route
+    if (route.name === routeName) {
+      // Already on this route, do nothing
+      return;
+    }
+    
+    // Check if we're in a nested screen of the same tab
+    const mainScreens = {
+      'DashboardScreen': ['DashboardScreen'],
+      'ProviderDiscoveryScreen': ['ProviderDiscoveryScreen', 'ProviderDetailScreen', 'ServiceCategoryScreen'],
+      'BookingsScreen': ['BookingsScreen', 'BookingDetailScreen', 'NewBookingScreen'],
+      'GroupsScreen': ['GroupsScreen', 'GroupDetailScreen', 'CreateGroupScreen'],
+      'ProfileScreen': ['ProfileScreen', 'EditProfileScreen', 'UserPostsFeedScreen', 'SettingsScreen']
+    };
+    
+    // If we're navigating to a main screen and not already on it, reset navigation stack
+    navigation.reset({
+      index: 0,
+      routes: [{ name: routeName }],
+    });
+  };
+
   return (
     <View style={styles.container}>
       {NAV_ITEMS.map((item) => {
@@ -43,7 +67,7 @@ export default function BottomNavbar() {
           <TouchableOpacity
             key={item.label}
             style={styles.navItem}
-            onPress={() => navigation.navigate(item.route)}
+            onPress={() => handleNavigation(item.route)}
             activeOpacity={0.7}
           >
             {item.icon(focused)}

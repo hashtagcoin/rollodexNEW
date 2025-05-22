@@ -37,10 +37,17 @@ const ACTION_BUTTON_RESERVED_SPACE = 110;
 // In-memory image cache (key: imageUrl, value: uri)
 const imageCache = {};
 
-const ProviderDiscoveryScreen = () => {
+const ProviderDiscoveryScreen = ({ route }) => {  
+  // Check for route params that might specify initial category
+  const initialParams = route?.params || {};
   console.log('[ProviderDiscoveryScreen] Rendering');
   const navigation = useNavigation();
-  const [selectedCategory, setSelectedCategory] = useState(CATEGORIES[0]);
+  // Use initialCategory from route params if available, otherwise default to first category
+  const [selectedCategory, setSelectedCategory] = useState(
+    initialParams.initialCategory && CATEGORIES.includes(initialParams.initialCategory) 
+      ? initialParams.initialCategory 
+      : CATEGORIES[0]
+  );
   // --- NETWORK DEBUGGING ---
   const supabaseFetchCount = useRef(0);
   const [viewMode, setViewMode] = useState(VIEW_MODES[0]);
@@ -160,7 +167,7 @@ const ProviderDiscoveryScreen = () => {
 
   const handleServicePress = useCallback((item) => {
     console.log(`[ProviderDiscoveryScreen] Navigating to ServiceDetailScreen for item ID: ${item.id}`);
-    navigation.navigate('ServiceDetail', { item: item });
+    navigation.navigate('ServiceDetail', { serviceId: item.id });
   }, [navigation]); // navigation is a stable dependency from useNavigation
 
   // --- Card style helper (must be in scope for swipe deck and renderTinderCard) ---
@@ -183,7 +190,7 @@ const ProviderDiscoveryScreen = () => {
 
   const handleHousingPress = useCallback((item) => {
     console.log(`[ProviderDiscoveryScreen] Navigating to HousingDetailScreen for item ID: ${item.id}`);
-    navigation.navigate('HousingDetailScreen', { item });
+    navigation.navigate('HousingDetail', { item });
   }, [navigation]);
 
   const renderContent = () => {

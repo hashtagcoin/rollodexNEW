@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, FlatList, Image, TouchableOpacity } from 'react-native';
+import React, { useState, useRef } from 'react';
+import { View, Text, StyleSheet, FlatList, Image, TouchableOpacity, Animated } from 'react-native';
+import ActionButton from '../../components/common/ActionButton';
 import { Feather } from '@expo/vector-icons';
 import AppHeader from '../../components/layout/AppHeader';
 import { useNavigation } from '@react-navigation/native';
@@ -65,6 +66,12 @@ const FILTERS = [
 const GroupsListScreen = () => {
   const navigation = useNavigation();
   const [filter, setFilter] = useState('all');
+  
+  // Animation values for the ActionButton
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const [isScrolling, setIsScrolling] = useState(false);
+  const scrollEndTimer = useRef(null);
 
   const filteredGroups = filter === 'all' ? MOCK_GROUPS : MOCK_GROUPS.filter(g => g.type === filter);
 
@@ -89,6 +96,17 @@ const GroupsListScreen = () => {
 
   return (
     <View style={styles.screenContainer}>
+      {/* Floating Action Button with fade animation */}
+      <Animated.View style={[styles.floatingActionButton, {
+        opacity: fadeAnim
+      }]}>
+        <ActionButton
+          onPress={() => alert('Create new group feature coming soon!')}
+          iconName="add"
+          color="#007AFF"
+          size={56}
+        />
+      </Animated.View>
       <AppHeader title="Groups" navigation={navigation} canGoBack={true} />
       <View style={styles.filterSection}>
         <View style={styles.filterRow}>
@@ -116,23 +134,61 @@ const GroupsListScreen = () => {
         >
           <Text style={[styles.filterBtnText, filter === 'support' && styles.filterBtnTextActive]}>Support</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.filterBtn, styles.addGroupBtn]}>
-          <Feather name="plus-circle" size={27} color="#fff" />
-        </TouchableOpacity>
+        {/* ActionButton positioned at bottom right corner */}
       </View>
       </View>
-      <FlatList
+      <Animated.FlatList
         data={filteredGroups}
         renderItem={renderGroupCard}
         keyExtractor={item => item.id}
         contentContainerStyle={styles.listContainer}
         showsVerticalScrollIndicator={false}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { 
+            useNativeDriver: true,
+            listener: () => {
+              // Clear any existing timer
+              if (scrollEndTimer.current) {
+                clearTimeout(scrollEndTimer.current);
+              }
+              
+              // If not already scrolling, animate button fade out
+              if (!isScrolling) {
+                setIsScrolling(true);
+                Animated.timing(fadeAnim, {
+                  toValue: 0,
+                  duration: 200,
+                  useNativeDriver: true,
+                }).start();
+              }
+              
+              // Set a timer to detect when scrolling stops
+              scrollEndTimer.current = setTimeout(() => {
+                setIsScrolling(false);
+                Animated.timing(fadeAnim, {
+                  toValue: 1,
+                  duration: 500, // Slower fade in
+                  useNativeDriver: true,
+                }).start();
+              }, 200);
+            }
+          }
+        )}
+        scrollEventThrottle={16}
       />
     </View>
   );
 };
 
 const styles = StyleSheet.create({
+  // Fixed position ActionButton style with fade animation
+  floatingActionButton: {
+    position: 'absolute',
+    bottom: 20, // Close to the bottom navbar
+    right: 16, // Equal padding from right edge
+    zIndex: 1000, // Ensure it's above all content
+  },
   filterSection: {
     backgroundColor: '#fff',
     paddingVertical: 6,
@@ -145,19 +201,20 @@ const styles = StyleSheet.create({
   },
   filterRow: {
     flexDirection: 'row',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderColor: '#eee',
   },
   filterBtn: {
-    paddingHorizontal: 18,
-    paddingVertical: 7,
-    borderRadius: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
     backgroundColor: '#f2f4fa',
-    marginHorizontal: 2,
+    marginRight: 6,
   },
   filterBtnActive: {
     backgroundColor: '#007AFF',
@@ -165,17 +222,15 @@ const styles = StyleSheet.create({
   filterBtnText: {
     color: '#555',
     fontWeight: '600',
-    fontSize: 15,
+    fontSize: 14,
   },
   filterBtnTextActive: {
     color: '#fff',
   },
-  addGroupBtn: {
-    backgroundColor: '#007AFF',
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginLeft: 10,
-    paddingHorizontal: 14,
+  actionButtonCustom: {
+    marginLeft: 'auto',
+    marginRight: 10,
+    // Size and color are controlled by the ActionButton component props
   },
   listContainer: {
     padding: 14,

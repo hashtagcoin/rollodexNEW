@@ -12,6 +12,8 @@ import {
   SafeAreaView,
   Dimensions
 } from 'react-native';
+import ActionButton from '../../components/common/ActionButton';
+import CreatePostModal from '../../components/social/CreatePostModal';
 import { useNavigation } from '@react-navigation/native';
 import AppHeader from '../../components/layout/AppHeader';
 import { Feather } from '@expo/vector-icons';
@@ -52,6 +54,7 @@ const SocialFeedScreen = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [housingModalVisible, setHousingModalVisible] = useState(false);
+  const [showCreatePostModal, setShowCreatePostModal] = useState(false);
 
   // Navigate back to dashboard
   const handleBackToDashboard = () => {
@@ -90,6 +93,11 @@ const SocialFeedScreen = () => {
   useEffect(() => {
     fetchPosts();
   }, []);
+  
+  // Refresh posts after creating a new one
+  const handlePostCreated = async () => {
+    fetchPosts();
+  };
 
   // Handle refresh
   const handleRefresh = () => {
@@ -131,12 +139,6 @@ const SocialFeedScreen = () => {
       <TouchableOpacity style={styles.stickerBtn} onPress={() => navigation.navigate('EventsListScreen')}>
         <Feather name="calendar" size={20} color="#007AFF" />
         <Text style={styles.stickerBtnText}>Events</Text>
-      </TouchableOpacity>
-      <TouchableOpacity 
-        style={[styles.stickerBtn, styles.addPostBtn]}
-        onPress={() => navigation.navigate('CreatePostScreen')}
-      >
-        <Feather name="plus-circle" size={30} color="#fff" />
       </TouchableOpacity>
     </View>
   );
@@ -201,11 +203,33 @@ const SocialFeedScreen = () => {
           </SafeAreaView>
         </Pressable>
       </Modal>
+      
+      {/* Action button for creating new post - positioned absolutely like in ProfileScreen */}
+      <ActionButton
+        onPress={() => setShowCreatePostModal(true)}
+        iconName="add"
+        color="#007AFF"
+        size={56}
+      />
+      
+      {/* Create Post Modal */}
+      <CreatePostModal
+        visible={showCreatePostModal}
+        onClose={() => setShowCreatePostModal(false)}
+        onPostCreated={handlePostCreated}
+      />
     </View>
   );
 };
 
 const styles = StyleSheet.create({
+  // Style for the fixed ActionButton
+  actionButton: {
+    position: 'absolute',
+    bottom: 20,
+    right: 20,
+    zIndex: 999,
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
@@ -301,14 +325,10 @@ const styles = StyleSheet.create({
     color: '#333',
     fontWeight: '500',
   },
-  addPostBtn: {
-    backgroundColor: '#007AFF',
-    borderRadius: 30,
-    width: 50,
-    height: 50,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingLeft: 0,
+  actionButton: {
+    position: 'absolute',
+    bottom: 20,
+    right: 20,
   },
   housingCard: {
     flexDirection: 'row',

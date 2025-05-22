@@ -1,5 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, FlatList, ScrollView, Dimensions, TextInput, Modal, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect, useContext, useRef } from 'react';
+import { Alert } from 'react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity, FlatList, ScrollView, Dimensions, TextInput, Modal, ActivityIndicator, Animated } from 'react-native';
+import ActionButton from '../../components/common/ActionButton';
+import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../../lib/supabaseClient';
 import CreatePostModal from '../../components/social/CreatePostModal';
 import { getUserPosts } from '../../services/postService';
@@ -20,6 +23,41 @@ const mockFriends = Array.from({ length: 8 }, (_, i) => ({ id: i + '', name: `Fr
 const ProfileScreen = () => {
   const navigation = useNavigation();
   const [selectedTab, setSelectedTab] = useState('Posts');
+  const scrollViewRef = useRef(null);
+  
+  // Animation values for the ActionButtons
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const [isScrolling, setIsScrolling] = useState(false);
+  const scrollEndTimer = useRef(null);
+  
+  // Use useFocusEffect to reset the screen state when navigated to
+  useFocusEffect(
+    React.useCallback(() => {
+      // When the screen is focused via BottomNavbar, reset to the first tab
+      // and refresh posts
+      setSelectedTab('Posts');
+      
+      // Refresh posts when the screen is focused
+      if (user) {
+        const refreshPosts = async () => {
+          setLoadingPosts(true);
+          try {
+            const userPosts = await getUserPosts(user.id);
+            setPosts(userPosts || []);
+          } catch (error) {
+            console.error('Error refreshing posts on focus:', error);
+          } finally {
+            setLoadingPosts(false);
+          }
+        };
+        
+        refreshPosts();
+      }
+      
+      return () => {};
+    }, [user]) // Re-run when user changes
+  );
   const [friendSearch, setFriendSearch] = useState('');
   const [addFriendSearch, setAddFriendSearch] = useState('');
   const [friendRequests, setFriendRequests] = useState([
@@ -29,6 +67,10 @@ const ProfileScreen = () => {
   const [selectedFriend, setSelectedFriend] = useState(null);
   const [showAddFriendModal, setShowAddFriendModal] = useState(false);
   const [showGroupChatModal, setShowGroupChatModal] = useState(false);
+  const [showUsersTray, setShowUsersTray] = useState(false);
+  const [allUsers, setAllUsers] = useState([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [friendships, setFriendships] = useState([]);
   const [addFriendResults, setAddFriendResults] = useState([
     { id: '101', name: 'Taylor', avatar: 'https://randomuser.me/api/portraits/men/21.jpg' },
     { id: '102', name: 'Morgan', avatar: 'https://randomuser.me/api/portraits/women/22.jpg' },
@@ -83,19 +125,103 @@ const ProfileScreen = () => {
     }
   };
 
+  useEffect(() => {
+    if (currentUser) {
+      // We already fetch posts in another useEffect
+      fetchAllUsers();
+      fetchFriendships();
+    }
+  }, [currentUser]);
+
+  // Fetch all users from user_profiles table
+  const fetchAllUsers = async () => {
+    setLoadingUsers(true);
+    try {
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('id, username, full_name, avatar_url')
+        .order('full_name', { ascending: true });
+      
+      if (error) throw error;
+      setAllUsers(data || []);
+    } catch (error) {
+      console.error('Error fetching users:', error);
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
+
+  // Fetch friendships for current user
+  const fetchFriendships = async () => {
+    if (!currentUser) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('friendships')
+        .select('*')
+        .or(`user_id.eq.${currentUser.id},friend_id.eq.${currentUser.id}`)
+        .eq('status', 'accepted');
+      
+      if (error) throw error;
+      setFriendships(data || []);
+    } catch (error) {
+      console.error('Error fetching friendships:', error);
+    }
+  };
+
+  // Check if a user is a friend of the current user
+  const isFriend = (userId) => {
+    if (!currentUser) return false;
+    return friendships.some(
+      f => (f.user_id === currentUser.id && f.friend_id === userId) || 
+           (f.friend_id === currentUser.id && f.user_id === userId)
+    );
+  };
+
+  // Send friend request
+  const sendFriendRequest = async (userId) => {
+    if (!currentUser) return;
+    
+    try {
+      const { error } = await supabase
+        .from('friendships')
+        .insert({
+          user_id: currentUser.id,
+          friend_id: userId,
+          status: 'pending',
+          category: 'friend',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
+      
+      if (error) throw error;
+      
+      Alert.alert('Success', 'Friend request sent successfully!');
+      setShowUsersTray(false);
+    } catch (error) {
+      console.error('Error sending friend request:', error);
+      Alert.alert('Error', 'Failed to send friend request. Please try again.');
+    }
+  };
+  
+  // Handle opening the friend modal
+  const handleOpenFriendModal = (friend) => {
+    setSelectedFriend(friend);
+  };
+  
+  // Start a chat with a user
+  const startChat = async (userId) => {
+    // This would navigate to the chat screen or create a new chat
+    Alert.alert('Coming Soon', 'Chat functionality will be available soon!');
+    // Future implementation would navigate to a chat screen
+    // navigation.navigate('ChatScreen', { userId });
+  };
+
   const renderTabContent = () => {
     switch (selectedTab) {
       case 'Posts':
         return (
           <View style={{ flex: 1 }}>
-            {/* New Post Button */}
-            <TouchableOpacity 
-              style={styles.newPostButton}
-              onPress={() => setShowCreatePostModal(true)}
-            >
-              <Ionicons name="add-circle-outline" size={20} color="#FFF" />
-              <Text style={styles.newPostButtonText}>New Post</Text>
-            </TouchableOpacity>
             
             {loadingPosts ? (
               <View style={styles.loadingContainer}>
@@ -108,9 +234,11 @@ const ProfileScreen = () => {
               </View>
             ) : (
               <FlatList
+                key="posts-grid" /* Adding key to fix numColumns change error */
                 data={posts}
                 numColumns={3}
                 keyExtractor={item => item.post_id}
+                scrollEnabled={false}
                 contentContainerStyle={styles.postsList}
                 renderItem={({ item }) => {
                   // Use the first image from media_urls if available, otherwise use a placeholder
@@ -131,50 +259,63 @@ const ProfileScreen = () => {
             )}            
           </View>
         );
+        
       case 'Groups':
         return (
-          <FlatList
-            data={mockGroups}
-            keyExtractor={item => item.id}
-            contentContainerStyle={styles.cardList}
-            renderItem={({ item }) => (
-              <View style={styles.airbnbCard}>
-                <Image source={{ uri: item.image }} style={styles.cardImage} />
-                <View style={styles.cardContent}>
-                  <Text style={styles.cardTitle}>{item.name}</Text>
-                  <Text style={styles.cardDesc}>{item.desc}</Text>
+          <View style={{ flex: 1 }}>
+            
+            <FlatList
+              key="groups-list" /* Adding key to fix numColumns change error */
+              data={mockGroups}
+              keyExtractor={item => item.id}
+              scrollEnabled={false}
+              contentContainerStyle={styles.cardList}
+              renderItem={({ item }) => (
+                <View style={styles.airbnbCard}>
+                  <Image source={{ uri: item.image }} style={styles.cardImage} />
+                  <View style={styles.cardContent}>
+                    <Text style={styles.cardTitle}>{item.name}</Text>
+                    <Text style={styles.cardDesc}>{item.desc}</Text>
+                  </View>
                 </View>
-              </View>
-            )}
-          />
+              )}
+            />
+          </View>
         );
+        
       case 'Bookings':
         return (
-          <FlatList
-            data={mockBookings}
-            keyExtractor={item => item.id}
-            contentContainerStyle={styles.cardList}
-            renderItem={({ item }) => (
-              <View style={styles.airbnbCard}>
-                <Image source={{ uri: item.image }} style={styles.cardImage} />
-                <View style={styles.cardContent}>
-                  <Text style={styles.cardTitle}>{item.title}</Text>
-                  <Text style={styles.cardDesc}>{item.location} • {item.date}</Text>
+          <View style={{ flex: 1 }}>
+            
+            <FlatList
+              key="bookings-list" /* Adding key to fix numColumns change error */
+              data={mockBookings}
+              keyExtractor={item => item.id}
+              scrollEnabled={false}
+              contentContainerStyle={styles.cardList}
+              renderItem={({ item }) => (
+                <View style={styles.airbnbCard}>
+                  <Image source={{ uri: item.image }} style={styles.cardImage} />
+                  <View style={styles.cardContent}>
+                    <Text style={styles.cardTitle}>{item.title}</Text>
+                    <Text style={styles.cardDesc}>{item.location} • {item.date}</Text>
+                  </View>
                 </View>
-              </View>
-            )}
-          />
+              )}
+            />
+          </View>
         );
+        
       case 'Friends':
         // Filter friends based on search
         const filteredFriends = mockFriends.filter(f =>
           f.name.toLowerCase().includes(friendSearch.toLowerCase())
         );
-        
-        // Combine friend requests and friends into sections for a single FlatList
+
+        // Create sections for the flat list
         const sections = [];
-        
-        // Add search header section
+
+        // 1. Add search header
         sections.push({
           type: 'header',
           content: (
@@ -185,47 +326,46 @@ const ProfileScreen = () => {
                 value={friendSearch}
                 onChangeText={setFriendSearch}
               />
-              <TouchableOpacity style={styles.addFriendBtn} onPress={() => setShowAddFriendModal(true)}>
+              <TouchableOpacity 
+                style={styles.addFriendBtn} 
+                onPress={() => setShowAddFriendModal(true)}
+              >
                 <Text style={styles.addFriendBtnText}>Add</Text>
               </TouchableOpacity>
             </View>
           )
         });
-        
-        // Add friend requests section if there are any
+
+        // 2. Add friend requests section if any
         if (friendRequests.length > 0) {
           sections.push({
             type: 'requestsHeader',
-            content: <Text style={styles.sectionTitle}>Friend Requests</Text>
+            content: <Text style={styles.sectionHeader}>Friend Requests</Text>
           });
-          
           sections.push({
             type: 'requests',
-            content: friendRequests.map(item => ({
-              id: item.id,
-              avatar: item.avatar,
-              name: item.name
-            }))
+            content: friendRequests
           });
         }
-        
-        // Add friends section
+
+        // 3. Add friends section
         sections.push({
           type: 'friendsHeader',
-          content: <Text style={styles.sectionTitle}>Your Friends</Text>
+          content: <Text style={styles.sectionHeader}>Your Friends</Text>
         });
-        
         sections.push({
           type: 'friends',
           content: filteredFriends
         });
-        
+
         // Render the Friends tab with a single top-level FlatList
         const renderFriendsSection = () => (
           <View style={{flex: 1}}>
             <FlatList
+              key="friends-sections" /* Adding key to fix numColumns change error */
               data={sections}
               keyExtractor={(item, index) => item.type + index}
+              scrollEnabled={false}
               renderItem={({ item }) => {
                 switch (item.type) {
                   case 'header':
@@ -237,11 +377,8 @@ const ProfileScreen = () => {
                     
                   case 'requests':
                     return (
-                      <ScrollView 
-                        horizontal 
-                        showsHorizontalScrollIndicator={false} 
-                        style={styles.requestsContainer}
-                        contentContainerStyle={styles.requestsContentContainer}
+                      <View 
+                        style={[styles.requestsContainer, styles.requestsContentContainer]}
                       >
                         {item.content.map(request => (
                           <View key={request.id} style={styles.friendRequestCard}>
@@ -257,7 +394,7 @@ const ProfileScreen = () => {
                             </View>
                           </View>
                         ))}
-                      </ScrollView>
+                      </View>
                     );
                     
                   case 'friends':
@@ -289,75 +426,50 @@ const ProfileScreen = () => {
         
         return (
           <View style={{flex: 1}}>
+            
             {renderFriendsSection()}
             
-            {/* Friend Detail Modal */}
+            {/* Friend Details Modal */}
             <Modal
               visible={!!selectedFriend}
               transparent
               animationType="slide"
               onRequestClose={() => setSelectedFriend(null)}
             >
-              <View style={styles.friendModalOverlay}>
-                <View style={styles.friendModalContent}>
+              <View style={styles.modalOverlay}>
+                <View style={styles.modalContent}>
                   {selectedFriend && (
                     <>
-                      <Image source={{ uri: selectedFriend.avatar }} style={styles.friendAvatarLarge} />
-                      <Text style={styles.friendNameLarge}>{selectedFriend.name}</Text>
-                      <View style={styles.friendTypeSelectorRow}>
-                        {['Friend','Provider','Family'].map(type => (
-                          <TouchableOpacity
-                            key={type}
-                            style={[styles.friendTypeSelectorBtn, selectedFriend.type === type && styles.friendTypeSelectorBtnActive]}
-                            onPress={() => handleChangeFriendType(selectedFriend.id, type)}
-                          >
-                            <Text style={styles.friendTypeSelectorText}>{type}</Text>
-                          </TouchableOpacity>
-                        ))}
+                      <View style={styles.modalUserHeader}>
+                        <Image source={{ uri: selectedFriend.avatar }} style={styles.modalUserAvatar} />
+                        <Text style={styles.modalUserName}>{selectedFriend.name}</Text>
                       </View>
-                      <View style={styles.friendModalActionsRow}>
-                        <TouchableOpacity style={styles.friendChatBtn} onPress={() => handleChat(selectedFriend)}><Text style={styles.friendChatBtnText}>Chat</Text></TouchableOpacity>
-                        <TouchableOpacity style={styles.friendRemoveBtn} onPress={() => handleRemoveFriend(selectedFriend.id)}><Text style={styles.friendRemoveBtnText}>Remove</Text></TouchableOpacity>
-                        <TouchableOpacity style={styles.friendBlockBtn} onPress={() => handleBlockFriend(selectedFriend.id)}><Text style={styles.friendBlockBtnText}>Block</Text></TouchableOpacity>
+                      
+                      <View style={styles.modalActions}>
+                        <TouchableOpacity style={styles.modalActionBtn} onPress={() => {
+                          setSelectedFriend(null);
+                          // TODO: Navigate to chat screen with this friend
+                          navigation.navigate('ChatScreen', { friendId: selectedFriend.id });
+                        }}>
+                          <Text style={styles.modalActionBtnText}>Chat</Text>
+                        </TouchableOpacity>
+                        
+                        <TouchableOpacity style={styles.modalActionBtn} onPress={() => {
+                          setSelectedFriend(null);
+                          setShowGroupChatModal(true);
+                        }}>
+                          <Text style={styles.modalActionBtnText}>Group Chat</Text>
+                        </TouchableOpacity>
                       </View>
-                      <TouchableOpacity style={styles.friendModalCloseBtn} onPress={() => setSelectedFriend(null)}><Text style={styles.friendModalCloseBtnText}>Close</Text></TouchableOpacity>
                     </>
                   )}
+                  <TouchableOpacity style={styles.closeModalBtn} onPress={() => setSelectedFriend(null)}>
+                    <Text style={styles.closeModalBtnText}>Close</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             </Modal>
-            {/* Add Friend Modal */}
-            <Modal
-              visible={showAddFriendModal}
-              transparent
-              animationType="slide"
-              onRequestClose={() => setShowAddFriendModal(false)}
-            >
-              <View style={styles.friendModalOverlay}>
-                <View style={styles.friendModalContent}>
-                  <Text style={styles.addFriendTitle}>Search & Add Friends</Text>
-                  <TextInput
-                    style={styles.friendSearchInput}
-                    placeholder="Enter name or email..."
-                    value={addFriendSearch}
-                    onChangeText={setAddFriendSearch}
-                  />
-                  <FlatList
-                    data={addFriendResults}
-                    keyExtractor={item => item.id}
-                    renderItem={({ item }) => (
-                      <View style={styles.addFriendResultRow}>
-                        <Image source={{ uri: item.avatar }} style={styles.friendAvatarSmall} />
-                        <Text style={styles.friendNameSmall}>{item.name}</Text>
-                        <TouchableOpacity style={styles.sendRequestBtn} onPress={() => handleSendFriendRequest(item.id)}><Text style={styles.sendRequestBtnText}>Request</Text></TouchableOpacity>
-                      </View>
-                    )}
-                    style={{maxHeight: 200}}
-                  />
-                  <TouchableOpacity style={styles.friendModalCloseBtn} onPress={() => setShowAddFriendModal(false)}><Text style={styles.friendModalCloseBtnText}>Close</Text></TouchableOpacity>
-                </View>
-              </View>
-            </Modal>
+            
             {/* Group Chat Modal (placeholder) */}
             <Modal
               visible={showGroupChatModal}
@@ -365,15 +477,131 @@ const ProfileScreen = () => {
               animationType="slide"
               onRequestClose={() => setShowGroupChatModal(false)}
             >
-              <View style={styles.friendModalOverlay}>
-                <View style={styles.friendModalContent}>
-                  <Text style={styles.groupChatTitle}>Start a Group Chat</Text>
+              <View style={styles.modalOverlay}>
+                <View style={styles.modalContent}>
+                  <Text style={styles.modalTitle}>Start a Group Chat</Text>
                   <Text style={{marginBottom:14}}>Select friends to add to group chat (feature coming soon!)</Text>
-                  <TouchableOpacity style={styles.friendModalCloseBtn} onPress={() => setShowGroupChatModal(false)}><Text style={styles.friendModalCloseBtnText}>Close</Text></TouchableOpacity>
+                  <TouchableOpacity style={styles.closeModalBtn} onPress={() => setShowGroupChatModal(false)}>
+                    <Text style={styles.closeModalBtnText}>Close</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </Modal>
+            
+            {/* Users Tray Modal - Shows all users from user_profiles */}
+            <Modal
+              visible={showUsersTray}
+              transparent
+              animationType="slide"
+              onRequestClose={() => setShowUsersTray(false)}
+            >
+              <View style={styles.modalOverlay}>
+                <View style={[styles.modalContent, { height: '70%' }]}>
+                  <Text style={styles.modalTitle}>Find Friends</Text>
+                  <Text style={styles.modalSubTitle}>Browse users and send friend requests</Text>
+                  
+                  {loadingUsers ? (
+                    <ActivityIndicator size="large" color="#007AFF" style={{ marginTop: 20 }} />
+                  ) : (
+                    <FlatList
+                      key="users-tray-list" /* Adding key to fix numColumns change error */
+                      data={allUsers.filter(user => user.id !== currentUser?.id)}
+                      keyExtractor={item => item.id}
+                      scrollEnabled={true} /* This FlatList should scroll since it's in a modal */
+                      renderItem={({ item }) => {
+                        const isAlreadyFriend = isFriend(item.id);
+                        return (
+                          <View style={styles.userItem}>
+                            <Image 
+                              source={{ 
+                                uri: item.avatar_url || 'https://via.placeholder.com/50'
+                              }} 
+                              style={styles.userAvatar} 
+                            />
+                            <View style={styles.userInfo}>
+                              <Text style={styles.userName}>{item.full_name || 'User'}</Text>
+                              <Text style={styles.userUsername}>@{item.username || 'username'}</Text>
+                            </View>
+                            <View style={styles.userActions}>
+                              <TouchableOpacity 
+                                style={styles.chatBtn}
+                                onPress={() => startChat(item.id)}
+                              >
+                                <Text style={styles.chatBtnText}>Chat</Text>
+                              </TouchableOpacity>
+                              
+                              {isAlreadyFriend ? (
+                                <View style={styles.friendIndicator}>
+                                  <Text style={styles.friendIndicatorText}>Friends</Text>
+                                </View>
+                              ) : (
+                                <TouchableOpacity 
+                                  style={styles.addFriendBtn}
+                                  onPress={() => sendFriendRequest(item.id)}
+                                >
+                                  <Text style={styles.addFriendBtnText}>Add</Text>
+                                </TouchableOpacity>
+                              )}
+                            </View>
+                          </View>
+                        );
+                      }}
+                    />
+                  )}
+                  
+                  <TouchableOpacity style={styles.closeModalBtn} onPress={() => setShowUsersTray(false)}>
+                    <Text style={styles.closeModalBtnText}>Close</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             </Modal>
           </View>
+        );
+        
+      default:
+        return null;
+    }
+  };
+
+  // Get the action button based on the selected tab
+  const renderActionButton = () => {
+    // Create a truly floating action button that doesn't scroll with content
+    switch (selectedTab) {
+      case 'Posts':
+        return (
+          <ActionButton
+            onPress={() => setShowCreatePostModal(true)}
+            iconName="add"
+            color="#007AFF"
+            size={56}
+          />
+        );
+      case 'Groups':
+        return (
+          <ActionButton
+            onPress={() => navigation.navigate('GroupsListScreen')}
+            iconName="add"
+            color="#007AFF"
+            size={56}
+          />
+        );
+      case 'Bookings':
+        return (
+          <ActionButton
+            onPress={() => navigation.navigate('Explore', { screen: 'ProviderDiscovery' })}
+            iconName="add"
+            color="#007AFF"
+            size={56}
+          />
+        );
+      case 'Friends':
+        return (
+          <ActionButton
+            onPress={() => setShowUsersTray(true)}
+            iconName="add"
+            color="#007AFF"
+            size={56}
+          />
         );
       default:
         return null;
@@ -389,8 +617,53 @@ const ProfileScreen = () => {
         onBackPressOverride={handleBackToDashboard}
       />
       
-      {/* Profile Header - Fixed at top */}
-      <View style={styles.profileHeader}>
+      {/* Floating Action Button - Fixed Position */}
+      <Animated.View style={[styles.floatingActionButton, {
+        opacity: fadeAnim
+      }]}>
+        {renderActionButton()}
+      </Animated.View>
+      
+      <Animated.ScrollView 
+        style={styles.mainScrollView}
+        showsVerticalScrollIndicator={false}
+        ref={scrollViewRef}
+        scrollEventThrottle={16}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { 
+            useNativeDriver: true,
+            listener: () => {
+              // Clear any existing timer
+              if (scrollEndTimer.current) {
+                clearTimeout(scrollEndTimer.current);
+              }
+              
+              // If not already scrolling, animate button fade out
+              if (!isScrolling) {
+                setIsScrolling(true);
+                Animated.timing(fadeAnim, {
+                  toValue: 0,
+                  duration: 200,
+                  useNativeDriver: true,
+                }).start();
+              }
+              
+              // Set a timer to detect when scrolling stops
+              scrollEndTimer.current = setTimeout(() => {
+                setIsScrolling(false);
+                Animated.timing(fadeAnim, {
+                  toValue: 1,
+                  duration: 500, // Slower fade in
+                  useNativeDriver: true,
+                }).start();
+              }, 200);
+            }
+          }
+        )}
+      >
+        {/* Profile Header */}
+        <View style={styles.profileHeader}>
         <View style={styles.profileTopSection}>
           <Image 
             source={{ 
@@ -412,7 +685,7 @@ const ProfileScreen = () => {
           </TouchableOpacity>
         </View>
         
-        <Text style={styles.userBio}>Nature lover & art enthusiast 🖌 seeking therapeutic support and new experiences.</Text>
+        <Text style={styles.userBio}>{userProfile?.bio || 'No bio yet. Tap Edit Profile to add one.'}</Text>
         
         <View style={styles.statsRow}>
           <View style={styles.statBox}><Text style={styles.statNumber}>{posts.length}</Text><Text style={styles.statLabel}>Posts</Text></View>
@@ -434,7 +707,7 @@ const ProfileScreen = () => {
         </View>
       </View>
       
-      {/* Tabs */}
+      {/* Tab Bar */}
       <View style={styles.tabBar}>
         {TABS.map(tab => (
           <TouchableOpacity
@@ -447,10 +720,11 @@ const ProfileScreen = () => {
         ))}
       </View>
       
-      {/* Tab Content - Each tab handles its own scrolling */}
-      <View style={styles.tabContent} key={selectedTab}>
+      {/* Tab Content */}
+      <View style={styles.tabContent}>
         {renderTabContent()}
       </View>
+      </Animated.ScrollView>
       
       {/* Create Post Modal */}
       <CreatePostModal
@@ -463,34 +737,142 @@ const ProfileScreen = () => {
 };
 
 const styles = StyleSheet.create({
+  floatingActionButton: {
+    position: 'absolute',
+    bottom: 20, // Reduced distance from bottom navbar (much closer)
+    right: 16, // Equal padding (16px) from right edge
+    zIndex: 1000, // Ensure it's above all content
+  },
+  mainScrollView: {
+    flex: 1,
+  },
+  // Styles for the Users Tray Modal
+  userItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  userAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    marginRight: 12,
+  },
+  userInfo: {
+    flex: 1,
+  },
+  userName: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  userUsername: {
+    fontSize: 14,
+    color: '#777',
+  },
+  userActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  chatBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 4,
+    marginRight: 8,
+    backgroundColor: '#f0f0f0',
+  },
+  chatBtnText: {
+    color: '#007AFF',
+    fontWeight: '500',
+  },
+  friendIndicator: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 4,
+    backgroundColor: '#e6f7e6',
+  },
+  friendIndicatorText: {
+    color: '#4CAF50',
+    fontWeight: '500',
+  },
+  modalSubTitle: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 16,
+  },
+  addFriendBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 4,
+    backgroundColor: '#007AFF',
+  },
+  addFriendBtnText: {
+    color: '#fff',
+    fontWeight: '500',
+  },
+  // User item styles for the Users Tray
+  userItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  userAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    marginRight: 12,
+  },
+  userInfo: {
+    flex: 1,
+  },
+  userName: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  userUsername: {
+    fontSize: 14,
+    color: '#777',
+  },
+  userActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  chatBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 4,
+    marginRight: 8,
+    backgroundColor: '#f0f0f0',
+  },
+  chatBtnText: {
+    color: '#007AFF',
+    fontWeight: '500',
+  },
+  friendIndicator: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 4,
+    backgroundColor: '#e6f7e6',
+  },
+  friendIndicatorText: {
+    color: '#4CAF50',
+    fontWeight: '500',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
   // Instagram-style scroll view and container
   scrollView: {
     flex: 1,
   },
   
   // Posts tab styles
-  newPostButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#007AFF',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    marginHorizontal: 16,
-    marginVertical: 12,
-    alignSelf: 'flex-start',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  newPostButtonText: {
-    color: '#FFF',
-    fontWeight: '600',
-    fontSize: 15,
-    marginLeft: 6,
-  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',

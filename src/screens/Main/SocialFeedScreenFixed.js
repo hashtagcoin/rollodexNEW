@@ -49,9 +49,11 @@ const dummyHousingGroups = [
 const SocialFeedScreen = () => {
   const navigation = useNavigation();
   const [posts, setPosts] = useState([]);
+  const [agreements, setAgreements] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [housingModalVisible, setHousingModalVisible] = useState(false);
+  const [activeTab, setActiveTab] = useState('posts'); // 'posts' or 'agreements'
 
   // Navigate back to dashboard
   const handleBackToDashboard = () => {
@@ -88,15 +90,62 @@ const SocialFeedScreen = () => {
     }
   };
 
+  // Fetch service agreements
+  const fetchAgreements = async () => {
+    try {
+      setLoading(true);
+      
+      // For demo purposes, use the global variable where we store signed agreements
+      // In a real app, you would fetch from AsyncStorage or Supabase with proper RLS policies
+      if (global.signedAgreements) {
+        // Format the agreements data to match the structure expected by the renderAgreement function
+        const formattedAgreements = global.signedAgreements.map(agreement => ({
+          id: agreement.id,
+          service_id: agreement.service_id,
+          service_provider_id: agreement.service_provider_id,
+          agreement_title: agreement.agreement_title,
+          status: agreement.status,
+          effective_date: agreement.effective_date,
+          created_at: agreement.created_at,
+          services: {
+            title: agreement.service_title
+          },
+          service_providers: {
+            business_name: agreement.provider_name,
+            logo_url: 'https://via.placeholder.com/60' // Default placeholder for demo
+          }
+        }));
+        
+        setAgreements(formattedAgreements || []);
+      } else {
+        setAgreements([]);
+      }
+    } catch (error) {
+      console.error('Error fetching agreements:', error.message);
+      setAgreements([]);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
   // Initial data fetch
   useEffect(() => {
-    fetchPosts();
-  }, []);
+    if (activeTab === 'posts') {
+      fetchPosts();
+    } else {
+      fetchAgreements();
+    }
+  }, [activeTab]);
 
   // Handle refresh
   const handleRefresh = () => {
     setRefreshing(true);
-    fetchPosts();
+    if (activeTab === 'posts') {
+      fetchPosts();
+    } else {
+      fetchAgreements();
+    }
   };
 
   // Render each post using the PostCardFixed component
@@ -106,6 +155,37 @@ const SocialFeedScreen = () => {
       onPress={() => navigation.navigate('PostDetailScreen', { post: item })}
       showActions={true}
     />
+  );
+  
+  // Render each service agreement
+  const renderAgreement = ({ item }) => (
+    <TouchableOpacity 
+      style={styles.agreementCard}
+      onPress={() => navigation.navigate('ServiceAgreement', { serviceId: item.service_id, viewOnly: true, agreementId: item.id })}
+    >
+      <View style={styles.agreementIconContainer}>
+        <Image 
+          source={{ uri: item.service_providers?.logo_url || 'https://via.placeholder.com/60' }} 
+          style={styles.providerLogo} 
+        />
+      </View>
+      <View style={styles.agreementDetails}>
+        <Text style={styles.agreementTitle}>{item.agreement_title}</Text>
+        <Text style={styles.serviceTitle}>{item.services?.title}</Text>
+        <Text style={styles.providerName}>{item.service_providers?.business_name}</Text>
+        <View style={styles.agreementMeta}>
+          <Text style={styles.agreementDate}>
+            Signed: {new Date(item.created_at).toLocaleDateString('en-AU')}
+          </Text>
+          <View style={[styles.statusBadge, item.status === 'signed' ? styles.statusSigned : styles.statusPending]}>
+            <Text style={styles.statusText}>{item.status === 'signed' ? 'Active' : 'Pending'}</Text>
+          </View>
+        </View>
+      </View>
+      <View style={styles.agreementAction}>
+        <Feather name="chevron-right" size={22} color="#999" />
+      </View>
+    </TouchableOpacity>
   );
 
   const renderHousingGroup = ({ item }) => (
@@ -119,27 +199,55 @@ const SocialFeedScreen = () => {
     </View>
   );
 
-  // Header component with sticky navigation buttons
+  // Header component with sticky navigation buttons and content tabs
   const HeaderComponent = () => (
-    <View style={styles.stickyHeader}>
-      <TouchableOpacity style={styles.stickerBtn} onPress={() => navigation.navigate('GroupsListScreen')}>
-        <Feather name="users" size={20} color="#007AFF" />
-        <Text style={styles.stickerBtnText}>Groups</Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.stickerBtn} onPress={() => navigation.navigate('HousingGroupsScreen')}>
-        <Feather name="home" size={20} color="#007AFF" />
-        <Text style={styles.stickerBtnText}>Housing</Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.stickerBtn} onPress={() => navigation.navigate('EventsListScreen')}>
-        <Feather name="calendar" size={20} color="#007AFF" />
-        <Text style={styles.stickerBtnText}>Events</Text>
-      </TouchableOpacity>
-      <TouchableOpacity 
-        style={[styles.stickerBtn, styles.addPostBtn]}
-        onPress={() => navigation.navigate('CreatePostScreen')}
-      >
-        <Feather name="plus-circle" size={30} color="#fff" />
-      </TouchableOpacity>
+    <View>
+      <View style={styles.stickyHeader}>
+        <TouchableOpacity style={styles.stickerBtn} onPress={() => navigation.navigate('GroupsListScreen')}>
+          <Feather name="users" size={20} color="#007AFF" />
+          <Text style={styles.stickerBtnText}>Groups</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.stickerBtn} onPress={() => navigation.navigate('HousingGroupsScreen')}>
+          <Feather name="home" size={20} color="#007AFF" />
+          <Text style={styles.stickerBtnText}>Housing</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.stickerBtn} onPress={() => navigation.navigate('EventsListScreen')}>
+          <Feather name="calendar" size={20} color="#007AFF" />
+          <Text style={styles.stickerBtnText}>Events</Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={[styles.stickerBtn, styles.addPostBtn]}
+          onPress={() => navigation.navigate('CreatePostScreen')}
+        >
+          <Feather name="plus-circle" size={30} color="#fff" />
+        </TouchableOpacity>
+      </View>
+      
+      <View style={styles.tabContainer}>
+        <TouchableOpacity 
+          style={[styles.tab, activeTab === 'posts' && styles.activeTab]}
+          onPress={() => setActiveTab('posts')}
+        >
+          <Feather 
+            name="layout" 
+            size={18} 
+            color={activeTab === 'posts' ? '#2E7D32' : '#999'} 
+          />
+          <Text style={[styles.tabText, activeTab === 'posts' && styles.activeTabText]}>Posts</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={[styles.tab, activeTab === 'agreements' && styles.activeTab]}
+          onPress={() => setActiveTab('agreements')}
+        >
+          <Feather 
+            name="file-text" 
+            size={18} 
+            color={activeTab === 'agreements' ? '#2E7D32' : '#999'} 
+          />
+          <Text style={[styles.tabText, activeTab === 'agreements' && styles.activeTabText]}>Agreements</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 
@@ -156,28 +264,53 @@ const SocialFeedScreen = () => {
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
         </View>
-      ) : posts.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>No posts yet.</Text>
-          <TouchableOpacity 
-            style={styles.createPostButton}
-            onPress={() => navigation.navigate('CreatePostScreen')}
-          >
-            <Text style={styles.createPostButtonText}>Create your first post</Text>
-          </TouchableOpacity>
-        </View>
+      ) : activeTab === 'posts' ? (
+        posts.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>No posts yet.</Text>
+            <TouchableOpacity 
+              style={styles.createPostButton}
+              onPress={() => navigation.navigate('CreatePostScreen')}
+            >
+              <Text style={styles.createPostButtonText}>Create your first post</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <FlatList
+            data={posts}
+            renderItem={renderPost}
+            keyExtractor={item => item.post_id}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.feedList}
+            onRefresh={handleRefresh}
+            refreshing={refreshing}
+            ListHeaderComponent={<HeaderComponent />}
+            stickyHeaderIndices={[0]}
+          />
+        )
       ) : (
-        <FlatList
-          data={posts}
-          renderItem={renderPost}
-          keyExtractor={item => item.post_id}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.feedList}
-          onRefresh={handleRefresh}
-          refreshing={refreshing}
-          ListHeaderComponent={<HeaderComponent />}
-          stickyHeaderIndices={[0]}
-        />
+        agreements.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <HeaderComponent />
+            <View style={styles.emptyContentContainer}>
+              <Feather name="file-text" size={60} color="#ccc" />
+              <Text style={styles.emptyText}>No service agreements yet.</Text>
+              <Text style={styles.emptySubtext}>Your signed service agreements will appear here.</Text>
+            </View>
+          </View>
+        ) : (
+          <FlatList
+            data={agreements}
+            renderItem={renderAgreement}
+            keyExtractor={item => item.id}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.agreementsList}
+            onRefresh={handleRefresh}
+            refreshing={refreshing}
+            ListHeaderComponent={<HeaderComponent />}
+            stickyHeaderIndices={[0]}
+          />
+        )
       )}
 
       <Modal

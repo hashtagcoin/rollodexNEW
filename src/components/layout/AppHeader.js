@@ -95,11 +95,9 @@ const styles = StyleSheet.create({
     height: 45,
   },
   avatarImage: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.primary,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
   },
   container: {
     flexDirection: 'row',
@@ -107,10 +105,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 15,
     paddingTop: Platform.OS === 'android' ? 35 : 50, 
-    paddingBottom: 10,
+    paddingBottom: 12,
     backgroundColor: '#FFFFFF', 
     borderBottomWidth: 1,
     borderBottomColor: '#E0E0E0',
+    minHeight: Platform.OS === 'android' ? 90 : 110,
   },
   leftSection: {
     flex: 1,
@@ -126,7 +125,8 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row', 
     alignItems: 'center',
-    justifyContent: 'flex-end', 
+    justifyContent: 'flex-end',
+    paddingVertical: 5,
   },
   logo: {
     width: 100, 
@@ -147,7 +147,7 @@ const styles = StyleSheet.create({
   },
   iconButton: { 
     padding: 5,
-    marginLeft: 10, 
+    marginLeft: 15, 
   },
 });
 

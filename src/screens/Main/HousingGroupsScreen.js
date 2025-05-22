@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { View, Text, FlatList, Image, TouchableOpacity, StyleSheet, TextInput, ScrollView } from 'react-native';
+import React, { useState, useRef } from 'react';
+import { View, Text, FlatList, Image, TouchableOpacity, StyleSheet, TextInput, ScrollView, Animated } from 'react-native';
+import ActionButton from '../../components/common/ActionButton';
 import AppHeader from '../../components/layout/AppHeader';
 import Feather from 'react-native-vector-icons/Feather';
 
@@ -39,6 +40,12 @@ const FILTERS = [
 const HousingGroupsScreen = ({ navigation }) => {
   const [search, setSearch] = useState('');
   const [activeFilters, setActiveFilters] = useState([]);
+  
+  // Animation values for the ActionButton
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const [isScrolling, setIsScrolling] = useState(false);
+  const scrollEndTimer = useRef(null);
 
   // Dummy filter logic: just show all for now
   const filteredGroups = dummyHousingGroups.filter(group =>
@@ -64,6 +71,20 @@ const HousingGroupsScreen = ({ navigation }) => {
 
   return (
     <View style={{ flex: 1, backgroundColor: '#fff' }}>
+      {/* Floating Action Button with fade animation */}
+      <Animated.View style={[styles.floatingActionButton, {
+        opacity: fadeAnim
+      }]}>
+        <ActionButton
+          onPress={() => navigation.navigate('Explore', { 
+            screen: 'ProviderDiscovery',
+            params: { initialCategory: 'Housing' } // Pass Housing as the initial category
+          })}
+          iconName="add"
+          color="#007AFF"
+          size={56}
+        />
+      </Animated.View>
       <AppHeader title="Housing Groups" navigation={navigation} canGoBack={true} />
       {/* Search and filter row */}
       <View style={styles.searchRow}>
@@ -98,18 +119,58 @@ const HousingGroupsScreen = ({ navigation }) => {
       </View>
       {/* Listing count */}
       <Text style={styles.listingCount}>{filteredGroups.length} Listings</Text>
-      <FlatList
+      <Animated.FlatList
         data={filteredGroups}
         renderItem={renderHousingGroup}
         keyExtractor={item => item.id}
         contentContainerStyle={{ padding: 18, paddingTop: 6 }}
         showsVerticalScrollIndicator={false}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { 
+            useNativeDriver: true,
+            listener: () => {
+              // Clear any existing timer
+              if (scrollEndTimer.current) {
+                clearTimeout(scrollEndTimer.current);
+              }
+              
+              // If not already scrolling, animate button fade out
+              if (!isScrolling) {
+                setIsScrolling(true);
+                Animated.timing(fadeAnim, {
+                  toValue: 0,
+                  duration: 200,
+                  useNativeDriver: true,
+                }).start();
+              }
+              
+              // Set a timer to detect when scrolling stops
+              scrollEndTimer.current = setTimeout(() => {
+                setIsScrolling(false);
+                Animated.timing(fadeAnim, {
+                  toValue: 1,
+                  duration: 500, // Slower fade in
+                  useNativeDriver: true,
+                }).start();
+              }, 200);
+            }
+          }
+        )}
+        scrollEventThrottle={16}
       />
     </View>
   );
 };
 
 const styles = StyleSheet.create({
+  // Fixed position ActionButton style with fade animation
+  floatingActionButton: {
+    position: 'absolute',
+    bottom: 20, // Close to the bottom navbar
+    right: 16, // Equal padding from right edge
+    zIndex: 1000, // Ensure it's above all content
+  },
   filterSection: {
     backgroundColor: '#fff',
     paddingVertical: 6,

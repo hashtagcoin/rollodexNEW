@@ -1,18 +1,36 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, TextInput, StyleSheet, TouchableOpacity, Image, ActivityIndicator, Alert, ScrollView } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
+import { MaterialIcons } from '@expo/vector-icons';
 import AppHeader from '../../components/layout/AppHeader';
 import { supabase } from '../../lib/supabaseClient';
 import ModernImagePicker from '../../components/ModernImagePicker';
-import { COLORS, FONTS } from '../../constants/theme';
-import Ionicons from 'react-native-vector-icons/Ionicons';
-import { useUser } from '../../context/UserContext';
+import { useAuth, useUser } from '../../context/UserContext';
+
+// Define colors for UI elements
+const COLORS = {
+  primary: '#007AFF',
+  success: '#34C759',
+  error: '#FF3B30',
+  text: '#333333',
+  lightText: '#666666',
+  background: '#F8F7F3',
+  card: '#FFFFFF',
+  border: '#E0E0E0',
+  inactive: '#CCCCCC',
+};
 
 export default function EditProfileScreen() {
   const navigation = useNavigation();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  
+  // Username validation states
+  const [checkingUsername, setCheckingUsername] = useState(false);
+  const [usernameAvailable, setUsernameAvailable] = useState(null); // null = not checked, true = available, false = taken
+  const usernameTimeoutRef = useRef(null);
   
   // Use the global user context
   const { profile: userProfile, updateProfile, updateAvatar, uploadAvatarDirectly } = useUser();
@@ -23,11 +41,18 @@ export default function EditProfileScreen() {
     full_name: '', 
     bio: '', 
     avatar_url: '',
+    age: '',
+    sex: '',
+    address: '',
+    ndis_number: '',
     primary_disability: '',
     support_level: '',
     mobility_aids: [],
     dietary_requirements: [],
-    accessibility_preferences: {}
+    accessibility_preferences: {},
+    comfort_traits: [],
+    preferred_categories: [],
+    preferred_service_formats: []
   });
   
   // Local state for avatar preview
@@ -70,6 +95,47 @@ export default function EditProfileScreen() {
     { label: 'Voice Navigation', value: 'voice_navigation' },
     { label: 'Screen Reader Compatible', value: 'screen_reader' }
   ];
+  
+  // Comfort traits options
+  const COMFORT_TRAITS = [
+    'Quiet Environment',
+    'Female Support Worker',
+    'Male Support Worker',
+    'Experience with Autism',
+    'Experience with Physical Disabilities',
+    'Pet Friendly',
+    'Transport Provided',
+    'Flexible Schedule'
+  ];
+  
+  // Service categories options
+  const SERVICE_CATEGORIES = [
+    'Therapy',
+    'Personal Care',
+    'Transport',
+    'Social Activities',
+    'Home Maintenance',
+    'Daily Tasks',
+    'Exercise Physiology',
+    'Skills Development'
+  ];
+  
+  // Service format options
+  const SERVICE_FORMATS = [
+    'In Person',
+    'Online',
+    'Home Visits',
+    'Center Based',
+    'Group Sessions'
+  ];
+  
+  // Sex options
+  const sexOptions = [
+    { label: 'Male', value: 'male' },
+    { label: 'Female', value: 'female' },
+    { label: 'Non-binary', value: 'non-binary' },
+    { label: 'Prefer not to say', value: 'not_specified' }
+  ];
 
   // Initialize form with user profile data from context
   useEffect(() => {
@@ -83,8 +149,60 @@ export default function EditProfileScreen() {
       });
       setAvatar(userProfile.avatar_url);
       setLoading(false);
+      // Store the original username to compare when checking availability
+      setOriginalUsername(userProfile.username || '');
     }
   }, [userProfile]);
+  
+  // State to store the original username for comparison
+  const [originalUsername, setOriginalUsername] = useState('');
+  
+  // Function to check username availability with debouncing
+  const checkUsernameAvailability = async (username) => {
+    // Skip check if username is empty or unchanged from original
+    if (!username || username === originalUsername) {
+      setCheckingUsername(false);
+      setUsernameAvailable(null);
+      return;
+    }
+    
+    try {
+      setCheckingUsername(true);
+      setUsernameAvailable(null);
+      
+      // Clear any existing timeout to prevent multiple checks
+      if (usernameTimeoutRef.current) {
+        clearTimeout(usernameTimeoutRef.current);
+      }
+      
+      // Delay the check by 500ms to avoid too many requests as user types
+      usernameTimeoutRef.current = setTimeout(async () => {
+        console.log('Checking availability for username:', username);
+        
+        const { data, error } = await supabase
+          .from('user_profiles')
+          .select('username')
+          .eq('username', username)
+          .maybeSingle();
+        
+        if (error) throw error;
+        
+        // If no data is returned, the username is available
+        setUsernameAvailable(!data);
+        setCheckingUsername(false);
+      }, 500);
+    } catch (error) {
+      console.error('Error checking username:', error);
+      setUsernameAvailable(null);
+      setCheckingUsername(false);
+    }
+  };
+  
+  // Handle username input changes
+  const handleUsernameChange = (text) => {
+    setProfile(prev => ({ ...prev, username: text }));
+    checkUsernameAvailability(text);
+  };
 
   // Handle avatar selection and upload using the direct upload method
   const handleImagePick = async (imageData) => {
@@ -131,27 +249,105 @@ export default function EditProfileScreen() {
     }
   };
 
-  // Save profile using the global context
+  // Function to validate required fields before saving
+  const validateProfile = () => {
+    if (!profile.username || profile.username.trim() === '') {
+      Alert.alert('Error', 'Username is required');
+      return false;
+    }
+    
+    if (!profile.full_name || profile.full_name.trim() === '') {
+      Alert.alert('Error', 'Full name is required');
+      return false;
+    }
+    
+    return true;
+  };
+  
+  // Save profile using the enhanced global context
   const saveProfile = async () => {
+    if (!validateProfile()) return;
+    
     setSaving(true);
     try {
       // Ensure the arrays and objects are properly formatted
       const formattedProfile = {
         ...profile,
+        // Ensure numeric fields are properly formatted
+        age: profile.age ? parseInt(profile.age) : null,
+        
         // Make sure these are arrays even if empty
         mobility_aids: Array.isArray(profile.mobility_aids) ? profile.mobility_aids : [],
         dietary_requirements: Array.isArray(profile.dietary_requirements) ? profile.dietary_requirements : [],
+        comfort_traits: Array.isArray(profile.comfort_traits) ? profile.comfort_traits : [],
+        preferred_categories: Array.isArray(profile.preferred_categories) ? profile.preferred_categories : [],
+        preferred_service_formats: Array.isArray(profile.preferred_service_formats) ? profile.preferred_service_formats : [],
+        
         // Make sure this is an object even if empty
         accessibility_preferences: typeof profile.accessibility_preferences === 'object' ? 
-          profile.accessibility_preferences : {}
+          profile.accessibility_preferences : {},
+          
+        // Ensure text fields are defined
+        bio: profile.bio || '',
+        address: profile.address || '',
+        ndis_number: profile.ndis_number || '',
+        sex: profile.sex || ''
       };
       
-      // Use the global updateProfile function from context
-      const success = await updateProfile(formattedProfile);
+      // Create a detailed log of all profile fields to ensure everything is being sent
+      console.log('Saving complete profile with all fields:', {
+        // Basic Information
+        username: formattedProfile.username,
+        full_name: formattedProfile.full_name,
+        bio: formattedProfile.bio,
+        avatar_url: formattedProfile.avatar_url,
+        age: formattedProfile.age,
+        sex: formattedProfile.sex,
+        address: formattedProfile.address,
+        
+        // NDIS Information
+        ndis_number: formattedProfile.ndis_number,
+        primary_disability: formattedProfile.primary_disability,
+        support_level: formattedProfile.support_level,
+        
+        // Arrays & Objects
+        mobility_aids: JSON.stringify(formattedProfile.mobility_aids),
+        dietary_requirements: JSON.stringify(formattedProfile.dietary_requirements),
+        accessibility_preferences: JSON.stringify(formattedProfile.accessibility_preferences),
+        comfort_traits: JSON.stringify(formattedProfile.comfort_traits),
+        preferred_categories: JSON.stringify(formattedProfile.preferred_categories),
+        preferred_service_formats: JSON.stringify(formattedProfile.preferred_service_formats)
+      });
       
-      if (success) {
-        Alert.alert('Success', 'Profile updated!');
+      // Use the enhanced global updateProfile function from context
+      const result = await updateProfile(formattedProfile);
+      
+      if (result.success) {
+        // Verify the saved data by checking if the returned data contains all fields
+        if (result.data) {
+          console.log('Verification of saved data:', {
+            saved_username: result.data.username,
+            saved_full_name: result.data.full_name,
+            saved_bio: result.data.bio ? 'Set' : 'Not set',
+            saved_age: result.data.age,
+            saved_sex: result.data.sex,
+            saved_address: result.data.address ? 'Set' : 'Not set',
+            saved_ndis_number: result.data.ndis_number ? 'Set' : 'Not set',
+            saved_comfort_traits: Array.isArray(result.data.comfort_traits) ? result.data.comfort_traits.length : 0,
+            saved_preferred_categories: Array.isArray(result.data.preferred_categories) ? result.data.preferred_categories.length : 0,
+            saved_preferred_service_formats: Array.isArray(result.data.preferred_service_formats) ? result.data.preferred_service_formats.length : 0
+          });
+        }
+        
+        Alert.alert('Success', 'Profile updated successfully!');
         navigation.goBack();
+      } else {
+        // Handle specific errors
+        if (result.field === 'username') {
+          Alert.alert('Username Error', result.message);
+        } else {
+          Alert.alert('Save Error', result.message || 'Failed to update profile');
+        }
       }
     } catch (error) {
       console.error('Error saving profile:', error);
@@ -165,7 +361,7 @@ export default function EditProfileScreen() {
     return <View style={styles.loading}><ActivityIndicator size="large" color="#007AFF" /></View>;
   }
 
-  // Function to handle checkboxes or toggles
+  // Function to handle checkboxes or toggles for mobility aids and dietary requirements
   const toggleOption = (option, field) => {
     setProfile(prev => {
       // For arrays like mobility_aids or dietary_requirements
@@ -195,12 +391,35 @@ export default function EditProfileScreen() {
       return prev;
     });
   };
+  
+  // Function to handle multi-select options (comfort_traits, preferred_categories, preferred_service_formats)
+  const toggleMultiSelect = (option, field) => {
+    setProfile(prev => {
+      // Ensure the field is an array
+      const currentValues = Array.isArray(prev[field]) ? [...prev[field]] : [];
+      
+      if (currentValues.includes(option)) {
+        // Remove if already selected
+        return { 
+          ...prev, 
+          [field]: currentValues.filter(item => item !== option)
+        };
+      } else {
+        // Add if not selected
+        return { 
+          ...prev, 
+          [field]: [...currentValues, option]
+        };
+      }
+    });
+  };
 
   return (
     <View style={styles.screenContainer}>
       <AppHeader title="Edit Profile" canGoBack navigation={navigation} />
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.content}>
+          {/* Avatar Section */}
           <View style={styles.avatarContainer}>
             <ModernImagePicker 
               onPick={handleImagePick} 
@@ -214,26 +433,108 @@ export default function EditProfileScreen() {
           {/* Basic Information */}
           <View style={styles.formSection}>
             <Text style={styles.sectionTitle}>Basic Information</Text>
+            
+            {/* Username with availability check */}
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Username</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Enter your username"
-                value={profile.username}
-                onChangeText={text => setProfile(p => ({ ...p, username: text }))}
-                autoCapitalize="none"
-                accessibilityLabel="Username input field"
-              />
+              <Text style={styles.inputLabel}>Username <Text style={styles.requiredField}>*</Text></Text>
+              <View style={styles.usernameContainer}>
+                <TextInput
+                  style={[styles.input, styles.usernameInput]}
+                  placeholder="Enter your username"
+                  value={profile.username}
+                  onChangeText={handleUsernameChange}
+                  autoCapitalize="none"
+                  accessibilityLabel="Username input field"
+                />
+                
+                {/* Username availability indicator */}
+                <View style={styles.usernameStatusContainer}>
+                  {checkingUsername && (
+                    <ActivityIndicator size="small" color={COLORS.primary} />
+                  )}
+                  
+                  {!checkingUsername && usernameAvailable === true && profile.username && profile.username !== originalUsername && (
+                    <View style={[styles.statusIconCircle, styles.availableCircle]}>
+                      <MaterialIcons name="check" size={16} color="white" />
+                    </View>
+                  )}
+                  
+                  {!checkingUsername && usernameAvailable === false && (
+                    <View style={[styles.statusIconCircle, styles.unavailableCircle]}>
+                      <MaterialIcons name="close" size={16} color="white" />
+                    </View>
+                  )}
+                </View>
+              </View>
+              
+              {/* Username availability message */}
+              {!checkingUsername && usernameAvailable === true && profile.username && profile.username !== originalUsername && (
+                <Text style={styles.availableText}>Username available</Text>
+              )}
+              
+              {!checkingUsername && usernameAvailable === false && (
+                <Text style={styles.unavailableText}>Username already taken</Text>
+              )}
             </View>
             
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Full Name</Text>
+              <Text style={styles.inputLabel}>Full Name <Text style={styles.requiredField}>*</Text></Text>
               <TextInput
                 style={styles.input}
                 placeholder="Enter your full name"
                 value={profile.full_name}
                 onChangeText={text => setProfile(p => ({ ...p, full_name: text }))}
                 accessibilityLabel="Full name input field"
+              />
+            </View>
+            
+            {/* Age field */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Age</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Enter your age"
+                value={profile.age ? String(profile.age) : ''}
+                onChangeText={text => {
+                  // Only allow numeric input
+                  const numericText = text.replace(/[^0-9]/g, '');
+                  setProfile(p => ({ ...p, age: numericText ? parseInt(numericText) : null }));
+                }}
+                keyboardType="numeric"
+                accessibilityLabel="Age input field"
+              />
+            </View>
+            
+            {/* Sex selection */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Sex</Text>
+              <View style={styles.optionsContainer}>
+                {sexOptions.map(option => (
+                  <TouchableOpacity 
+                    key={option.value}
+                    style={[styles.optionButton, profile.sex === option.value && styles.optionButtonSelected]}
+                    onPress={() => setProfile(p => ({ ...p, sex: option.value }))}
+                    accessibilityLabel={`${option.label} sex option`}
+                  >
+                    <Text 
+                      style={[styles.optionText, profile.sex === option.value && styles.optionTextSelected]}
+                    >
+                      {option.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+            
+            {/* Address field */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Address</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Enter your address"
+                value={profile.address}
+                onChangeText={text => setProfile(p => ({ ...p, address: text }))}
+                accessibilityLabel="Address input field"
               />
             </View>
             
@@ -254,6 +555,18 @@ export default function EditProfileScreen() {
           {/* NDIS Information */}
           <View style={styles.formSection}>
             <Text style={styles.sectionTitle}>NDIS Information</Text>
+            
+            {/* NDIS Number field */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>NDIS Number</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Enter your NDIS number"
+                value={profile.ndis_number}
+                onChangeText={text => setProfile(p => ({ ...p, ndis_number: text }))}
+                accessibilityLabel="NDIS number input field"
+              />
+            </View>
             
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Primary Disability</Text>
@@ -283,6 +596,78 @@ export default function EditProfileScreen() {
                     </Text>
                   </TouchableOpacity>
                 ))}
+              </View>
+            </View>
+            
+            {/* Comfort Traits section */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Comfort Traits</Text>
+              <Text style={styles.optionDescription}>Select all that apply to you</Text>
+              <View style={styles.checkboxContainer}>
+                {COMFORT_TRAITS.map(trait => {
+                  const isSelected = profile.comfort_traits?.includes(trait);
+                  return (
+                    <TouchableOpacity
+                      key={trait}
+                      style={styles.checkboxRow}
+                      onPress={() => toggleMultiSelect(trait, 'comfort_traits')}
+                      accessibilityLabel={`${trait} comfort trait option`}
+                    >
+                      <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
+                        {isSelected && <Ionicons name="checkmark" size={16} color="white" />}
+                      </View>
+                      <Text style={styles.checkboxLabel}>{trait}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+            
+            {/* Preferred Service Categories section */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Preferred Service Categories</Text>
+              <Text style={styles.optionDescription}>Select all that apply to you</Text>
+              <View style={styles.checkboxContainer}>
+                {SERVICE_CATEGORIES.map(category => {
+                  const isSelected = profile.preferred_categories?.includes(category);
+                  return (
+                    <TouchableOpacity
+                      key={category}
+                      style={styles.checkboxRow}
+                      onPress={() => toggleMultiSelect(category, 'preferred_categories')}
+                      accessibilityLabel={`${category} service category option`}
+                    >
+                      <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
+                        {isSelected && <Ionicons name="checkmark" size={16} color="white" />}
+                      </View>
+                      <Text style={styles.checkboxLabel}>{category}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+            
+            {/* Preferred Service Formats section */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Preferred Service Formats</Text>
+              <Text style={styles.optionDescription}>Select all that apply to you</Text>
+              <View style={styles.checkboxContainer}>
+                {SERVICE_FORMATS.map(format => {
+                  const isSelected = profile.preferred_service_formats?.includes(format);
+                  return (
+                    <TouchableOpacity
+                      key={format}
+                      style={styles.checkboxRow}
+                      onPress={() => toggleMultiSelect(format, 'preferred_service_formats')}
+                      accessibilityLabel={`${format} service format option`}
+                    >
+                      <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
+                        {isSelected && <Ionicons name="checkmark" size={16} color="white" />}
+                      </View>
+                      <Text style={styles.checkboxLabel}>{format}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             </View>
           </View>
@@ -452,10 +837,13 @@ const styles = StyleSheet.create({
   },
   inputLabel: {
     fontSize: 16,
-    fontWeight: '500',
+    fontWeight: '600',
     marginBottom: 8,
-    color: '#333',
-    paddingLeft: 4,
+    color: '#333333',
+  },
+  requiredField: {
+    color: '#FF3B30',
+    fontWeight: 'bold',
   },
   input: {
     width: '100%',
@@ -469,8 +857,44 @@ const styles = StyleSheet.create({
     borderColor: '#e0e0e0',
   },
   bioInput: {
-    height: 100,
-    paddingTop: 12,
+    minHeight: 100,
+  },
+  usernameContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  usernameInput: {
+    flex: 1,
+  },
+  usernameStatusContainer: {
+    marginLeft: 8,
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  statusIconCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  availableCircle: {
+    backgroundColor: '#34C759', // iOS green color
+  },
+  unavailableCircle: {
+    backgroundColor: '#FF3B30', // iOS red color
+  },
+  availableText: {
+    fontSize: 12,
+    color: '#34C759',
+    marginTop: 4,
+  },
+  unavailableText: {
+    fontSize: 12,
+    color: '#FF3B30',
+    marginTop: 4,
   },
   optionsContainer: {
     flexDirection: 'row',

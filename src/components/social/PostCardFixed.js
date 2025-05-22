@@ -69,7 +69,7 @@ const processImageUri = (imageUri) => {
   return imageUri;
 };
 
-import { getUserDetails, bookmarkPost, unbookmarkPost, isPostBookmarked, getUserCollections, addPostToCollection } from '../../services/postService';
+import { getUserDetails, bookmarkPost, unbookmarkPost, isPostBookmarked, getUserCollections, addPostToCollection, likePost, unlikePost, checkIfUserLikedPost } from '../../services/postService';
 import LikesListModal from './LikesListModal';
 import SharePostModal from './SharePostModal';
 
@@ -101,12 +101,14 @@ const PostCard = ({ post, onPress, showActions = true }) => {
   useEffect(() => {
     fetchUserDetails();
     fetchCounts();
+    checkLikeStatus();
   }, [post]);
   
   // Check bookmarked status when component mounts
   useEffect(() => {
     if (post && post.post_id) {
       checkBookmarkedStatus();
+      checkLikeStatus();
     }
   }, [post]);
   
@@ -159,22 +161,44 @@ const PostCard = ({ post, onPress, showActions = true }) => {
   };
 
   const fetchCounts = async () => {
+    if (!post || !post.post_id) return;
+    
     try {
       // Get likes count
-      const { data: likes, error } = await supabase
+      const { data: likes, count: likesCount } = await supabase
         .from('post_likes')
-        .select('*', { count: 'exact' })
+        .select('id', { count: 'exact' })
         .eq('post_id', post.post_id);
         
-      const count = likes?.length;
-        
-      if (!error) {
-        setLikesCount(count || 0);
-      }
+      // Get comments count
+      const { count: commentsCount } = await supabase
+        .from('post_comments')
+        .select('id', { count: 'exact' })
+        .eq('post_id', post.post_id);
+      
+      setLikesCount(likesCount || 0);
+      setCommentsCount(commentsCount || 0);
     } catch (error) {
-      console.error('Error fetching likes count:', error);
+      console.error('Error fetching counts:', error);
     }
   };
+  
+  // Check if user has liked the post
+  const checkLikeStatus = async () => {
+    if (!post || !post.post_id) return;
+    
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData?.user?.id) return;
+      
+      const isLiked = await checkIfUserLikedPost(post.post_id, userData.user.id);
+      setIsLiked(isLiked);
+    } catch (error) {
+      console.error('Error checking like status:', error);
+    }
+  };
+  
+  // We'll just keep the checkLikeStatus function here
   
   // Handle double tap animation and like action
   const onDoubleTap = async () => {
@@ -216,30 +240,46 @@ const PostCard = ({ post, onPress, showActions = true }) => {
   
   const handleLikePress = async () => {
     try {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData?.user?.id) return;
+      
       if (isLiked) {
-        // Unlike post
-        const { data: userData } = await supabase.auth.getUser();
-        await supabase
-          .from('post_likes')
-          .delete()
-          .eq('post_id', post.post_id)
-          .eq('user_id', userData.user.id);
-          
+        // Unlike post - use the service function
+        await unlikePost(post.post_id, userData.user.id);
         setIsLiked(false);
         setLikesCount(prev => Math.max(0, prev - 1));
       } else {
-        // Like post
-        const { data: userData } = await supabase.auth.getUser();
-        await supabase
-          .from('post_likes')
-          .insert({
-            post_id: post.post_id,
-            user_id: userData.user.id,
-            created_at: new Date().toISOString()
-          });
-          
+        // Like post - use the service function
+        await likePost(post.post_id, userData.user.id);
         setIsLiked(true);
         setLikesCount(prev => prev + 1);
+        
+        // Show heart animation on like
+        Animated.sequence([
+          Animated.parallel([
+            Animated.timing(scale, {
+              toValue: 1.2,
+              duration: 300,
+              useNativeDriver: true,
+            }),
+            Animated.timing(opacity, {
+              toValue: 1,
+              duration: 300,
+              useNativeDriver: true,
+            }),
+          ]),
+          Animated.timing(scale, {
+            toValue: 1,
+            duration: 100,
+            useNativeDriver: true,
+          }),
+          Animated.delay(500),
+          Animated.timing(opacity, {
+            toValue: 0,
+            duration: 200,
+            useNativeDriver: true,
+          }),
+        ]).start();
       }
     } catch (error) {
       console.error('Error toggling like:', error);
@@ -435,7 +475,7 @@ const PostCard = ({ post, onPress, showActions = true }) => {
                 <Ionicons 
                   name={isLiked ? "heart" : "heart-outline"} 
                   size={22} 
-                  color={isLiked ? COLORS.danger : "#333"} 
+                  color={isLiked ? "#FF0000" : "#333"} 
                 />
               </TouchableOpacity>
               

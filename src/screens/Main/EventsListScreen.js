@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { View, Text, FlatList, Image, TouchableOpacity, StyleSheet, TextInput, ScrollView } from 'react-native';
+import React, { useState, useRef } from 'react';
+import { View, Text, FlatList, Image, TouchableOpacity, StyleSheet, TextInput, ScrollView, Animated } from 'react-native';
+import ActionButton from '../../components/common/ActionButton';
 import AppHeader from '../../components/layout/AppHeader';
 import Feather from 'react-native-vector-icons/Feather';
 
@@ -48,6 +49,12 @@ const EVENT_FILTERS = [
 const EventsListScreen = ({ navigation }) => {
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState('all');
+  
+  // Animation values for the ActionButton
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const [isScrolling, setIsScrolling] = useState(false);
+  const scrollEndTimer = useRef(null);
 
   const filteredEvents = dummyEvents.filter(event => {
     const matchType = activeFilter === 'all' || event.type === activeFilter;
@@ -69,6 +76,17 @@ const EventsListScreen = ({ navigation }) => {
 
   return (
     <View style={{ flex: 1, backgroundColor: '#fff' }}>
+      {/* Floating Action Button with fade animation */}
+      <Animated.View style={[styles.floatingActionButton, {
+        opacity: fadeAnim
+      }]}>
+        <ActionButton
+          onPress={() => alert('Create new event feature coming soon!')}
+          iconName="add"
+          color="#007AFF"
+          size={56}
+        />
+      </Animated.View>
       <AppHeader title="Events" navigation={navigation} canGoBack={true} />
       {/* Search and filter row */}
       <View style={styles.searchRow}>
@@ -100,18 +118,58 @@ const EventsListScreen = ({ navigation }) => {
       </View>
       {/* Listing count */}
       <Text style={styles.listingCount}>{filteredEvents.length} Events</Text>
-      <FlatList
+      <Animated.FlatList
         data={filteredEvents}
         renderItem={renderEvent}
         keyExtractor={item => item.id}
         contentContainerStyle={{ padding: 18, paddingTop: 6 }}
         showsVerticalScrollIndicator={false}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { 
+            useNativeDriver: true,
+            listener: () => {
+              // Clear any existing timer
+              if (scrollEndTimer.current) {
+                clearTimeout(scrollEndTimer.current);
+              }
+              
+              // If not already scrolling, animate button fade out
+              if (!isScrolling) {
+                setIsScrolling(true);
+                Animated.timing(fadeAnim, {
+                  toValue: 0,
+                  duration: 200,
+                  useNativeDriver: true,
+                }).start();
+              }
+              
+              // Set a timer to detect when scrolling stops
+              scrollEndTimer.current = setTimeout(() => {
+                setIsScrolling(false);
+                Animated.timing(fadeAnim, {
+                  toValue: 1,
+                  duration: 500, // Slower fade in
+                  useNativeDriver: true,
+                }).start();
+              }, 200);
+            }
+          }
+        )}
+        scrollEventThrottle={16}
       />
     </View>
   );
 };
 
 const styles = StyleSheet.create({
+  // Fixed position ActionButton style with fade animation
+  floatingActionButton: {
+    position: 'absolute',
+    bottom: 20, // Close to the bottom navbar
+    right: 16, // Equal padding from right edge
+    zIndex: 1000, // Ensure it's above all content
+  },
   filterSection: {
     backgroundColor: '#fff',
     paddingVertical: 6,

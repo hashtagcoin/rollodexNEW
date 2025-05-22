@@ -10,24 +10,33 @@ export const UserProvider = ({ children }) => {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   
-  // Function to fetch user profile
+  // Function to fetch user profile from Supabase
   const fetchUserProfile = async (userId) => {
     try {
       const { data, error } = await supabase
         .from('user_profiles')
-        .select('*')
+        .select(`
+          id, username, full_name, avatar_url, bio, email, role, 
+          ndis_number, primary_disability, support_level, 
+          age, sex, address,
+          mobility_aids, dietary_requirements, accessibility_preferences,
+          comfort_traits, preferred_categories, preferred_service_formats,
+          points, is_active, created_at, updated_at
+        `)
         .eq('id', userId)
         .single();
-        
-      if (error) {
-        console.error('Error fetching profile:', error);
-        return null;
+      
+      if (error) throw error;
+      
+      if (data) {
+        console.log('User profile fetched successfully');
+        // Cache the profile data
+        await AsyncStorage.setItem('user_profile', JSON.stringify(data));
+        setProfile(data);
+        return data;
       }
       
-      // Cache the profile data
-      await AsyncStorage.setItem('user_profile', JSON.stringify(data));
-      setProfile(data);
-      return data;
+      return null;
     } catch (error) {
       console.error('Error in fetchUserProfile:', error);
       return null;
@@ -177,38 +186,144 @@ export const UserProvider = ({ children }) => {
     }
   };
   
-  // Function to update user profile
+  // Function to check if a username is already taken
+  const checkUsernameAvailability = async (username) => {
+    try {
+      // Skip check if username is unchanged
+      if (profile && profile.username === username) {
+        return { available: true };
+      }
+      
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('username')
+        .eq('username', username)
+        .maybeSingle();
+      
+      if (error) throw error;
+      
+      // If no data is returned, the username is available
+      return { available: !data };
+    } catch (error) {
+      console.error('Error checking username availability:', error);
+      return { available: false, error };
+    }
+  };
+  
+  // Function to update user profile with username validation
   const updateProfile = async (profileData) => {
     if (!user) {
       Alert.alert('Error', 'You need to be logged in to update your profile');
-      return false;
+      return { success: false, message: 'Not logged in' };
     }
     
     try {
+      // Check if username is being changed
+      if (profileData.username && (!profile.username || profile.username !== profileData.username)) {
+        console.log('Username change detected, checking availability...');
+        const { available, error } = await checkUsernameAvailability(profileData.username);
+        
+        if (error) {
+          throw new Error('Could not verify username availability');
+        }
+        
+        if (!available) {
+          return { 
+            success: false, 
+            message: 'Username already taken. Please choose another one.',
+            field: 'username'
+          };
+        }
+        
+        console.log('Username is available, proceeding with update');
+      }
+      
+      // Prepare updates for user_profiles table
       const updates = {
         ...profileData,
         id: user.id,
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
+        // Ensure all the new fields are properly formatted
+        age: profileData.age || null,
+        sex: profileData.sex || null,
+        address: profileData.address || '',
+        ndis_number: profileData.ndis_number || '',
+        primary_disability: profileData.primary_disability || '',
+        support_level: profileData.support_level || '',
+        mobility_aids: Array.isArray(profileData.mobility_aids) ? profileData.mobility_aids : [],
+        dietary_requirements: Array.isArray(profileData.dietary_requirements) ? profileData.dietary_requirements : [],
+        accessibility_preferences: typeof profileData.accessibility_preferences === 'object' ? profileData.accessibility_preferences : {},
+        comfort_traits: Array.isArray(profileData.comfort_traits) ? profileData.comfort_traits : [],
+        preferred_categories: Array.isArray(profileData.preferred_categories) ? profileData.preferred_categories : [],
+        preferred_service_formats: Array.isArray(profileData.preferred_service_formats) ? profileData.preferred_service_formats : []
       };
       
-      const { error } = await supabase
+      // Log the complete profile data being saved to verify all fields
+      console.log('Saving complete profile data to Supabase:', {
+        username: updates.username,
+        full_name: updates.full_name,
+        bio: updates.bio,
+        age: updates.age,
+        sex: updates.sex,
+        address: updates.address,
+        ndis_number: updates.ndis_number,
+        primary_disability: updates.primary_disability,
+        support_level: updates.support_level,
+        mobility_aids: Array.isArray(updates.mobility_aids) ? updates.mobility_aids.length : 0,
+        dietary_requirements: Array.isArray(updates.dietary_requirements) ? updates.dietary_requirements.length : 0,
+        accessibility_preferences: updates.accessibility_preferences ? 'Set' : 'Not set',
+        comfort_traits: Array.isArray(updates.comfort_traits) ? updates.comfort_traits.length : 0,
+        preferred_categories: Array.isArray(updates.preferred_categories) ? updates.preferred_categories.length : 0,
+        preferred_service_formats: Array.isArray(updates.preferred_service_formats) ? updates.preferred_service_formats.length : 0
+      });
+      
+      // Update user_profiles table
+      const { data: savedData, error: profileError } = await supabase
         .from('user_profiles')
-        .upsert(updates, { onConflict: ['id'] });
+        .upsert(updates, { onConflict: ['id'] })
+        .select();
+      
+      if (profileError) throw profileError;
+      
+      // Verify the saved data
+      console.log('Profile saved successfully. Received data:', savedData ? 'Data returned' : 'No data returned');
+      
+      // If username or full_name is changed, also update auth.users metadata
+      if (profileData.username !== profile.username || profileData.full_name !== profile.full_name) {
+        console.log('Updating auth user metadata...');
+        const { error: authError } = await supabase.auth.updateUser({
+          data: { 
+            username: profileData.username,
+            full_name: profileData.full_name
+          }
+        });
         
-      if (error) {
-        throw error;
+        if (authError) {
+          console.error('Error updating auth metadata:', authError);
+          // Continue anyway as profile was updated successfully
+        }
       }
       
-      // Update local state and cache
-      const updatedProfile = { ...profile, ...profileData };
+      // Update local state and cache with the actual saved data from Supabase
+      // This ensures we're using exactly what was saved in the database
+      const updatedProfile = savedData && savedData.length > 0 
+        ? savedData[0] 
+        : { ...profile, ...profileData };
+        
       setProfile(updatedProfile);
       await AsyncStorage.setItem('user_profile', JSON.stringify(updatedProfile));
       
-      return true;
+      return { 
+        success: true, 
+        data: updatedProfile  // Return the saved data for verification
+      };
     } catch (error) {
       console.error('Error updating profile:', error);
-      Alert.alert('Profile Update Failed', error.message || 'Could not update profile');
-      return false;
+      return { 
+        success: false, 
+        message: error.message || 'Could not update profile', 
+        error 
+      };
     }
   };
   
