@@ -3,21 +3,17 @@ import {
   View, 
   Text, 
   StyleSheet, 
-  ScrollView, 
-  TouchableOpacity, 
-  TextInput, 
   ActivityIndicator, 
   FlatList, 
   Dimensions
 } from 'react-native';
-import { Feather, MaterialCommunityIcons, Ionicons } from '@expo/vector-icons'; 
 import { useNavigation, useFocusEffect } from '@react-navigation/native'; 
 import { supabase } from '../../lib/supabaseClient'; 
 import ServiceCard from '../../components/cards/ServiceCard'; 
 import HousingCard from '../../components/cards/HousingCard';
 import AppHeader from '../../components/layout/AppHeader';
 import CachedImage from '../../components/common/CachedImage';
-import SortTray from '../../components/common/SortTray';
+import SearchComponent from '../../components/common/SearchComponent';
 import { 
   COLORS, 
   SIZES, 
@@ -62,7 +58,6 @@ const ProviderDiscoveryScreen = ({ route }) => {
   const [searchTerm, setSearchTerm] = useState('');
   
   // Sort related state
-  const [isSortTrayVisible, setIsSortTrayVisible] = useState(false);
   const [sortConfig, setSortConfig] = useState({
     field: 'created_at',
     direction: 'desc'
@@ -144,7 +139,6 @@ const ProviderDiscoveryScreen = ({ route }) => {
   // Handle sort changes
   const handleSortChange = (newSortConfig) => {
     setSortConfig(newSortConfig);
-    setIsSortTrayVisible(false);
   };
   
   // Navigation handlers
@@ -250,87 +244,26 @@ const ProviderDiscoveryScreen = ({ route }) => {
         onBackPressOverride={handleBackPressProviderDiscovery} 
       />
 
-      <View style={styles.searchBarContainer}>
-        <TextInput
-          style={styles.searchInput}
-          placeholder={`Search in ${selectedCategory}...`}
-          value={searchTerm}
-          onChangeText={setSearchTerm}
-          returnKeyType="search"
-        />
-      </View>
-
-      <View style={styles.categoryContainer}>
-        <ScrollView 
-          horizontal 
-          showsHorizontalScrollIndicator={false} 
-          contentContainerStyle={styles.categoryScrollView}
-        >
-          {CATEGORIES.map(category => (
-            <TouchableOpacity
-              key={category}
-              style={[
-                styles.categoryButton, 
-                selectedCategory === category && styles.selectedCategoryButton
-              ]}
-              onPress={() => setSelectedCategory(category)}
-            >
-              <Text style={[
-                styles.categoryButtonText, 
-                selectedCategory === category && styles.selectedCategoryButtonText
-              ]}>
-                {category}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
-
-      {/* View mode toggle and sort controls */}
-      <View style={styles.viewModeContainer}>
-        {/* View mode buttons in rounded group box */}
-        <View style={styles.viewModeButtonGroup}>
-          <TouchableOpacity 
-            style={[styles.viewModeButton, viewMode === 'Grid' && styles.selectedViewModeButton, styles.leftButton]}
-            onPress={() => setViewMode('Grid')}
-          >
-            <Ionicons name="grid-outline" size={18} color={viewMode === 'Grid' ? '#FFFFFF' : '#000000'} />
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={[styles.viewModeButton, viewMode === 'List' && styles.selectedViewModeButton, styles.middleButton]}
-            onPress={() => setViewMode('List')}
-          >
-            <MaterialCommunityIcons name="format-list-bulleted" size={18} color={viewMode === 'List' ? '#FFFFFF' : '#000000'} />
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={[styles.viewModeButton, viewMode === 'Swipe' && styles.selectedViewModeButton, styles.rightButton]}
-            onPress={() => setViewMode('Swipe')}
-          >
-            <Ionicons name="swap-horizontal" size={18} color={viewMode === 'Swipe' ? '#FFFFFF' : '#000000'} />
-          </TouchableOpacity>
-        </View>
-        
-        {/* Sort button */}
-        <TouchableOpacity style={styles.sortButton} onPress={() => setIsSortTrayVisible(true)}>
-          <Ionicons name="filter-outline" size={20} color="#000000" />
-          <Text style={styles.sortButtonText}>Sort</Text>
-        </TouchableOpacity>
-      </View>
+      <SearchComponent
+        contentType={selectedCategory === 'Housing' ? 'housing' : 'services'}
+        categories={CATEGORIES}
+        selectedCategory={selectedCategory}
+        onCategoryChange={setSelectedCategory}
+        searchTerm={searchTerm}
+        onSearchChange={setSearchTerm}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+        sortConfig={sortConfig}
+        onSortChange={handleSortChange}
+        viewModes={VIEW_MODES}
+        showCategories={true}
+        showViewModes={true}
+        showSort={true}
+      />
 
       <View style={styles.contentViewWrapper}>
         {renderContent()}
       </View>
-      
-      {/* Context-aware Sort Tray */}
-      <SortTray
-        visible={isSortTrayVisible}
-        onClose={() => setIsSortTrayVisible(false)}
-        contentType={selectedCategory === 'Housing' ? 'housing' : 'services'}
-        currentSort={sortConfig}
-        onSortChange={handleSortChange}
-      />
     </View>
   );
 };
@@ -339,113 +272,6 @@ const styles = StyleSheet.create({
   screenContainer: {
     flex: 1,
     backgroundColor: '#F8F7F3', // Lighter background for overall screen
-  },
-  searchBarContainer: {
-    padding: 10,
-    backgroundColor: '#FFFFFF', // White background for search bar area
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0', // Light gray border
-  },
-  searchInput: {
-    backgroundColor: '#F0F0F0', // Light gray for input field
-    borderRadius: 20,
-    paddingHorizontal: 15,
-    paddingVertical: 10,
-    fontSize: 16,
-    color: '#333333', // Darker text color
-  },
-  categoryContainer: {
-    paddingVertical: 10,
-    backgroundColor: '#FFFFFF', // White background for categories
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
-  },
-  categoryScrollView: {
-    paddingHorizontal: 10,
-  },
-  categoryButton: {
-    backgroundColor: '#F0F0F0', // Light gray background
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    marginHorizontal: 6,
-  },
-  selectedCategoryButton: {
-    backgroundColor: '#3434eb', // New blue highlight color
-  },
-  categoryButtonText: {
-    fontSize: 14,
-    color: '#666666', // Medium gray text
-    fontWeight: '500',
-  },
-  selectedCategoryButtonText: {
-    color: '#FFFFFF', // White text for selected category
-    fontWeight: '600',
-  },
-  viewModeContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between', // Position buttons left and sort right
-    alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 16, // Add horizontal padding
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
-  },
-  viewModeButtonGroup: {
-    flexDirection: 'row',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-    overflow: 'hidden',
-  },
-  viewModeButton: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'transparent', // No background as requested
-    flexDirection: 'row',
-  },
-  leftButton: {
-    borderTopLeftRadius: 8,
-    borderBottomLeftRadius: 8,
-  },
-  middleButton: {
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
-    borderColor: '#E0E0E0',
-  },
-  rightButton: {
-    borderTopRightRadius: 8,
-    borderBottomRightRadius: 8,
-  },
-  selectedViewModeButton: {
-    backgroundColor: '#3434eb', // New blue highlight color
-  },
-  viewModeButtonText: {
-    color: '#000000', // Black text
-    fontSize: 14,
-    fontWeight: '500',
-    marginLeft: 4,
-  },
-  selectedViewModeButtonText: {
-    color: '#FFFFFF', // White text
-  },
-  sortButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-  },
-  sortButtonText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#000000',
-    marginLeft: 6,
   },
   contentViewWrapper: {
     flex: 1,
@@ -464,7 +290,7 @@ const styles = StyleSheet.create({
   },
   gridContainer: {
     paddingVertical: 10,
-    paddingHorizontal: 4,
+    paddingHorizontal: 2,
     width: '100%',
   },
   listContainer: {

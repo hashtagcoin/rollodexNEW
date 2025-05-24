@@ -75,9 +75,32 @@ const BookingConfirmationModal = ({
               {/* Date and Time */}
               <View style={styles.detailRow}>
                 <Feather name="calendar" size={18} color="#2E7D32" />
-                <Text style={styles.detailText}>
-                  {formatDate(bookingData.scheduled_at)}
-                </Text>
+                <View style={styles.detailTextContainer}>
+                  <Text style={styles.detailText}>
+                    {formatDate(bookingData.scheduled_at)}
+                  </Text>
+                  {bookingData.duration && (
+                    <View style={styles.additionalDetailRow}>
+                      <Feather name="clock" size={14} color="#666" style={styles.smallIcon} />
+                      <Text style={styles.additionalDetailText}>
+                        {bookingData.duration}
+                      </Text>
+                    </View>
+                  )}
+                  {bookingData.format && (
+                    <View style={styles.additionalDetailRow}>
+                      <Feather 
+                        name={bookingData.format === 'Online' ? 'video' : 'map-pin'} 
+                        size={14} 
+                        color="#666" 
+                        style={styles.smallIcon} 
+                      />
+                      <Text style={styles.additionalDetailText}>
+                        {bookingData.format}
+                      </Text>
+                    </View>
+                  )}
+                </View>
               </View>
               
               {/* Price Breakdown */}
@@ -197,10 +220,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 10,
   },
-  detailText: {
+  detailTextContainer: {
     marginLeft: 10,
-    fontSize: 16,
+  },
+  detailText: {
+    fontSize: 14,
     color: '#333',
+  },
+  additionalDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  smallIcon: {
+    marginRight: 6,
+  },
+  additionalDetailText: {
+    fontSize: 13,
+    color: '#666',
   },
   priceContainer: {
     marginTop: 20,

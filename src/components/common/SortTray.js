@@ -192,7 +192,7 @@ const SortTray = ({ visible, onClose, contentType, currentSort, onSortChange }) 
                         <Ionicons 
                           name={directionIcon} 
                           size={18} 
-                          color="#3434eb" 
+                          color="#000" 
                           style={styles.directionIcon} 
                         />
                       )}
@@ -256,22 +256,23 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   optionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 14,
+    paddingVertical: 15,
+    paddingHorizontal: 20,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   selectedOption: {
-    backgroundColor: 'rgba(52, 52, 235, 0.05)',
+    // No background color for selected option
   },
   optionText: {
     fontSize: 16,
     color: '#000',
   },
   selectedOptionText: {
-    color: '#3434eb',
+    color: '#000',
     fontWeight: '600',
   },
   directionIcon: {
@@ -281,15 +282,15 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
   },
   applyButton: {
-    backgroundColor: '#3434eb',
+    backgroundColor: '#000',
+    padding: 15,
+    margin: 20,
     borderRadius: 8,
-    paddingVertical: 12,
     alignItems: 'center',
   },
   applyButtonText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '600',
   },
 });
 

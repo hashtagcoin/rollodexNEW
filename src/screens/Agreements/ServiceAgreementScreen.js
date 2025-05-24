@@ -20,8 +20,35 @@ import AppHeader from '../../components/layout/AppHeader';
 import { supabase } from '../../lib/supabaseClient';
 import { Feather } from '@expo/vector-icons';
 
+// Helper function to safely parse date strings
+const parseDate = (dateString) => {
+  try {
+    return dateString ? new Date(dateString) : new Date();
+  } catch (e) {
+    console.warn('Error parsing date:', e);
+    return new Date();
+  }
+};
+
 const ServiceAgreementScreen = ({ route, navigation }) => {
-  const { serviceId, viewOnly, agreementId, agreementContent, exploreParams } = route.params;
+  // Get serviceId from root level params or from bookingDetails
+  const { 
+    serviceId: rootServiceId, 
+    viewOnly, 
+    agreementId, 
+    agreementContent, 
+    bookingDetails, 
+    exploreParams 
+  } = route.params || {};
+  
+  // Use rootServiceId first, fall back to bookingDetails.serviceId
+  const serviceId = rootServiceId || bookingDetails?.serviceId;
+  
+  // Parse the date if it exists in bookingDetails
+  const parsedBookingDetails = bookingDetails ? {
+    ...bookingDetails,
+    date: parseDate(bookingDetails.date)
+  } : null;
   const [loading, setLoading] = useState(true);
   const [serviceData, setServiceData] = useState(null);
   const [providerData, setProviderData] = useState(null);
@@ -58,13 +85,29 @@ const ServiceAgreementScreen = ({ route, navigation }) => {
     if (viewOnly && agreementContent) {
       setAgreementHtml(agreementContent);
       setLoading(false);
-    } else {
-      // Otherwise fetch the service and provider data
-      fetchData();
+      return;
     }
+    
+    // Validate serviceId before proceeding
+    if (!serviceId) {
+      console.error('No serviceId provided in navigation params');
+      Alert.alert('Error', 'Service information is missing. Please try again.', [
+        { text: 'OK', onPress: () => navigation.goBack() }
+      ]);
+      return;
+    }
+    
+    // Otherwise fetch the service and provider data
+    fetchData();
   }, [serviceId, viewOnly, agreementContent]);
   
   const fetchData = async () => {
+    if (!serviceId) {
+      console.error('Cannot fetch data: serviceId is undefined');
+      setLoading(false);
+      return;
+    }
+    
     try {
       setLoading(true);
       
@@ -75,11 +118,14 @@ const ServiceAgreementScreen = ({ route, navigation }) => {
         .eq('id', serviceId)
         .single();
         
-      if (serviceError) throw serviceError;
+      if (serviceError) {
+        console.error('Error fetching service data:', serviceError);
+        throw serviceError;
+      }
       
       if (serviceData) {
         setServiceData(serviceData);
-        setProviderData(serviceData.service_providers);
+        setProviderData(serviceData.service_providers || {});
       }
       
       // 2. Fetch current user profile (using the test user from memory)
@@ -108,6 +154,10 @@ const ServiceAgreementScreen = ({ route, navigation }) => {
   };
   
   const generateAgreementHtml = (service, provider, user) => {
+    if (!service || !provider || !user) {
+      console.error('Missing required data to generate agreement');
+      return;
+    }
     // Format the date
     const currentDate = new Date().toLocaleDateString('en-AU', {
       day: '2-digit',
@@ -327,17 +377,30 @@ const ServiceAgreementScreen = ({ route, navigation }) => {
   };
   
   // Handle signature
-  const handleSignature = (signature) => {
-    setSignature(signature);
+  const handleSaveAgreement = async (signatureData) => {
+    if (!signatureData) {
+      console.error('No signature data provided');
+      return;
+    }
+    
+    if (!serviceId) {
+      console.error('Cannot save agreement: serviceId is undefined');
+      Alert.alert('Error', 'Service information is missing. Cannot save agreement.');
+      return;
+    }
+    
+    setSignature(signatureData);
     setShowSignatureModal(false);
   };
   
-  // Clear signature
+  // Clear the signature
   const handleClear = () => {
     setSignature(null);
+    if (signatureRef.current) {
+      signatureRef.current.clearSignature();
+    }
   };
   
-  // Handle WebView messages
   const handleWebViewMessage = (event) => {
     // You can handle messages from the WebView here if needed
     console.log('Message from WebView:', event.nativeEvent.data);
@@ -377,27 +440,49 @@ const ServiceAgreementScreen = ({ route, navigation }) => {
       // Create a timestamp for the agreement
       const timestamp = new Date().toISOString();
       
-      // Calculate NDIS coverage (85% for demo purposes)
-      const totalPrice = Number(serviceData.price) || 0;
-      const ndisCoveredAmount = totalPrice * 0.85;
-      const gapPayment = totalPrice - ndisCoveredAmount;
+      // Use booking details if available, otherwise calculate
+      const totalPrice = bookingDetails?.price || Number(serviceData.price) || 0;
+      const ndisCoveredAmount = bookingDetails?.ndisCoverage || (totalPrice * 0.85);
+      const gapPayment = bookingDetails?.gapPayment || (totalPrice - ndisCoveredAmount);
+      const paymentMethod = bookingDetails?.paymentMethod || 'ndis';
       
       // Generate a placeholder URL for the agreement - in a real app you'd upload to storage
       const agreementUrl = `https://rollodex-agreements.storage.supabase.co/agreements/${userData.id}/${serviceId}/${new Date().getTime()}.pdf`;
 
-      // Create a date 3 days from now for the booking
-      const scheduledAt = new Date();
-      scheduledAt.setDate(scheduledAt.getDate() + 3);
+      // Use the selected date and time from booking details, or default to 3 days from now
+      let scheduledAt = new Date();
+      if (bookingDetails?.date) {
+        const [hours, minutes] = (bookingDetails.time || '9:00 AM')
+          .replace(' AM', '').replace(' PM', '')
+          .split(':')
+          .map(Number);
+        
+        scheduledAt = new Date(bookingDetails.date);
+        scheduledAt.setHours(hours + (bookingDetails.time?.includes('PM') && hours < 12 ? 12 : 0));
+        scheduledAt.setMinutes(minutes || 0);
+      } else {
+        scheduledAt.setDate(scheduledAt.getDate() + 3);
+      }
       
-      // Create the provider checklist JSON
+      // Create the provider checklist JSON with payment method
       const providerChecklist = JSON.stringify([
         { item: 'Service Agreement Signed', checked: true, timestamp: timestamp },
-        { item: 'Payment Method', value: 'NDIS', timestamp: timestamp }
+        { item: 'Payment Method', value: paymentMethod.toUpperCase(), timestamp: timestamp },
+        { item: 'Service Format', value: bookingDetails?.format || 'In-Person', timestamp: timestamp },
+        { item: 'Duration', value: bookingDetails?.duration || '1 hour', timestamp: timestamp }
       ]);
       
-      // Prepare the notes
-      const notes = `Service agreement signed on ${new Date(timestamp).toLocaleString()}. Payment method: NDIS.`;
-      const providerNotes = `Participant signed service agreement. Agreement version: 1`;
+      // Prepare the notes with booking details
+      const format = bookingDetails?.format || 'In-Person';
+      const duration = bookingDetails?.duration || '1 hour';
+      const notes = `Service agreement signed on ${new Date(timestamp).toLocaleString()}. ` +
+                   `Payment method: ${paymentMethod.toUpperCase()}. ` +
+                   `Format: ${format}. Duration: ${duration}.`;
+                   
+      const providerNotes = `Participant signed service agreement. ` +
+                         `Service type: ${format}. ` +
+                         `Duration: ${duration}. ` +
+                         `Agreement version: 1`;
 
       // Use the admin function to save both the agreement and booking
       // This bypasses RLS policies by using SECURITY DEFINER
@@ -438,7 +523,7 @@ const ServiceAgreementScreen = ({ route, navigation }) => {
       
       // No need to fetch booking details again since we already have them
       
-      // Prepare the data for the confirmation modal
+      // Prepare the data for the confirmation modal with all booking details
       const confirmationData = {
         ...bookingData,
         service_title: serviceData.title,
@@ -446,7 +531,16 @@ const ServiceAgreementScreen = ({ route, navigation }) => {
         provider_name: providerData.business_name,
         service_media_url: serviceData.media_urls && serviceData.media_urls.length > 0 
           ? serviceData.media_urls[0] 
-          : 'https://via.placeholder.com/400x200'
+          : 'https://via.placeholder.com/400x200',
+        // Add booking details
+        date: scheduledAt,
+        time: bookingDetails?.time || '9:00 AM',
+        duration: bookingDetails?.duration || '1 hour',
+        format: bookingDetails?.format || 'In-Person',
+        price: totalPrice,
+        ndisCoverage: ndisCoveredAmount,
+        gapPayment: gapPayment,
+        paymentMethod: paymentMethod
       };
       
       // Set the booking data for the modal
@@ -534,7 +628,7 @@ const ServiceAgreementScreen = ({ route, navigation }) => {
             <View style={styles.signaturePadContainer}>
               <SignatureScreen
                 ref={signatureRef}
-                onOK={handleSignature}
+                onOK={handleSaveAgreement}
                 onEmpty={() => Alert.alert('Signature Required', 'Please provide your signature')}
                 descriptionText="Sign above"
                 clearText="Clear"

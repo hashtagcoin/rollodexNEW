@@ -11,7 +11,7 @@ const { width } = Dimensions.get('window');
 
 // Calculate width for grid dynamically
 const numColumnsGrid = 2;
-const gridMarginHorizontal = 8;
+const gridMarginHorizontal = 4; // Reduced from 8 to 4 (half the original value)
 // Calculate exactly half the screen width with just enough margin to fit two cards side by side
 const gridCardWidth = (width / numColumnsGrid) - (gridMarginHorizontal * 2);
 
@@ -154,9 +154,9 @@ const HousingCard = ({ item, onPress, displayAs = 'grid', onImageLoaded }) => {
               <Text style={styles.listDetailText}>{bathrooms} baths</Text>
             </View>
             
-            {/* Bottom Section - Price */}
-            <View style={styles.listBottomSection}>
-              <Text style={styles.listPriceValue}>{formattedPrice}</Text>
+            {/* Price on its own row */}
+            <View style={styles.listPriceRow}>
+              <Text style={styles.listPriceValue}>{weeklyRent || formattedPrice}</Text>
             </View>
           </View>
         </View>
@@ -229,10 +229,10 @@ const HousingCard = ({ item, onPress, displayAs = 'grid', onImageLoaded }) => {
               <Text style={styles.detailText}>{bathrooms} baths</Text>
             </View>
             
-            {/* Price Row with Monthly and Weekly Rent */}
-            <View style={styles.bottomContentRow}>
-              <Text style={styles.priceValue}>{formattedPrice}</Text>
-              {weeklyRent && <Text style={styles.weeklyRentValue}>{weeklyRent}</Text>}
+            {/* Price Row positioned at bottom right */}
+            <View style={styles.priceRow}>
+              <View style={{flex: 1}} />
+              <Text style={styles.priceValue}>{weeklyRent || formattedPrice}</Text>
             </View>
           </View>
         </View>
@@ -260,8 +260,8 @@ const styles = StyleSheet.create({
     flex: 1, // Take up exactly half the space in the row
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12, // Vertical spacing between cards
-    paddingHorizontal: 4, // Minimal horizontal padding
+    marginBottom: 8, // Reduced vertical spacing between cards
+    paddingHorizontal: 1, // Minimal horizontal padding (reduced from 4 to 1)
   },
   gridCardContainer: {
     width: gridCardWidth,
@@ -336,7 +336,14 @@ const styles = StyleSheet.create({
   bedsAndBathsRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginTop: 6,
     marginBottom: 8,
+  },
+  priceRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    marginTop: 4,
   },
   detailText: {
     fontSize: 14,
@@ -350,8 +357,9 @@ const styles = StyleSheet.create({
   },
   priceValue: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#000',
+    fontWeight: 'bold',
+    color: '#000', // Changed to black as requested
+    textAlign: 'right',
   },
   weeklyRentValue: {
     fontSize: 14,
@@ -360,32 +368,46 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
 
-  // LIST VIEW STYLES
+  // LIST VIEW STYLES - Matching ServiceCard list view styles
   listCardContainer: {
-    backgroundColor: '#FFFFFF',
-    marginHorizontal: 16,
-    marginVertical: 8,
-    borderRadius: 12,
+    width: '100%',
+    paddingHorizontal: 0,
+    marginTop: 2, // Reduced from 4px to 2px for tighter spacing
+    marginBottom: 4, // Reduced from 8px to 4px for tighter spacing
+    backgroundColor: '#fff',
+    borderRadius: 8, 
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.15,
     shadowRadius: 4,
     elevation: 3,
     overflow: 'hidden',
   },
   listCardInner: {
     flexDirection: 'row',
-    borderRadius: 12,
+    backgroundColor: '#fff',
     overflow: 'hidden',
+    paddingTop: 8,
+    paddingRight: 12,
+    paddingBottom: 6, // Reduced from 8px to 6px for less bottom padding
+    paddingLeft: 12,
+    borderRadius: 8,
   },
   listImageContainer: {
-    width: 120,
-    height: 120,
+    width: 100, // Matching ServiceCard image size
+    height: 100, // Matching ServiceCard image size
     position: 'relative',
+    borderRadius: 8,
+    overflow: 'hidden',
+    marginRight: 16,
+    backgroundColor: '#f8f8f8',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   listImage: {
     width: '100%',
     height: '100%',
+    resizeMode: 'cover',
   },
   listHeartIconContainer: {
     position: 'absolute',
@@ -412,7 +434,10 @@ const styles = StyleSheet.create({
   },
   listContentContainer: {
     flex: 1,
-    padding: 12,
+    paddingTop: 0,
+    paddingRight: 12,
+    paddingBottom: 6, // Reduced from 12px to 6px for less bottom padding
+    paddingLeft: 12,
     justifyContent: 'space-between',
   },
   listTopSection: {
@@ -437,7 +462,7 @@ const styles = StyleSheet.create({
   listDetailRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 4,
+    marginTop: 8,
   },
   detailIcon: {
     marginRight: 4,
@@ -446,14 +471,15 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#555',
   },
-  listBottomSection: {
+  listPriceRow: {
     alignItems: 'flex-end',
-    justifyContent: 'flex-end',
+    marginTop: 4,
   },
   listPriceValue: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: 'bold',
     color: '#000',
+    marginLeft: 'auto', // Push to right
   },
 
   // SWIPE VIEW STYLES

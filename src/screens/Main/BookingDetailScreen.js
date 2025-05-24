@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, FlatList, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, FlatList, Alert, Picker } from 'react-native';
 import AppHeader from '../../components/layout/AppHeader';
 import { Ionicons, Feather } from '@expo/vector-icons';
 
@@ -15,7 +15,15 @@ const historicalAppointments = [
 
 const BookingDetailScreen = ({ navigation }) => {
   const [pending, setPending] = useState(pendingAppointments);
-  const [history, setHistory] = useState(historicalAppointments);
+    const [history, setHistory] = useState(historicalAppointments);
+  const [selectedDuration, setSelectedDuration] = useState('1 hour');
+  
+  // Generate duration options from 15 mins to 24 hours
+  const durationOptions = [
+    '15 mins', '30 mins', '45 mins', '1 hour', '1.5 hours', 
+    '2 hours', '3 hours', '4 hours', '6 hours', '8 hours',
+    '12 hours', '24 hours'
+  ];
 
   const handleCancel = (id) => {
     Alert.alert('Cancel Appointment', 'Are you sure you want to cancel this appointment?', [
@@ -63,11 +71,26 @@ const BookingDetailScreen = ({ navigation }) => {
               <View style={styles.card}>
                 <View style={styles.cardHeaderRow}>
                   <Ionicons name="calendar-outline" size={22} color="#10B981" />
-                  <Text style={styles.cardTitle}>{item.title}</Text>
+                  <Text style={[styles.cardTitle, { color: '#000' }]}>{item.title}</Text>
                   <Text style={styles.cardStatusUpcoming}>{item.status}</Text>
                 </View>
                 <Text style={styles.cardSubText}>{item.provider}</Text>
                 <Text style={styles.cardSubText}>Date: {item.date} at {item.time}</Text>
+                <View style={styles.durationContainer}>
+                  <Text style={styles.durationLabel}>Duration: </Text>
+                  <View style={styles.pickerContainer}>
+                    <Picker
+                      selectedValue={selectedDuration}
+                      style={styles.picker}
+                      onValueChange={(itemValue) => setSelectedDuration(itemValue)}
+                      mode="dropdown"
+                    >
+                      {durationOptions.map((duration) => (
+                        <Picker.Item key={duration} label={duration} value={duration} />
+                      ))}
+                    </Picker>
+                  </View>
+                </View>
                 <View style={styles.cardActionsRow}>
                   <TouchableOpacity style={styles.rescheduleBtn} onPress={() => handleReschedule(item.id)}>
                     <Text style={styles.rescheduleBtnText}>Reschedule</Text>
@@ -84,7 +107,7 @@ const BookingDetailScreen = ({ navigation }) => {
               <View style={styles.card}>
                 <View style={styles.cardHeaderRow}>
                   <Ionicons name="calendar-outline" size={22} color={item.status === 'Completed' ? '#10B981' : '#F87171'} />
-                  <Text style={styles.cardTitle}>{item.title}</Text>
+                  <Text style={[styles.cardTitle, { color: '#000' }]}>{item.title}</Text>
                   <Text style={item.status === 'Completed' ? styles.cardStatusCompleted : styles.cardStatusCancelled}>{item.status}</Text>
                 </View>
                 <Text style={styles.cardSubText}>{item.provider}</Text>
@@ -136,22 +159,45 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   cardTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginLeft: 8,
+    fontSize: 18,
+    fontWeight: '600',
+    marginLeft: 10,
     flex: 1,
-    color: '#222',
+    color: '#000',
   },
   cardSubText: {
-    fontSize: 13,
-    color: '#888',
-    marginBottom: 2,
+    fontSize: 14,
+    color: '#666',
+    marginTop: 4,
+    marginLeft: 32,
+  },
+  durationContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    marginLeft: 32,
+  },
+  durationLabel: {
+    fontSize: 14,
+    color: '#666',
+    marginRight: 8,
+  },
+  pickerContainer: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    marginRight: 16,
+    backgroundColor: '#fff',
+  },
+  picker: {
+    height: 40,
+    width: '100%',
   },
   cardStatusUpcoming: {
     color: '#10B981',
     fontWeight: '700',
     fontSize: 13,
-    marginLeft: 8,
   },
   cardStatusCompleted: {
     color: '#10B981',

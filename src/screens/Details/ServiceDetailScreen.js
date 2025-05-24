@@ -219,17 +219,19 @@ const ServiceDetailScreen = ({ route }) => {
             style={styles.heroGradient}
           />
           
-          {/* Like button */}
+          {/* Like button - styled to match ServiceCard */}
           <TouchableOpacity 
-            style={styles.likeButton}
+            style={styles.heartIconContainer}
             onPress={() => setLiked(!liked)}
+            activeOpacity={0.8}
           >
-            <Feather 
-              name={liked ? "heart" : "heart"} 
-              size={24} 
-              color={liked ? "#E91E63" : "white"} 
-              solid={liked}
-            />
+            <View style={styles.heartIconCircle}>
+              <Ionicons 
+                name={liked ? "heart" : "heart-outline"} 
+                size={20} 
+                color={liked ? "#FF6B6B" : "white"} 
+              />
+            </View>
           </TouchableOpacity>
         </View>
         
@@ -358,13 +360,19 @@ const styles = StyleSheet.create({
     bottom: 0,
     height: '50%',
   },
-  likeButton: {
+  heartIconContainer: {
     position: 'absolute',
-    right: 16,
     top: 16,
-    padding: 8,
-    backgroundColor: 'rgba(0,0,0,0.3)',
+    right: 16,
+    zIndex: 10,
+  },
+  heartIconCircle: {
+    width: 40,
+    height: 40,
     borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   title: {
     fontSize: 24,

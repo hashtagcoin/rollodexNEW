@@ -8,7 +8,9 @@ import {
   ScrollView,
   ActivityIndicator,
   Platform,
-  Modal
+  Modal,
+  Picker,
+  Switch
 } from 'react-native';
 import { Feather, MaterialIcons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabaseClient';
@@ -23,7 +25,21 @@ const CreateBookingScreen = ({ route, navigation }) => {
   const [selectedTime, setSelectedTime] = useState('9:00 AM');
   const [isDateModalVisible, setDateModalVisible] = useState(false);
   const [isTimeModalVisible, setTimeModalVisible] = useState(false);
+  const [isDurationModalVisible, setDurationModalVisible] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('ndis'); // ndis, visa, mastercard
+  const [selectedDuration, setSelectedDuration] = useState('1 hour');
+  const [isOnline, setIsOnline] = useState(false);
+  
+  // Duration options from 15 mins to 24 hours
+  const durationOptions = [
+    '15 mins', '30 mins', '45 mins', '1 hour', '1.5 hours', 
+    '2 hours', '3 hours', '4 hours', '6 hours', '8 hours',
+    '12 hours', '24 hours'
+  ];
+  
+  const toggleFormat = () => {
+    setIsOnline(previousState => !previousState);
+  };
   const [showConfirmButton, setShowConfirmButton] = useState(false);
   
   // Compliance modal state
@@ -132,6 +148,11 @@ const CreateBookingScreen = ({ route, navigation }) => {
     setTimeModalVisible(false);
   };
   
+  const handleSelectDuration = (duration) => {
+    setSelectedDuration(duration);
+    setDurationModalVisible(false);
+  };
+  
   const formatDate = (date) => {
     const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -168,20 +189,46 @@ const CreateBookingScreen = ({ route, navigation }) => {
   };
   
   const handleReviewAgreement = () => {
-    // Get the category from service data to maintain filter when returning to explore
-    const category = service?.category || 'Therapy';
-    
-    // Close the agreement modal
-    setAgreementModalVisible(false);
-    
-    // Navigate to service agreement with explore parameters to return to the same view
-    navigation.navigate('ServiceAgreement', { 
-      serviceId: serviceId,
-      exploreParams: {
-        initialCategory: category,
-        // Add any other filter parameters here that should be preserved
+    try {
+      if (!serviceId) {
+        console.error('Cannot proceed: serviceId is undefined');
+        Alert.alert('Error', 'Service information is missing. Please try again.');
+        return;
       }
-    });
+
+      // Get the category from service data to maintain filter when returning to explore
+      const category = service?.category || 'Therapy';
+      
+      // Close the agreement modal
+      setAgreementModalVisible(false);
+      
+      // Prepare booking details with serialized date
+      const bookingDetails = {
+        serviceId: serviceId,
+        date: selectedDate ? selectedDate.toISOString() : new Date().toISOString(),
+        time: selectedTime || '12:00',
+        duration: selectedDuration || 60,
+        format: isOnline ? 'Online' : 'In-Person',
+        provider: provider?.name || 'Service Provider',
+        serviceTitle: service?.title || 'Service',
+        price: costs?.totalCost || 0,
+        ndisCoverage: costs?.ndisCoverage || 0,
+        gapPayment: costs?.gapPayment || 0,
+        paymentMethod: paymentMethod || 'Credit Card',
+      };
+      
+      // Navigate to service agreement with serialized data
+      navigation.navigate('ServiceAgreement', { 
+        serviceId: serviceId, // Pass serviceId at the root level for easier access
+        bookingDetails,
+        exploreParams: {
+          initialCategory: category,
+        }
+      });
+    } catch (error) {
+      console.error('Error in handleReviewAgreement:', error);
+      Alert.alert('Error', 'Failed to proceed to agreement. Please try again.');
+    }
   };
   
   const handleCancelBooking = () => {
@@ -227,7 +274,7 @@ const CreateBookingScreen = ({ route, navigation }) => {
         
         {/* Date Selection */}
         <View style={styles.sectionContainer}>
-          <Text style={styles.sectionTitle}>Date</Text>
+          <Text style={[styles.sectionTitle, { color: '#000' }]}>Date</Text>
           <TouchableOpacity 
             style={styles.selectionContainer}
             onPress={() => setDateModalVisible(true)}
@@ -239,19 +286,57 @@ const CreateBookingScreen = ({ route, navigation }) => {
         
         {/* Time Selection */}
         <View style={styles.sectionContainer}>
-          <Text style={styles.sectionTitle}>Time</Text>
+          <Text style={[styles.sectionTitle, { color: '#000' }]}>Time</Text>
           <TouchableOpacity 
             style={styles.selectionContainer}
             onPress={() => setTimeModalVisible(true)}
           >
-            <Text style={styles.selectionText}>{selectedTime}</Text>
-            <Feather name="chevron-right" size={24} color="#333" />
+            <Text style={[styles.selectionText, { color: '#000' }]}>{selectedTime}</Text>
+            <Feather name="chevron-right" size={24} color="#000" />
           </TouchableOpacity>
+        </View>
+        
+        {/* Duration Selection */}
+        <View style={styles.sectionContainer}>
+          <Text style={[styles.sectionTitle, { color: '#000' }]}>Duration</Text>
+          <TouchableOpacity 
+            style={styles.selectionContainer}
+            onPress={() => setDurationModalVisible(true)}
+          >
+            <Text style={[styles.selectionText, { color: '#000' }]}>{selectedDuration}</Text>
+            <Feather name="chevron-right" size={24} color="#000" />
+          </TouchableOpacity>
+        </View>
+        
+        {/* Format Selection */}
+        <View style={styles.sectionContainer}>
+          <Text style={[styles.sectionTitle, { color: '#000' }]}>Format</Text>
+          <View style={styles.formatContainer}>
+            <Text style={[styles.formatText, !isOnline && styles.formatTextActive]}>
+              In-Person
+            </Text>
+            <Switch
+              trackColor={{ false: '#767577', true: '#81b0ff' }}
+              thumbColor={isOnline ? '#2E7D32' : '#f4f3f4'}
+              ios_backgroundColor="#3e3e3e"
+              onValueChange={toggleFormat}
+              value={isOnline}
+              style={styles.formatSwitch}
+            />
+            <Text style={[styles.formatText, isOnline && styles.formatTextActive]}>
+              Online
+            </Text>
+          </View>
+          <Text style={styles.formatHelpText}>
+            {isOnline 
+              ? 'A meeting link will be provided after booking.' 
+              : 'Service will be provided at the selected location.'}
+          </Text>
         </View>
         
         {/* Cost Calculation */}
         <View style={styles.sectionContainer}>
-          <Text style={styles.sectionTitle}>Cost Breakdown</Text>
+          <Text style={[styles.sectionTitle, { color: '#000' }]}>Cost Breakdown</Text>
           <View style={styles.costTable}>
             <View style={styles.costRow}>
               <Text style={styles.costLabel}>Service Fee</Text>
@@ -276,7 +361,7 @@ const CreateBookingScreen = ({ route, navigation }) => {
         
         {/* Payment Method */}
         <View style={styles.sectionContainer}>
-          <Text style={styles.sectionTitle}>Payment</Text>
+          <Text style={[styles.sectionTitle, { color: '#000' }]}>Payment</Text>
           
           <TouchableOpacity 
             style={[
@@ -424,6 +509,35 @@ const CreateBookingScreen = ({ route, navigation }) => {
         </View>
       </Modal>
       
+      {/* Duration Selection Modal */}
+      <Modal
+        visible={isDurationModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setDurationModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Select Duration</Text>
+            {durationOptions.map((duration) => (
+              <TouchableOpacity 
+                key={duration} 
+                style={styles.modalOption} 
+                onPress={() => handleSelectDuration(duration)}
+              >
+                <Text style={styles.modalOptionText}>{duration}</Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity 
+              style={styles.modalCancelButton} 
+              onPress={() => setDurationModalVisible(false)}
+            >
+              <Text style={styles.modalCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+      
       {/* Compliance Modal */}
       <Modal
         visible={isComplianceModalVisible}
@@ -559,23 +673,21 @@ const styles = StyleSheet.create({
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
   },
   serviceTitleText: {
     fontSize: 22,
-    fontWeight: '600',
-    color: '#2E7D32',
+    fontWeight: 'bold',
+    color: '#000',
     textAlign: 'center',
   },
   sectionContainer: {
     marginBottom: 24,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '500',
-    marginBottom: 10,
-    color: '#333',
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 12,
+    color: '#000',
   },
   selectionContainer: {
     flexDirection: 'row',
@@ -589,7 +701,8 @@ const styles = StyleSheet.create({
   },
   selectionText: {
     fontSize: 16,
-    color: '#333',
+    color: '#000',
+    flex: 1,
   },
   costTable: {
     backgroundColor: '#fff',
@@ -606,17 +719,17 @@ const styles = StyleSheet.create({
     borderBottomColor: '#f5f5f5',
   },
   costLabel: {
-    fontSize: 16,
-    color: '#555',
+    fontSize: 15,
+    color: '#000',
   },
   costValue: {
-    fontSize: 16,
-    color: '#333',
+    fontSize: 15,
+    color: '#000',
     fontWeight: '500',
   },
   costValuePositive: {
-    fontSize: 16,
     color: '#2E7D32',
+    fontSize: 15,
     fontWeight: '500',
   },
   gapPayment: {
@@ -630,12 +743,12 @@ const styles = StyleSheet.create({
   totalLabel: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#333',
+    color: '#000',
   },
   totalValue: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#333',
+    color: '#000',
   },
   paymentOption: {
     flexDirection: 'row',
@@ -701,6 +814,38 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     marginLeft: 8,
   },
+  // Format Selection styles
+  formatContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    justifyContent: 'space-between',
+  },
+  formatText: {
+    fontSize: 16,
+    color: '#999',
+    fontWeight: '500',
+  },
+  formatTextActive: {
+    color: '#2E7D32',
+    fontWeight: '600',
+  },
+  formatSwitch: {
+    transform: [{ scaleX: 1.1 }, { scaleY: 1.1 }],
+    marginHorizontal: 10,
+  },
+  formatHelpText: {
+    fontSize: 13,
+    color: '#666',
+    marginTop: 8,
+    marginLeft: 8,
+    fontStyle: 'italic',
+  },
+  
   // Modal styles
   modalOverlay: {
     flex: 1,

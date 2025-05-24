@@ -5,7 +5,7 @@ import { getValidImageUrl } from '../../utils/imageHelper';
 
 // Get screen dimensions and calculate card width for layouts
 const { width } = Dimensions.get('window');
-const GRID_CARD_WIDTH = (width / 2) - 20; // Half width for 2-column grid, with margins
+const GRID_CARD_WIDTH = (width / 2) - 10; // Half width for 2-column grid, with smaller margins
 const LIST_CARD_WIDTH = width; // Full width for list view
 
 // Main component
@@ -169,6 +169,20 @@ const ServiceCard = ({ item, onPress, onImageLoaded, displayAs = 'grid' }) => {
             {/* Middle Section - Description */}
             <Text style={styles.listDescription} numberOfLines={2}>{description}</Text>
             
+            {/* Location and Price Row - Moved up one line */}
+            <View style={styles.listBottomSection}>
+              {/* Location */}
+              <View style={styles.listLocationContainer}>
+                <Ionicons name="location-outline" size={16} color="#000" />
+                <Text style={styles.listLocationText} numberOfLines={1}>{suburb}</Text>
+              </View>
+              
+              {/* Price */}
+              <View style={styles.listPriceContainer}>
+                <Text style={styles.listPriceValue}>{price}<Text style={styles.listPriceUnit}> /hr</Text></Text>
+              </View>
+            </View>
+            
             {/* Credentials as tags */}
             <View style={styles.listCredentialsContainer}>
               {credentials.slice(0, 2).map((credential, index) => (
@@ -184,20 +198,6 @@ const ServiceCard = ({ item, onPress, onImageLoaded, displayAs = 'grid' }) => {
                   <Text style={styles.listCredentialText}>+{credentials.length - 2} more</Text>
                 </View>
               )}
-            </View>
-            
-            {/* Bottom Section - Location and Price on same line */}
-            <View style={styles.listBottomSection}>
-              {/* Location */}
-              <View style={styles.listLocationContainer}>
-                <Ionicons name="location-outline" size={16} color="#000" />
-                <Text style={styles.listLocationText} numberOfLines={1}>{suburb}</Text>
-              </View>
-              
-              {/* Price */}
-              <View style={styles.listPriceContainer}>
-                <Text style={styles.listPriceValue}>{price}<Text style={styles.listPriceUnit}> /hr</Text></Text>
-              </View>
             </View>
           </View>
         </View>
@@ -281,7 +281,7 @@ const styles = StyleSheet.create({
   gridCardWrapper: {
     width: '50%', // Take up half the screen width
     marginBottom: 8,
-    paddingHorizontal: 2, // Minimal padding between columns
+    paddingHorizontal: 1, // Minimal padding between columns
   },
   
   // Grid card container
@@ -325,19 +325,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: '#fff',
     overflow: 'hidden',
-    padding: 12, // Reduced padding for more compact look
-    paddingBottom: 8, // Even less padding at bottom
+    paddingTop: 10, // Reduced from 12px
+    paddingRight: 10, // Reduced from 12px
+    paddingBottom: 10, // Reduced from 12px
+    paddingLeft: 10, // Reduced from 12px
     borderRadius: 8,
   },
   
   // List image container
   listImageContainer: {
-    width: 100, // Larger image for better visibility
-    height: 100,
+    width: 90, // Reduced from 100px
+    height: 90, // Reduced from 100px
     position: 'relative',
     borderRadius: 8,
     overflow: 'hidden',
-    marginRight: 16,
+    marginRight: 12, // Reduced from 16px
     backgroundColor: '#f8f8f8',
     justifyContent: 'center',
     alignItems: 'center',
@@ -353,6 +355,8 @@ const styles = StyleSheet.create({
   // List content container
   listContentContainer: {
     flex: 1,
+    paddingTop: 0,
+    paddingBottom: 0,
     justifyContent: 'space-between',
   },
   
@@ -387,16 +391,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 5,
-    marginBottom: 0, // Removed bottom margin to make card more compact
+    marginTop: 4, // Reduced from 5px
+    marginBottom: 0,
   },
   
   // List title
   listTitle: {
-    fontSize: 16,
+    fontSize: 15, // Slightly smaller
     fontWeight: '700',
     color: '#000',
-    marginBottom: 2,
+    marginBottom: 1, // Reduced from 2px
     flex: 1,
     paddingRight: 8,
   },
@@ -411,10 +415,10 @@ const styles = StyleSheet.create({
   
   // List description
   listDescription: {
-    fontSize: 14,
+    fontSize: 13, // Slightly smaller font
     color: '#000',
-    marginBottom: 5, // Reduced spacing
-    lineHeight: 19, // Slightly tighter line height
+    marginBottom: 4, // Reduced from 5px
+    lineHeight: 17, // Tighter line height
   },
   
   // List location container
@@ -439,7 +443,7 @@ const styles = StyleSheet.create({
   // List price value
   listPriceValue: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: 'bold',
     color: '#000',
   },
   
@@ -454,7 +458,7 @@ const styles = StyleSheet.create({
   listCredentialsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginBottom: 2.5, // Reduced spacing
+    marginTop: 2, // Added small top margin instead of bottom
   },
   
   // List credential button
@@ -654,7 +658,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 0, // Remove gap between location and category
-    marginBottom: 12,
+    marginBottom: 4, // Reduced from 12 to 4
   },
   
   // Location text
