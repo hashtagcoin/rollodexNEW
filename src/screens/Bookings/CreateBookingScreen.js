@@ -24,6 +24,7 @@ const CreateBookingScreen = ({ route, navigation }) => {
   const [isDateModalVisible, setDateModalVisible] = useState(false);
   const [isTimeModalVisible, setTimeModalVisible] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('ndis'); // ndis, visa, mastercard
+  const [showConfirmButton, setShowConfirmButton] = useState(false);
   
   // Compliance modal state
   const [isComplianceModalVisible, setComplianceModalVisible] = useState(false);
@@ -109,11 +110,10 @@ const CreateBookingScreen = ({ route, navigation }) => {
       }
     };
     
-    // Also fetch user profile (hardcoded for now)
+    // Set service title as provider
     setProvider({
       id: '123',
-      name: 'Sarah H.',
-      avatar_url: 'https://i.pravatar.cc/150?img=5'
+      name: serviceData?.title || 'Service'
     });
     
     fetchServiceDetails();
@@ -168,9 +168,20 @@ const CreateBookingScreen = ({ route, navigation }) => {
   };
   
   const handleReviewAgreement = () => {
-    // Here you would navigate to a screen showing the full agreement
+    // Get the category from service data to maintain filter when returning to explore
+    const category = service?.category || 'Therapy';
+    
+    // Close the agreement modal
     setAgreementModalVisible(false);
-    navigation.navigate('ServiceAgreement', { serviceId: serviceId });
+    
+    // Navigate to service agreement with explore parameters to return to the same view
+    navigation.navigate('ServiceAgreement', { 
+      serviceId: serviceId,
+      exploreParams: {
+        initialCategory: category,
+        // Add any other filter parameters here that should be preserved
+      }
+    });
   };
   
   const handleCancelBooking = () => {
@@ -191,19 +202,27 @@ const CreateBookingScreen = ({ route, navigation }) => {
   return (
     <View style={styles.container}>
       <AppHeader 
-        title={`Book ${service?.title || 'Service'}`}
+        title="Booking"
         canGoBack={true}
         navigation={navigation}
       />
       
-      <ScrollView style={styles.scrollView}>
-        {/* Provider Info */}
-        <View style={styles.providerContainer}>
-          <Image 
-            source={{ uri: provider?.avatar_url || 'https://i.pravatar.cc/150?img=5' }}
-            style={styles.providerImage}
-          />
-          <Text style={styles.providerName}>{provider?.name || 'Provider'}</Text>
+      <ScrollView 
+        style={styles.scrollView}
+        onScroll={({ nativeEvent }) => {
+          const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
+          const paddingToBottom = 20;
+          const isCloseToBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
+          
+          if (isCloseToBottom && !showConfirmButton) {
+            setShowConfirmButton(true);
+          }
+        }}
+        scrollEventThrottle={400}
+      >
+        {/* Service Title */}
+        <View style={styles.serviceTitleContainer}>
+          <Text style={styles.serviceTitleText}>{service?.title || 'Service'}</Text>
         </View>
         
         {/* Date Selection */}
@@ -317,15 +336,26 @@ const CreateBookingScreen = ({ route, navigation }) => {
         
         {/* Spacing for button */}
         <View style={{ height: 100 }} />
+        
+        {!showConfirmButton && (
+          <View style={styles.scrollIndicatorContainer}>
+            <Text style={styles.scrollIndicatorText}>Scroll down to continue</Text>
+            <Feather name="chevrons-down" size={24} color="#666" style={{ marginTop: 8 }} />
+          </View>
+        )}
       </ScrollView>
       
-      {/* Confirm Booking Button */}
-      <TouchableOpacity 
-        style={styles.confirmButton}
-        onPress={handleConfirmBooking}
-      >
-        <Text style={styles.confirmButtonText}>Confirm Booking</Text>
-      </TouchableOpacity>
+      {/* Confirm Booking Button - only shown when scrolled to bottom */}
+      {showConfirmButton && (
+        <TouchableOpacity 
+          style={styles.confirmButton}
+          onPress={handleConfirmBooking}
+          activeOpacity={0.8}
+        >
+          <Feather name="check-circle" size={22} color="white" />
+          <Text style={styles.confirmButtonText}>Confirm Booking</Text>
+        </TouchableOpacity>
+      )}
       
       {/* Date Selection Modal */}
       <Modal
@@ -491,6 +521,16 @@ const CreateBookingScreen = ({ route, navigation }) => {
 };
 
 const styles = StyleSheet.create({
+  scrollIndicatorContainer: {
+    alignItems: 'center',
+    marginBottom: 20,
+    paddingVertical: 10,
+  },
+  scrollIndicatorText: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '500',
+  },
   container: {
     flex: 1,
     backgroundColor: '#f8f8f8',
@@ -509,21 +549,24 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
   },
-  providerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  serviceTitleContainer: {
     marginBottom: 24,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
-  providerImage: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    marginRight: 12,
-  },
-  providerName: {
-    fontSize: 18,
-    fontWeight: '500',
-    color: '#333',
+  serviceTitleText: {
+    fontSize: 22,
+    fontWeight: '600',
+    color: '#2E7D32',
+    textAlign: 'center',
   },
   sectionContainer: {
     marginBottom: 24,
@@ -636,18 +679,27 @@ const styles = StyleSheet.create({
   },
   confirmButton: {
     position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
+    bottom: Platform.OS === 'ios' ? 30 : 16,
+    left: 16,
+    right: 16,
     backgroundColor: '#2E7D32',
-    padding: 16,
+    paddingVertical: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+    flexDirection: 'row',
   },
   confirmButtonText: {
     color: '#fff',
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    marginLeft: 8,
   },
   // Modal styles
   modalOverlay: {

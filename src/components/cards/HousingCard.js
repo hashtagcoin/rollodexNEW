@@ -1,9 +1,10 @@
-import React, { useState, memo } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, Dimensions, ActivityIndicator, ImageBackground } from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Image, ActivityIndicator } from 'react-native';
 import Feather from 'react-native-vector-icons/Feather';
 import AntDesign from 'react-native-vector-icons/AntDesign';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { getValidImageUrl } from '../../utils/imageHelper';
 import { COLORS, SIZES, FONTS, SHADOWS } from '../../constants/theme';
 
 const { width } = Dimensions.get('window'); 
@@ -11,388 +12,507 @@ const { width } = Dimensions.get('window');
 // Calculate width for grid dynamically
 const numColumnsGrid = 2;
 const gridMarginHorizontal = 8;
-const gridCardWidth = (width - (gridMarginHorizontal * (numColumnsGrid + 1)) * 1.2 ) / numColumnsGrid; // Adjusted for better spacing
+// Calculate exactly half the screen width with just enough margin to fit two cards side by side
+const gridCardWidth = (width / numColumnsGrid) - (gridMarginHorizontal * 2);
 
-const DARK_GREEN = '#3A5E49';
-const LIGHT_GREEN_ICON = '#C8E6C9';
-const ICON_COLOR_DARK = '#555';
-const FAVORITE_RED = '#FF6B6B';
-const FAVORITE_WHITE_OUTLINE = '#FFFFFF';
+const HousingCard = ({ item, onPress, displayAs = 'grid', onImageLoaded }) => {
+  // State for image loading and favorite status
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [isFavorited, setIsFavorited] = useState(item.is_favourited || false);
 
-const HousingCard = ({ item, onPress, displayAs = 'grid' }) => {
-  console.log(`[HousingCard] Rendering. Item ID: ${item?.id}, Display: ${displayAs}, Media: ${item?.media_urls?.[0]}`);
-  const [imageLoading, setImageLoading] = useState(true); // State for image loading
+  // Update favorite status when item changes
+  useEffect(() => {
+    setIsFavorited(item.is_favourited || false);
+  }, [item]);
 
-  const isList = displayAs === 'list';
-  const isSwipe = displayAs === 'swipe';
+  // Extract and process data from the housing item
+  const title = item.title || item.property_name || 'Beautiful Home';
+  const location = item.suburb || item.address_suburb || 'Location N/A';
+  const price = item.rent_amount ? `$${item.rent_amount.toLocaleString()}` : '$N/A';
+  const rentFrequency = item.rent_frequency || 'month';
+  // Only show formatted price if there's a valid rent amount
+  const formattedPrice = item.rent_amount ? `${price}/${rentFrequency}` : null;
+  
+  // Weekly rent amount for grid view bottom corner
+  const weeklyRent = item.weekly_rent ? `$${item.weekly_rent}/wk` : null;
+  const bedrooms = item.bedrooms || 'N/A';
+  const bathrooms = item.bathrooms || 'N/A';
+  const hasGroupMatch = item.has_group_match || false;
+  
+  // Extract and process image URL
+  const rawImageUrl = item.media_urls && item.media_urls.length > 0 ? item.media_urls[0] : null;
+  const imageUrl = getValidImageUrl(rawImageUrl, 'housingimages');
+  
+  // Create a memoized image source for better performance
+  const imageSource = useMemo(() => {
+    return imageUrl ? { uri: imageUrl } : { uri: 'https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/housingimages/default-housing.png' };
+  }, [imageUrl]);
 
-  if (isSwipe) {
-    const imageUrl = item.media_urls && item.media_urls.length > 0 ? item.media_urls[0] : null;
-    console.log(`[HousingCard] Swipe Image URL: ${imageUrl}, Item ID: ${item?.id}`);
-    
+  // Handle swipe view layout (matching the SwipeCard component)
+  if (displayAs === 'swipe') {
     return (
-      <TouchableOpacity style={[styles.swipeItemContainer]} onPress={() => onPress(item)} activeOpacity={0.9}>
-        <ImageBackground 
-          source={imageUrl ? { uri: imageUrl } : require('../../assets/images/default-housing.png')}
-          style={styles.swipeImageBackground}
-          resizeMode="cover"
-          onLoadStart={() => {
-            setImageLoading(true);
-            console.log(`[SwipeTiming] Image load START for item ${item?.id} at ${performance.now()}`);
-          }}
-          onLoadEnd={() => {
-            setImageLoading(false);
-            console.log(`[SwipeTiming] Image load END for item ${item?.id} at ${performance.now()}`);
-          }}
-        >
-          {imageLoading && (
-            <ActivityIndicator size="large" color={COLORS.primary} style={StyleSheet.absoluteFill} />
+      <TouchableOpacity style={styles.swipeItemContainer} onPress={() => onPress(item)} activeOpacity={0.9}>
+        <View style={styles.swipeImageBackground}>
+          {!imageLoaded && (
+            <View style={styles.loaderContainer}>
+              <ActivityIndicator size="large" color="#000" />
+            </View>
           )}
+          <Image
+            source={imageSource}
+            style={styles.swipeImageBackground}
+            resizeMode="cover"
+            onLoad={() => {
+              setImageLoaded(true);
+              if (typeof onImageLoaded === 'function' && imageUrl) {
+                onImageLoaded(imageUrl);
+              }
+            }}
+            onError={(e) => console.log('Housing Card Swipe Image Error:', e.nativeEvent.error)}
+          />
           <LinearGradient
             colors={['transparent', 'rgba(0,0,0,0.1)', 'rgba(0,0,0,0.9)']}
             style={styles.gradientOverlay}
           />
           <View style={styles.swipeTextContainer}>
-            <Text style={styles.swipeTitle} numberOfLines={2}>{item.property_name || 'Beautiful Home'}</Text>
-            <Text style={styles.swipeAddress} numberOfLines={1}>{item.address_street}, {item.address_city}</Text>
+            <Text style={styles.swipeTitle} numberOfLines={2}>{title}</Text>
+            <Text style={styles.swipeAddress} numberOfLines={1}>{location}</Text>
             <View style={styles.swipeRow}>
               <Ionicons name="bed-outline" size={SIZES.h3} color={COLORS.white} />
-              <Text style={styles.swipeDetailText}>{item.bedrooms} beds</Text>
+              <Text style={styles.swipeDetailText}>{bedrooms} beds</Text>
               <Ionicons name="water-outline" size={SIZES.h3} color={COLORS.white} style={{ marginLeft: SIZES.padding }} />
-              <Text style={styles.swipeDetailText}>{item.bathrooms} baths</Text>
+              <Text style={styles.swipeDetailText}>{bathrooms} baths</Text>
             </View>
-            <Text style={styles.swipePriceText}>
-              ${item.rent_amount ? item.rent_amount.toLocaleString() : 'N/A'} / {item.rent_frequency || 'month'}
-            </Text>
+            <Text style={styles.swipePriceText}>{formattedPrice}</Text>
           </View>
-        </ImageBackground>
+        </View>
       </TouchableOpacity>
     );
   }
-
-  // Grid/List Logic
-  const imageContainerStyle = isList ? styles.listImageContainer : styles.gridImageContainer;
-  const imageUrl = item.media_urls && item.media_urls.length > 0 ? item.media_urls[0] : null;
-  const displayUri = item.cachedUri || imageUrl;
-  const safeImageUrl = displayUri ? encodeURI(displayUri) : null;
-  const imageSource = React.useMemo(() => safeImageUrl ? { uri: safeImageUrl } : require('../../assets/images/default-housing.png'), [safeImageUrl]);
-  console.log(`[HousingCard] ${displayAs} Image URL: ${displayUri}, Item ID: ${item?.id}`);
-
-  return (
-    <TouchableOpacity 
-      style={[isList ? styles.listCardContainer : styles.gridCardContainer, isList && styles.fullWidthCard]} 
-      onPress={() => onPress(item)}
-      activeOpacity={0.9}
-    >
-      <View style={imageContainerStyle}>
-        <Image 
-          key={`${isList ? 'list' : 'grid'}-img-${item.id}`}
-          source={imageSource}
-          style={isList ? styles.listImage : styles.gridImage}
-          onLoadStart={() => {
-            console.log(`[HousingCard] ${displayAs} Image onLoadStart. URI: ${displayUri}, Item ID: ${item?.id}`);
-            setImageLoading(true);
-          }}
-          onLoadEnd={() => {
-            console.log(`[HousingCard] ${displayAs} Image onLoadEnd. URI: ${displayUri}, Item ID: ${item?.id}`);
-            setImageLoading(false);
-            if (typeof onImageLoaded === 'function') onImageLoaded(displayUri);
-          }}
-          onError={(e) => {
-            console.log(`[HousingCard] ${displayAs} Image onError. URI: ${displayUri}, Error: ${e.nativeEvent.error}, Item ID: ${item?.id}`);
-            setImageLoading(false);
-          }}
-          resizeMode="cover"
-        />
-        {imageLoading && (
-          <ActivityIndicator 
-            style={styles.imageLoader} 
-            size={isList ? "medium" : "small"} 
-            color={DARK_GREEN} 
-          />
-        )}
-        {!isList && item.has_group_match && (
-          <View style={styles.gridGroupIconContainer}>
-            <Ionicons name="people-outline" size={18} color={LIGHT_GREEN_ICON} />
-          </View>
-        )}
-        {/* Favorite icon for Grid view - top right of image */}
-        {!isList && (
-          <TouchableOpacity 
-            style={styles.gridFavoriteIconContainer} 
-            onPress={() => alert('Favourite pressed for ' + item.title)} 
-          >
-            <AntDesign name={item.is_favourited ? "heart" : "hearto"} size={22} color={item.is_favourited ? FAVORITE_RED : FAVORITE_WHITE_OUTLINE} />
-          </TouchableOpacity>
-        )}
-        {/* Favorite icon for List view - top right of image */}
-        {isList && (
-          <TouchableOpacity 
-            style={styles.listFavoriteIconContainer} 
-            onPress={() => alert('Favourite pressed for ' + item.title)} 
-          >
-            <AntDesign name={item.is_favourited ? "heart" : "hearto"} size={20} color={item.is_favourited ? FAVORITE_RED : ICON_COLOR_DARK} />
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {/* Share Icon for List View - Placed at top right of card */} 
-      {isList && (
-        <View style={styles.listShareIconContainer}> 
-          <TouchableOpacity style={styles.iconButtonSmall} onPress={() => alert('Share pressed for ' + item.title)}>
-            <Feather name="share-2" size={18} color={ICON_COLOR_DARK} />
-          </TouchableOpacity>
-        </View>
-      )}
-
-      <View style={isList ? styles.listInfoContainer : styles.gridInfoContainer}>
-        <Text style={isList ? styles.listTitle : styles.gridTitle} numberOfLines={isList ? 1 : 2}>
-          {item.title || 'Housing Title'}
-        </Text>
-        <View style={styles.detailRow}>
-          <Ionicons name="location-outline" size={16} color={ICON_COLOR_DARK} style={styles.detailIcon} />
-          <Text style={isList ? styles.listDetails : styles.gridDetails} numberOfLines={1}>
-            {item.suburb || 'Location N/A'} 
-          </Text>
-        </View>
-        <View style={styles.detailRow}>
-          <Ionicons name="bed-outline" size={16} color={ICON_COLOR_DARK} style={styles.detailIcon} />
-          <Text style={isList ? styles.listDetails : styles.gridDetails} numberOfLines={1}>
-            {item.bedrooms || 'N/A'} beds, {item.bathrooms || 'N/A'} baths
-          </Text>
-        </View>
-        
-        {/* Price and Share Icon Row for Grid View */} 
-        {!isList ? (
-          <View style={styles.gridPriceShareRow}>
-            <Text style={styles.gridPrice}>
-              ${item.weekly_rent || 'N/A'}/week
-            </Text>
-            <TouchableOpacity style={styles.gridShareButton} onPress={() => alert('Share pressed for ' + item.title)}>
-              <Feather name="share-2" size={20} color={DARK_GREEN} />
+  
+  // Modern LIST VIEW
+  if (displayAs === 'list') {
+    return (
+      <TouchableOpacity 
+        style={styles.listCardContainer}
+        onPress={() => onPress(item)} 
+        activeOpacity={0.8}
+      >
+        <View style={styles.listCardInner}>
+          {/* Left side - Image */}
+          <View style={styles.listImageContainer}>
+            {!imageLoaded && (
+              <View style={styles.loaderContainer}>
+                <ActivityIndicator size="large" color="#000" />
+              </View>
+            )}
+            <Image 
+              source={imageSource}
+              style={styles.listImage}
+              onLoad={() => {
+                setImageLoaded(true);
+                if (typeof onImageLoaded === 'function' && imageUrl) {
+                  onImageLoaded(imageUrl);
+                }
+              }}
+              onError={(e) => console.log('Housing Card List Image Error:', e.nativeEvent.error)}
+            />
+            {/* Heart icon overlay */}
+            <TouchableOpacity 
+              style={styles.listHeartIconContainer}
+              onPress={() => setIsFavorited(!isFavorited)}
+            >
+              <View style={styles.listHeartIconCircle}>
+                <Ionicons name={isFavorited ? "heart" : "heart-outline"} size={16} color={isFavorited ? "#FF6B6B" : "white"} />
+              </View>
             </TouchableOpacity>
+            {hasGroupMatch && (
+              <View style={styles.listGroupIconContainer}>
+                <Ionicons name="people-outline" size={16} color="#FFFFFF" />
+              </View>
+            )}
           </View>
-        ) : ( // Price for List view (on its own line)
-          <Text style={styles.listPrice}>
-            ${item.weekly_rent || 'N/A'}/week
-          </Text>
-        )}
-        
-        {/* Old gridIconBottomRow removed as favorite is moved and share is with price */}
-      </View>
-    </TouchableOpacity>
+          
+          {/* Right side - Content */}
+          <View style={styles.listContentContainer}>
+            {/* Top Section - Title */}
+            <View style={styles.listTopSection}>
+              <Text style={styles.listTitle} numberOfLines={1}>{title}</Text>
+            </View>
+            
+            {/* Location */}
+            <View style={styles.listLocationRow}>
+              <Ionicons name="location-outline" size={16} color="#555" />
+              <Text style={styles.listLocationText} numberOfLines={1}>{location}</Text>
+            </View>
+            
+            {/* Beds & Baths */}
+            <View style={styles.listDetailRow}>
+              <Ionicons name="bed-outline" size={16} color="#555" style={styles.detailIcon} />
+              <Text style={styles.listDetailText}>{bedrooms} beds</Text>
+              <Ionicons name="water-outline" size={16} color="#555" style={[styles.detailIcon, {marginLeft: 12}]} />
+              <Text style={styles.listDetailText}>{bathrooms} baths</Text>
+            </View>
+            
+            {/* Bottom Section - Price */}
+            <View style={styles.listBottomSection}>
+              <Text style={styles.listPriceValue}>{formattedPrice}</Text>
+            </View>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  }
+  
+  // GRID VIEW
+  return (
+    <View style={styles.gridCardWrapper}>
+      <TouchableOpacity 
+        style={styles.gridCardContainer} 
+        onPress={() => onPress(item)} 
+        activeOpacity={0.8}
+      >
+        {/* Card container with rounded corners */}
+        <View style={styles.gridCardInner}>
+          {/* Image Container */}
+          <View style={styles.imageContainer}>
+            {!imageLoaded && (
+              <View style={styles.loaderContainer}>
+                <ActivityIndicator size="large" color="#000" />
+              </View>
+            )}
+            <Image 
+              source={imageSource}
+              style={styles.image}
+              onLoad={() => {
+                setImageLoaded(true);
+                if (typeof onImageLoaded === 'function' && imageUrl) {
+                  onImageLoaded(imageUrl);
+                }
+              }}
+              onError={(e) => console.log('Housing Card Image Error:', e.nativeEvent.error)}
+            />
+            {/* Heart icon overlay */}
+            <TouchableOpacity 
+              style={styles.heartIconContainer}
+              onPress={() => setIsFavorited(!isFavorited)}
+            >
+              <View style={styles.heartIconCircle}>
+                <Ionicons name={isFavorited ? "heart" : "heart-outline"} size={20} color={isFavorited ? "#FF6B6B" : "white"} />
+              </View>
+            </TouchableOpacity>
+            
+            {/* Group match indicator */}
+            {hasGroupMatch && (
+              <View style={styles.groupIconContainer}>
+                <Ionicons name="people-outline" size={18} color="#FFFFFF" />
+              </View>
+            )}
+          </View>
+          
+          {/* Content Area */}
+          <View style={styles.contentContainer}>
+            {/* Title */}
+            <Text style={styles.title} numberOfLines={2}>{title}</Text>
+            
+            {/* Location */}
+            <View style={styles.locationRow}>
+              <Ionicons name="location-outline" size={18} color="#555" />
+              <Text style={styles.locationText} numberOfLines={1}>{location}</Text>
+            </View>
+            
+            {/* Beds & Baths */}
+            <View style={styles.bedsAndBathsRow}>
+              <Ionicons name="bed-outline" size={18} color="#555" />
+              <Text style={styles.detailText}>{bedrooms} beds</Text>
+              <Ionicons name="water-outline" size={18} color="#555" style={{marginLeft: 16}} />
+              <Text style={styles.detailText}>{bathrooms} baths</Text>
+            </View>
+            
+            {/* Price Row with Monthly and Weekly Rent */}
+            <View style={styles.bottomContentRow}>
+              <Text style={styles.priceValue}>{formattedPrice}</Text>
+              {weeklyRent && <Text style={styles.weeklyRentValue}>{weeklyRent}</Text>}
+            </View>
+          </View>
+        </View>
+      </TouchableOpacity>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  // Grid Styles
-  gridCardContainer: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    margin: gridMarginHorizontal,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
-    elevation: 4,
-    width: gridCardWidth,
-    position: 'relative', 
-  },
-  gridImageContainer: { 
-    width: '100%',
-    height: 120, 
-    borderTopLeftRadius: 8, // Keep rounded corners for image container top
-    borderTopRightRadius: 8,
+  // Loader style
+  loaderContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#E0E0E0',
-    overflow: 'hidden', 
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    zIndex: 1
   },
-  gridImage: {
-    width: '100%',
-    height: '100%',
-    backgroundColor: '#E0E0E0',
+
+  // GRID VIEW STYLES
+  gridCardWrapper: {
+    flex: 1, // Take up exactly half the space in the row
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12, // Vertical spacing between cards
+    paddingHorizontal: 4, // Minimal horizontal padding
   },
-  gridGroupIconContainer: {
-    position: 'absolute',
-    top: 8,
-    left: 8,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+  gridCardContainer: {
+    width: gridCardWidth,
     borderRadius: 12,
-    padding: 4,
+    backgroundColor: '#fff',
+    // Match ServiceCard shadow exactly
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
-  gridFavoriteIconContainer: {
+  gridCardInner: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#fff',
+  },
+  imageContainer: {
+    height: 140,
+    width: '100%',
+    position: 'relative',
+  },
+  image: {
+    height: '100%',
+    width: '100%',
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+  },
+  heartIconContainer: {
     position: 'absolute',
     top: 8,
     right: 8,
-    padding: 5, 
+    zIndex: 2,
   },
-  gridInfoContainer: {
-    padding: 10, 
+  heartIconCircle: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  gridTitle: {
+  groupIconContainer: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    borderRadius: 15,
+    padding: 6,
+    zIndex: 2,
+  },
+  contentContainer: {
+    padding: 12,
+  },
+  title: {
     fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 4,
+    fontWeight: '600',
+    color: '#000',
+    marginBottom: 8,
   },
-  gridDetails: {
-    fontSize: 13,
-    color: '#666',
-    marginBottom: 4,
-    flexShrink: 1, 
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
   },
-  gridPriceShareRow: {
+  locationText: {
+    fontSize: 14,
+    color: '#555',
+    marginLeft: 4,
+    flex: 1,
+  },
+  bedsAndBathsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  detailText: {
+    fontSize: 14,
+    color: '#555',
+    marginLeft: 4,
+  },
+  bottomContentRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 4, 
   },
-  gridPrice: {
-    fontSize: 15,
-    fontWeight: 'bold',
-    color: DARK_GREEN,
+  priceValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#000',
   },
-  gridShareButton: {
-    padding: 6, 
+  weeklyRentValue: {
+    fontSize: 14,
+    fontWeight: 'bold', // Changed to bold as requested
+    color: '#000',
+    marginLeft: 8,
   },
-  // List Styles
+
+  // LIST VIEW STYLES
   listCardContainer: {
-    flexDirection: 'row',
     backgroundColor: '#FFFFFF',
-    borderRadius: SIZES.radius, 
+    marginHorizontal: 16,
     marginVertical: 8,
-    marginHorizontal: SIZES.padding, 
-    padding: SIZES.base, 
+    borderRadius: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+    overflow: 'hidden',
   },
-  listImageContainer: { 
-    width: 110, 
-    height: 110, 
-    borderRadius: SIZES.radiusSml, 
-    marginRight: SIZES.base, 
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#E0E0E0',
-    overflow: 'hidden', 
-    position: 'relative', 
+  listCardInner: {
+    flexDirection: 'row',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  listImageContainer: {
+    width: 120,
+    height: 120,
+    position: 'relative',
   },
   listImage: {
     width: '100%',
     height: '100%',
-    backgroundColor: '#E0E0E0',
   },
-  listFavoriteIconContainer: { 
+  listHeartIconContainer: {
     position: 'absolute',
-    top: 6,
-    right: 6,
-    padding: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.7)', 
-    borderRadius: 15, 
+    top: 8,
+    right: 8,
+    zIndex: 2,
   },
-  listShareIconContainer: { 
+  listHeartIconCircle: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  listGroupIconContainer: {
     position: 'absolute',
-    top: SIZES.base,
-    right: SIZES.base,
-    flexDirection: 'row', 
-    zIndex: 1, 
+    top: 8,
+    left: 8,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    borderRadius: 15,
+    padding: 5,
+    zIndex: 2,
   },
-  iconButtonSmall: { 
-    padding: 4, 
-  },
-  listInfoContainer: {
+  listContentContainer: {
     flex: 1,
-    justifyContent: 'space-around', 
-    paddingVertical: SIZES.base / 2, 
+    padding: 12,
+    justifyContent: 'space-between',
+  },
+  listTopSection: {
+    marginBottom: 4,
   },
   listTitle: {
-    fontSize: SIZES.font * 1.1, 
+    fontSize: 16,
     fontWeight: '600',
-    color: COLORS.text, 
-    marginBottom: SIZES.base / 2, 
+    color: '#000',
+    marginBottom: 4,
   },
-  detailRow: {
+  listLocationRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: SIZES.base / 2, 
+    marginBottom: 4,
+  },
+  listLocationText: {
+    fontSize: 14,
+    color: '#555',
+    marginLeft: 4,
+  },
+  listDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
   },
   detailIcon: {
-    marginRight: SIZES.base / 2,
+    marginRight: 4,
   },
-  listDetails: {
-    fontSize: SIZES.font * 0.9, 
-    color: COLORS.gray, 
-    flexShrink: 1, 
+  listDetailText: {
+    fontSize: 14,
+    color: '#555',
   },
-  listPrice: {
-    fontSize: SIZES.font * 1.1, 
-    fontWeight: 'bold',
-    color: DARK_GREEN, 
-    marginTop: SIZES.base / 2, 
+  listBottomSection: {
+    alignItems: 'flex-end',
+    justifyContent: 'flex-end',
   },
-  fullWidthCard: { 
-    // width: width - (SIZES.padding * 2), 
-    // alignSelf: 'center',
+  listPriceValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#000',
   },
-  imageLoader: { 
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
-  },
-  // Swipe Styles
+
+  // SWIPE VIEW STYLES
   swipeItemContainer: {
-    borderRadius: SIZES.radius,
+    width: width - 40,
+    height: 400,
+    marginHorizontal: 4,
     overflow: 'hidden',
-    ...SHADOWS.medium,
-    backgroundColor: COLORS.lightGray, 
+    borderRadius: 12,
+    backgroundColor: '#000',
   },
   swipeImageBackground: {
     width: '100%',
     height: '100%',
-    justifyContent: 'flex-end', 
   },
   gradientOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '50%',
+    borderBottomLeftRadius: 12,
+    borderBottomRightRadius: 12,
   },
   swipeTextContainer: {
-    paddingHorizontal: SIZES.padding,
-    paddingBottom: 120, 
-    paddingTop: SIZES.padding,
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 16,
   },
   swipeTitle: {
-    ...FONTS.h2,
-    color: COLORS.white,
+    fontSize: 22,
     fontWeight: 'bold',
-    marginBottom: SIZES.base / 2,
+    color: COLORS.white,
+    marginBottom: 4,
   },
   swipeAddress: {
-    ...FONTS.body4,
+    fontSize: 16,
     color: COLORS.white,
+    marginBottom: 8,
     opacity: 0.9,
-    marginBottom: SIZES.base,
   },
   swipeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: SIZES.base,
+    marginBottom: 6,
   },
   swipeDetailText: {
-    ...FONTS.body3,
+    fontSize: 16,
     color: COLORS.white,
-    marginLeft: SIZES.base / 2,
+    marginLeft: 4,
+    marginRight: 12,
   },
   swipePriceText: {
-    ...FONTS.h3,
-    color: COLORS.white,
+    fontSize: 18,
     fontWeight: 'bold',
-    marginTop: SIZES.base / 2,
+    color: COLORS.white,
   },
 });
 
-export default React.memo(HousingCard);
+export default HousingCard;

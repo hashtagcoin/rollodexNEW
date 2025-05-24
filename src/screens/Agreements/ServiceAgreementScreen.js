@@ -11,6 +11,7 @@ import {
   Alert,
   Image
 } from 'react-native';
+import BookingConfirmationModal from '../../components/bookings/BookingConfirmationModal';
 import { WebView } from 'react-native-webview';
 import SignatureScreen from 'react-native-signature-canvas';
 import * as FileSystem from 'expo-file-system';
@@ -20,7 +21,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { Feather } from '@expo/vector-icons';
 
 const ServiceAgreementScreen = ({ route, navigation }) => {
-  const { serviceId, viewOnly, agreementId, agreementContent } = route.params;
+  const { serviceId, viewOnly, agreementId, agreementContent, exploreParams } = route.params;
   const [loading, setLoading] = useState(true);
   const [serviceData, setServiceData] = useState(null);
   const [providerData, setProviderData] = useState(null);
@@ -30,6 +31,9 @@ const ServiceAgreementScreen = ({ route, navigation }) => {
   const [showSignatureModal, setShowSignatureModal] = useState(false);
   const [ipAddress, setIpAddress] = useState('');
   const [timestamp, setTimestamp] = useState('');
+  const [showBookingConfirmationModal, setShowBookingConfirmationModal] = useState(false);
+  const [bookingData, setBookingData] = useState(null);
+  const [bookingCreated, setBookingCreated] = useState(false);
   const webViewRef = useRef(null);
   const signatureRef = useRef(null);
   
@@ -339,7 +343,28 @@ const ServiceAgreementScreen = ({ route, navigation }) => {
     console.log('Message from WebView:', event.nativeEvent.data);
   };
   
-  // Save agreement with a simpler approach for demo purposes
+  // Navigate back to Explore screen with the same filters
+  const navigateToExplore = () => {
+    // Close the booking confirmation modal
+    setShowBookingConfirmationModal(false);
+    
+    // Get category from the serviceData or default to 'Therapy'
+    const category = serviceData?.category || 'Therapy';
+    
+    // Navigate back to the Explore stack and reset to ProviderDiscovery
+    navigation.reset({
+      index: 0,
+      routes: [{ 
+        name: 'ProviderDiscovery',
+        params: {
+          initialCategory: category,
+          ...(exploreParams || {}) // Include any additional params that might have been passed
+        }
+      }],
+    });
+  };
+
+  // Save agreement and booking using the admin function that bypasses RLS policies
   const saveAgreement = async () => {
     if (!signature) {
       Alert.alert('Missing Signature', 'Please sign the agreement before submitting.');
@@ -349,54 +374,91 @@ const ServiceAgreementScreen = ({ route, navigation }) => {
     try {
       setLoading(true);
       
-      // For demo purposes, we'll use a global variable to store the agreements
-      // In a production app, this would be stored in Supabase with proper RLS policies
-      
       // Create a timestamp for the agreement
       const timestamp = new Date().toISOString();
-      const agreementId = `agreement-${Date.now()}`;
       
-      // Create the agreement data
-      const agreementData = {
-        id: agreementId,
-        service_provider_id: providerData.id,
-        service_id: serviceId,
-        agreement_title: `Service Agreement - ${serviceData.title}`,
-        agreement_version: 1,
-        ip_address: ipAddress,
-        signed_at: timestamp,
-        created_at: timestamp,
-        status: 'active',
-        // Store the HTML content for viewing
-        agreement_content: agreementHtml,
-        // Include nested data for easy access in the list view
-        service_providers: {
-          business_name: providerData.business_name,
-          logo_url: providerData.logo_url || 'https://via.placeholder.com/60'
-        },
-        services: {
-          title: serviceData.title,
-          description: serviceData.description,
-          price: serviceData.price
-        }
+      // Calculate NDIS coverage (85% for demo purposes)
+      const totalPrice = Number(serviceData.price) || 0;
+      const ndisCoveredAmount = totalPrice * 0.85;
+      const gapPayment = totalPrice - ndisCoveredAmount;
+      
+      // Generate a placeholder URL for the agreement - in a real app you'd upload to storage
+      const agreementUrl = `https://rollodex-agreements.storage.supabase.co/agreements/${userData.id}/${serviceId}/${new Date().getTime()}.pdf`;
+
+      // Create a date 3 days from now for the booking
+      const scheduledAt = new Date();
+      scheduledAt.setDate(scheduledAt.getDate() + 3);
+      
+      // Create the provider checklist JSON
+      const providerChecklist = JSON.stringify([
+        { item: 'Service Agreement Signed', checked: true, timestamp: timestamp },
+        { item: 'Payment Method', value: 'NDIS', timestamp: timestamp }
+      ]);
+      
+      // Prepare the notes
+      const notes = `Service agreement signed on ${new Date(timestamp).toLocaleString()}. Payment method: NDIS.`;
+      const providerNotes = `Participant signed service agreement. Agreement version: 1`;
+
+      // Use the admin function to save both the agreement and booking
+      // This bypasses RLS policies by using SECURITY DEFINER
+      const { data, error } = await supabase
+        .rpc('admin_save_agreement_and_booking', {
+          user_id: userData.id,
+          provider_id: providerData.id,
+          service_id: serviceId,
+          agreement_title: `Service Agreement - ${serviceData.title}`,
+          agreement_version: 1,
+          ip_address: ipAddress,
+          agreement_url: agreementUrl,
+          scheduled_at: scheduledAt.toISOString(),
+          total_price: totalPrice,
+          ndis_covered_amount: ndisCoveredAmount,
+          gap_payment: gapPayment,
+          notes: notes,
+          provider_notes: providerNotes,
+          provider_checklist: providerChecklist
+        });
+
+      if (error) {
+        console.error('Error saving agreement and booking:', error);
+        throw error;
+      }
+      
+      // Fetch the created booking
+      const { data: bookingData, error: bookingError } = await supabase
+        .from('service_bookings')
+        .select('*')
+        .eq('id', data.booking_id)
+        .single();
+
+      if (bookingError) {
+        console.error('Error fetching booking details:', bookingError);
+        throw bookingError;
+      }
+      
+      // No need to fetch booking details again since we already have them
+      
+      // Prepare the data for the confirmation modal
+      const confirmationData = {
+        ...bookingData,
+        service_title: serviceData.title,
+        service_description: serviceData.description,
+        provider_name: providerData.business_name,
+        service_media_url: serviceData.media_urls && serviceData.media_urls.length > 0 
+          ? serviceData.media_urls[0] 
+          : 'https://via.placeholder.com/400x200'
       };
       
-      // Store in global variable for access in ServiceAgreementsScreen
-      global.participantAgreements = global.participantAgreements || [];
-      global.participantAgreements.push(agreementData);
+      // Set the booking data for the modal
+      setBookingData(confirmationData);
+      setBookingCreated(true);
       
-      // Simulate a delay for better UX
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      Alert.alert(
-        'Agreement Signed',
-        'Your service agreement has been successfully signed and saved.',
-        [{ text: 'OK', onPress: () => navigation.goBack() }]
-      );
+      // Show the booking confirmation modal
+      setShowBookingConfirmationModal(true);
       
     } catch (error) {
-      console.error('Error saving agreement:', error);
-      Alert.alert('Error', 'Could not save the service agreement. Please try again.');
+      console.error('Error saving agreement and creating booking:', error);
+      Alert.alert('Error', 'Could not complete your booking. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -414,7 +476,7 @@ const ServiceAgreementScreen = ({ route, navigation }) => {
   return (
     <View style={styles.container}>
       <AppHeader
-        title={viewOnly ? "View Agreement" : "Service Agreement"}
+        title={viewOnly ? "View Agreement" : "Service\nAgreement"}
         navigation={navigation}
         canGoBack={true}
       />
@@ -508,6 +570,14 @@ const ServiceAgreementScreen = ({ route, navigation }) => {
           </View>
         </View>
       </Modal>
+      
+      {/* Booking Confirmation Modal */}
+      <BookingConfirmationModal
+        visible={showBookingConfirmationModal}
+        onClose={() => setShowBookingConfirmationModal(false)}
+        bookingData={bookingData}
+        navigateToExplore={navigateToExplore}
+      />
     </View>
   );
 };

@@ -1,483 +1,695 @@
-import React, { useState, memo, useEffect } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, Dimensions, ActivityIndicator, ImageBackground } from 'react-native'; 
-import Feather from 'react-native-vector-icons/Feather';
-import AntDesign from 'react-native-vector-icons/AntDesign';
-import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
-import { LinearGradient } from 'expo-linear-gradient';
-import { COLORS, SIZES, FONTS, SHADOWS } from '../../constants/theme';
+import React, { useState, useEffect, useMemo } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Image, ActivityIndicator } from 'react-native'; 
+import Ionicons from 'react-native-vector-icons/Ionicons';
+import { getValidImageUrl } from '../../utils/imageHelper';
 
-const { width } = Dimensions.get('window'); 
+// Get screen dimensions and calculate card width for layouts
+const { width } = Dimensions.get('window');
+const GRID_CARD_WIDTH = (width / 2) - 20; // Half width for 2-column grid, with margins
+const LIST_CARD_WIDTH = width; // Full width for list view
 
-const ServiceCard = ({ item, onPress, displayAs = 'grid' }) => { 
-  console.log(`[ServiceCard] Rendering. Item ID: ${item?.id}, Display: ${displayAs}, Media: ${item?.media_urls?.[0]}`);
-  const [imageLoading, setImageLoading] = useState(true); 
-  const [isFavorited, setIsFavorited] = useState(item.is_favourited || false); // Add state for favorite
+// Main component
+const ServiceCard = ({ item, onPress, onImageLoaded, displayAs = 'grid' }) => { 
+  // State for favorite status
+  const [isFavorited, setIsFavorited] = useState(item.is_favourited || false);
+  // State for image loading
+  const [imageLoaded, setImageLoaded] = useState(false);
 
   useEffect(() => {
-    setImageLoading(true);
     setIsFavorited(item.is_favourited || false);
   }, [item]);
 
-  let categoryIconName = 'miscellaneous-services';
-  switch (item.category?.toLowerCase()) {
-    case 'therapy':
-      categoryIconName = 'psychology';
-      break;
-    case 'transport':
-      categoryIconName = 'directions-car';
-      break;
-    case 'support':
-      categoryIconName = 'support-agent';
-      break;
-    case 'tech':
-      categoryIconName = 'computer';
-      break;
-    case 'personal':
-      categoryIconName = 'person';
-      break;
-    case 'social':
-      categoryIconName = 'people';
-      break;
-  }
-
-  if (displayAs === 'swipe') {
-    const imageUrl = item.media_urls && item.media_urls.length > 0 ? item.media_urls[0] : null;
-    const displayUri = item.cachedUri || imageUrl;
-    console.log(`[ServiceCard] Swipe Image URL: ${displayUri}, Item ID: ${item?.id}`);
-    
+  // Modern rating display with just a number and a single star icon
+  const renderModernRating = () => {
+    const rating = item.rating || 0;
     return (
-      <TouchableOpacity 
-        activeOpacity={0.9}
-        onPress={() => onPress(item)}
-        style={styles.swipeItemContainer}
-      >
-        <ImageBackground 
-          source={displayUri ? { uri: displayUri } : require('../../assets/images/placeholder.png')}
-          style={styles.swipeImageBackground}
-          resizeMode="cover"
-          onLoadStart={() => setImageLoading(true)}
-          onLoadEnd={() => {
-            setImageLoading(false);
-            if (typeof onImageLoaded === 'function') onImageLoaded(displayUri);
-          }}
-          onError={(e) => {
-            console.log(`[ServiceCard] ${displayAs} Image onError. URI: ${displayUri}, Error: ${e.nativeEvent.error}, Item ID: ${item?.id}`);
-            setImageLoading(false);
-          }}
-        >
-          {imageLoading && (
-            <ActivityIndicator size="large" color={COLORS.primary} style={StyleSheet.absoluteFill} />
-          )}
-          <LinearGradient
-            colors={['transparent', 'rgba(0,0,0,0.1)', 'rgba(0,0,0,0.9)']}
-            style={styles.gradientOverlay}
-          />
-          <View style={styles.swipeTextContainer}>
-            <Text style={styles.swipeTitle} numberOfLines={2}>{item.title || 'Service'}</Text>
-            {item.subcategory && <Text style={styles.swipeCategory} numberOfLines={1}>{item.subcategory}</Text>}
-            <View style={styles.swipeRow}>
-              <MaterialIcons name="star-rate" size={SIZES.h3} color={COLORS.white} />
-              <Text style={styles.swipeRatingText}>{item.rating ? parseFloat(item.rating).toFixed(1) : 'New'}</Text>
-              {item.location_text && (
-                <Text style={styles.swipeLocationText} numberOfLines={1}> • {item.location_text}</Text>
-              )}
-            </View>
-            {item.pricing_details && (
-              <Text style={styles.swipePriceText}>
-                ${item.pricing_details}
-              </Text>
-            )}
-          </View>
-        </ImageBackground>
-      </TouchableOpacity>
+      <View style={styles.modernRatingContainer}>
+        <Ionicons name="star" size={16} color="#FFD700" /> 
+        <Text style={styles.modernRatingText}>{rating.toFixed(1)}</Text>
+      </View>
     );
-  }
-
-  const cardStyle = displayAs === 'list' ? styles.listCardContainer : styles.gridCardContainer;
-  const imageStyle = displayAs === 'list' ? styles.listImage : styles.gridImage;
-  const imageContainerStyle = displayAs === 'list' ? styles.listImageContainer : styles.gridHeroImageContainer; 
-  const contentStyle = displayAs === 'list' ? styles.listContentContainer : styles.gridContentContainer;
-  const titleStyle = displayAs === 'list' ? styles.listTitle : styles.gridTitle;
-  const detailRowStyle = displayAs === 'list' ? styles.listDetailRow : styles.gridDetailRow;
-
-  const imageUrl = item.media_urls && item.media_urls.length > 0 ? item.media_urls[0] : null;
-  const safeImageUrl = imageUrl ? encodeURI(imageUrl) : null;
-const imageSource = React.useMemo(() => safeImageUrl ? { uri: safeImageUrl } : require('../../assets/images/placeholder.png'), [safeImageUrl]);
-  console.log(`[ServiceCard] ${displayAs} Image URL: ${imageUrl}, Item ID: ${item?.id}`);
-
-  const handleFavoritePress = () => {
-    // TODO: Implement actual favorite logic (e.g., API call)
-    setIsFavorited(!isFavorited);
-    console.log('Favorite pressed for item:', item.id, !isFavorited);
   };
 
-  return (
-    <TouchableOpacity style={cardStyle} onPress={() => onPress(item)} activeOpacity={0.8}>
-      <View style={imageContainerStyle}> 
-        <Image 
-          key={`${displayAs}-img-${item.id}`}
-          source={imageSource}
-          style={imageStyle}
-          onLoadStart={() => {
-            console.log(`[ServiceCard] ${displayAs} Image onLoadStart. URI: ${imageUrl}, Item ID: ${item?.id}`);
-            setImageLoading(true); // Ensure loading starts
-          }}
-          onLoadEnd={() => {
-            console.log(`[ServiceCard] ${displayAs} Image onLoadEnd. URI: ${imageUrl}, Item ID: ${item?.id}`);
-            setImageLoading(false);
-          }}
-          onError={(e) => {
-            console.log(`[ServiceCard] ${displayAs} Image onError. URI: ${imageUrl}, Error: ${e.nativeEvent.error}, Item ID: ${item?.id}`);
-            setImageLoading(false);
-          }}
-          resizeMode="cover"
-        />
-        {imageLoading && (
-          <ActivityIndicator 
-            style={styles.imageLoader}
-            size={displayAs === 'list' ? "medium" : "small"} 
-            color="#3A5E49" 
-          />
-        )}
-        {/* Favorite Icon for List and Grid View - overlaid on image */}
-        <TouchableOpacity 
-          style={displayAs === 'list' ? styles.listFavoriteIconContainer : styles.gridFavoriteIconContainer} 
-          onPress={handleFavoritePress}
-        >
-          <AntDesign name={isFavorited ? "heart" : "hearto"} size={displayAs === 'list' ? 20 : 22} color={isFavorited ? COLORS.error : (displayAs === 'list' ? COLORS.text : COLORS.white)} />
-        </TouchableOpacity>
-      </View>
-      <View style={contentStyle}>
-        <Text style={titleStyle} numberOfLines={displayAs === 'list' ? 1 : 2}>{item.title || 'Service Title'}</Text>
+  // Prepare variables from item object
+  // Extract price (with fallback and formatting)
+  const price = item.price ? `$${item.price}` : '$0';
+  
+  // Extract rating (with fallback)
+  const rating = item.rating || 0;
+  
+  // Extract reviews count (with fallback)
+  const reviews = item.reviews || 0;
+  
+  // Extract category (with fallback and formatting)
+  const category = item.category ? item.category.charAt(0).toUpperCase() + item.category.slice(1) : 'Uncategorized';
+  
+  // Extract and process image URL with our imageHelper utility
+  const rawImageUrl = item.media_urls && item.media_urls.length > 0 ? item.media_urls[0] : null;
+  
+  // Use our helper to get a valid Supabase URL
+  const imageUrl = getValidImageUrl(rawImageUrl, 'providerimages');
+  
+  // Create a memoized image source for better performance
+  const imageSource = useMemo(() => {
+    return imageUrl ? { uri: imageUrl } : { uri: 'https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/providerimages/default-service.png' };
+  }, [imageUrl]);
+  
+  // Extract suburb (with fallback)
+  const suburb = item.address_suburb || 'Suburb';
+  
+  // Extract description (with fallback)
+  const description = item.description || 'No description available';
+  
+  /* 
+   * Note: To use this properly, when fetching services data, you should join with service_providers table:
+   * 
+   * SELECT s.*, sp.credentials 
+   * FROM services s 
+   * JOIN service_providers sp ON s.provider_id = sp.id;
+   *
+   * This ensures the credentials array is available in each service item.
+   */
+  
+  // Process credentials from service_providers table
+  const processCredentials = () => {
+    const credentialButtons = [];
+    
+    // Check if item has credentials array from the service_providers table
+    if (item.credentials && Array.isArray(item.credentials) && item.credentials.length > 0) {
+      // Map each credential to a credential button object
+      item.credentials.forEach((credential, index) => {
+        // Assign colors based on credential type
+        let color = '#2196F3'; // Default blue
         
-        {displayAs === 'grid' && (
-          <View style={styles.gridAdditionalInfoContainer}>
-            {item.subcategory && <Text style={styles.gridDetailText}><MaterialIcons name="category" size={14} color="#555" /> {item.subcategory}</Text>}
-            {item.location_text && <Text style={styles.gridDetailText}><MaterialIcons name="location-on" size={14} color="#555" /> {item.location_text}</Text>}
-            {item.service_area_type && <Text style={styles.gridDetailText}><MaterialIcons name="public" size={14} color="#555" /> {item.service_area_type}</Text>}
-            <View style={styles.gridRatingRow}>
-              <View style={{flexDirection: 'row', alignItems: 'center'}}>
-                <AntDesign name="star" size={14} color="#FFC107" />
-                <Text style={[styles.gridDetailText, {marginLeft: 4}]}>{item.rating || 'N/A'} ({item.rating_count || '0'})</Text>
+        if (credential.toLowerCase().includes('ndis')) {
+          color = '#28A745'; // Green for NDIS related
+        } else if (credential.toLowerCase().includes('safety') || 
+                   credential.toLowerCase().includes('certified')) {
+          color = '#DC3545'; // Red for safety certifications
+        } else if (credential.toLowerCase().includes('license') || 
+                   credential.toLowerCase().includes('licence')) {
+          color = '#2196F3'; // Blue for licenses
+        } else if (credential.toLowerCase().includes('therapy')) {
+          color = '#9C27B0'; // Purple for therapy
+        } else if (credential.toLowerCase().includes('education') || 
+                   credential.toLowerCase().includes('teacher')) {
+          color = '#17A2B8'; // Teal for education
+        }
+        
+        credentialButtons.push({
+          name: credential,
+          color: color
+        });
+      });
+    } 
+    // Fallback if no credentials are available
+    else if (item.category) {
+      credentialButtons.push({
+        name: `${item.category} Provider`,
+        color: '#2196F3', // Blue for category
+      });
+    }
+    
+    return credentialButtons;
+  };
+  
+  // Get credentials for this service
+  const credentials = processCredentials();
+  
+  // Determine which layout to use
+  if (displayAs === 'list') {
+    // MODERN LIST VIEW - Clean horizontal layout with improved spacing and typography
+    return (
+      <TouchableOpacity 
+        style={styles.listCardContainer}
+        onPress={onPress ? () => onPress(item) : undefined} 
+        activeOpacity={0.8}
+      >
+        <View style={styles.listCardInner}>
+          {/* Left side - Image */}
+          <View style={styles.listImageContainer}>
+            {!imageLoaded && (
+              <View style={styles.loaderContainer}>
+                <ActivityIndicator size="large" color="#000" />
               </View>
-              <TouchableOpacity 
-                onPress={() => alert('Share pressed for ' + item.title)}
-                style={styles.iconButton}
-              >
-                <Feather name="share-2" size={16} color="#555" />
-              </TouchableOpacity>
+            )}
+            <Image 
+              source={imageSource}
+              style={styles.listImage}
+              onLoad={() => {
+                setImageLoaded(true);
+                if (typeof onImageLoaded === 'function' && imageUrl) {
+                  onImageLoaded(imageUrl);
+                }
+              }}
+              onError={(e) => console.log('Service Card List Image Error:', e.nativeEvent.error)}
+            />
+            {/* Heart icon overlay */}
+            <TouchableOpacity 
+              style={styles.listHeartIconContainer}
+              onPress={() => setIsFavorited(!isFavorited)}
+            >
+              <View style={styles.listHeartIconCircle}>
+                <Ionicons name={isFavorited ? "heart" : "heart-outline"} size={16} color={isFavorited ? "#FF6B6B" : "white"} />
+              </View>
+            </TouchableOpacity>
+          </View>
+          
+          {/* Right side - Content */}
+          <View style={styles.listContentContainer}>
+            {/* Top Section - Title and Rating */}
+            <View style={styles.listTopSection}>
+              <Text style={styles.listTitle} numberOfLines={1}>{item.title || 'Service Title'}</Text>
+              {renderModernRating()}
+            </View>
+            
+            {/* Category */}
+            <Text style={styles.listCategory}>{category}</Text>
+            
+            {/* Middle Section - Description */}
+            <Text style={styles.listDescription} numberOfLines={2}>{description}</Text>
+            
+            {/* Credentials as tags */}
+            <View style={styles.listCredentialsContainer}>
+              {credentials.slice(0, 2).map((credential, index) => (
+                <View 
+                  key={`${credential.name}-${index}`}
+                  style={styles.listCredentialButton}
+                >
+                  <Text style={styles.listCredentialText}>{credential.name}</Text>
+                </View>
+              ))}
+              {credentials.length > 2 && (
+                <View style={styles.listCredentialButton}>
+                  <Text style={styles.listCredentialText}>+{credentials.length - 2} more</Text>
+                </View>
+              )}
+            </View>
+            
+            {/* Bottom Section - Location and Price on same line */}
+            <View style={styles.listBottomSection}>
+              {/* Location */}
+              <View style={styles.listLocationContainer}>
+                <Ionicons name="location-outline" size={16} color="#000" />
+                <Text style={styles.listLocationText} numberOfLines={1}>{suburb}</Text>
+              </View>
+              
+              {/* Price */}
+              <View style={styles.listPriceContainer}>
+                <Text style={styles.listPriceValue}>{price}<Text style={styles.listPriceUnit}> /hr</Text></Text>
+              </View>
             </View>
           </View>
-        )}
-
-        {displayAs === 'list' && (
-          <>
-            <View style={detailRowStyle}>
-              <MaterialIcons name={categoryIconName} size={16} color="#555" />
-              <Text style={styles.detailText}>{item.category || 'Category'}</Text>
-              {item.subcategory && <Text style={styles.detailTextMuted}> ({item.subcategory})</Text>}
+        </View>
+      </TouchableOpacity>
+    );
+  } else {
+    // GRID VIEW - Vertical layout with centered card (matching reference image)
+    return (
+      <View style={styles.gridCardWrapper}>
+        <TouchableOpacity 
+          style={styles.gridCardContainer} 
+          onPress={onPress ? () => onPress(item) : undefined} 
+          activeOpacity={0.8}
+        >
+          {/* Card container with rounded corners */}
+          <View style={styles.gridCardInner}>
+            {/* Image Container */}
+            <View style={styles.imageContainer}>
+              {!imageLoaded && (
+                <View style={styles.loaderContainer}>
+                  <ActivityIndicator size="large" color="#000" />
+                </View>
+              )}
+              <Image 
+                source={imageSource}
+                style={styles.image}
+                onLoad={() => {
+                  setImageLoaded(true);
+                  if (typeof onImageLoaded === 'function' && imageUrl) {
+                    onImageLoaded(imageUrl);
+                  }
+                }}
+                onError={(e) => console.log('Service Card Image Error:', e.nativeEvent.error)}
+              />
+              {/* Heart icon overlay */}
+              <TouchableOpacity 
+                style={styles.heartIconContainer}
+                onPress={() => setIsFavorited(!isFavorited)}
+              >
+                <View style={styles.heartIconCircle}>
+                  <Ionicons name={isFavorited ? "heart" : "heart-outline"} size={20} color={isFavorited ? "#FF6B6B" : "white"} />
+                </View>
+              </TouchableOpacity>
             </View>
-            {item.location_text && (
-              <View style={detailRowStyle}>
-                <MaterialIcons name="location-on" size={16} color="#555" />
-                <Text style={styles.detailText}>{item.location_text}</Text>
+            
+            {/* Content Area */}
+            <View style={styles.contentContainer}>
+              {/* Title section */}
+              <View style={styles.titleContainer}>
+                {/* Service Title */}
+                <Text style={styles.title} numberOfLines={2}>{item.title || 'Service Title'}</Text>
               </View>
-            )}
-            <View style={detailRowStyle}>
-              <AntDesign name="star" size={16} color="#FFC107" />
-              <Text style={styles.detailText}>{item.rating || '4.5'} ({item.rating_count || item.review_count || '0'} reviews)</Text>
+              
+              {/* Category and rating on same row */}
+              <View style={styles.categoryRatingRow}>
+                {/* Left side - Category */}
+                <Text style={styles.category}>{category}</Text>
+                
+                {/* Right side - Modern Rating */}
+                {renderModernRating()}
+              </View>
+              
+              {/* Location */}
+              <View style={styles.locationContainer}>
+                <Ionicons name="location-outline" size={18} color="#000" />
+                <Text style={styles.locationText} numberOfLines={1}>{suburb}</Text>
+              </View>
+              
+              {/* Bottom section removed - no pricing in grid view */}
             </View>
-            {item.pricing_details && (
-              <View style={detailRowStyle}>
-                <MaterialIcons name="attach-money" size={16} color="#555" />
-                <Text style={styles.detailText}>{item.pricing_details}</Text>
-              </View>
-            )}
-            {item.service_area_type && (
-              <View style={detailRowStyle}>
-                <MaterialIcons name="public" size={16} color="#555" />
-                <Text style={styles.detailText}>{item.service_area_type}</Text>
-              </View>
-            )}
-            {/* Description for list view - slightly different styling */}
-            <View style={styles.descriptionContainerList}>
-              <Text style={styles.descriptionTextList} numberOfLines={2}>{item.description || 'No description available.'}</Text>
-            </View>
-          </>
-        )}
-
+          </View>
+        </TouchableOpacity>
       </View>
-      {/* Share button - For list view, positioned absolutely on the card. For grid, it's with ratings. */}
-      {displayAs === 'list' && (
-         <TouchableOpacity style={styles.listShareIconContainer} onPress={() => alert('Share pressed for ' + item.title)}>
-            <Feather name="share-2" size={18} color={COLORS.text} />
-          </TouchableOpacity>
-      )}
-      {/* Grid View: Favorite icon is on image, Share button is with ratings */}
-    </TouchableOpacity>
-  );
+    );
+  }
 };
 
 const styles = StyleSheet.create({
-  swipeItemContainer: {
-    borderRadius: SIZES.radius,
-    overflow: 'hidden',
-    ...SHADOWS.medium,
-    backgroundColor: COLORS.lightGray, // Fallback color
+  // ===== GRID VIEW STYLES =====
+  // Wrapper for the grid card in 2-column layout
+  gridCardWrapper: {
+    width: '50%', // Take up half the screen width
+    marginBottom: 8,
+    paddingHorizontal: 2, // Minimal padding between columns
   },
-  swipeImageBackground: {
-    width: '100%',
-    height: '100%',
-    justifyContent: 'flex-end', // Align text container to bottom
-  },
-  gradientOverlay: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  swipeTextContainer: {
-    paddingHorizontal: SIZES.padding,
-    paddingBottom: 120, // Increased padding to avoid overlap with action buttons
-    paddingTop: SIZES.padding, // Keep some top padding as well
-  },
-  swipeTitle: {
-    ...FONTS.h2,
-    color: COLORS.white,
-    fontWeight: 'bold',
-    marginBottom: SIZES.base / 2,
-  },
-  swipeCategory: {
-    ...FONTS.body4,
-    color: COLORS.white,
-    opacity: 0.9,
-    marginBottom: SIZES.base,
-  },
-  swipeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: SIZES.base,
-  },
-  swipeRatingText: {
-    ...FONTS.body3,
-    color: COLORS.white,
-    marginLeft: SIZES.base / 2,
-  },
-  swipeLocationText: {
-    ...FONTS.body4,
-    color: COLORS.white,
-    opacity: 0.9,
-    flexShrink: 1, // Allow text to shrink if needed
-  },
-  swipePriceText: {
-    ...FONTS.h3,
-    color: COLORS.white,
-    fontWeight: 'bold',
-    marginTop: SIZES.base / 2,
-  },
-
+  
+  // Grid card container
   gridCardContainer: {
-    backgroundColor: '#FFFFFF',
+    width: GRID_CARD_WIDTH,
     borderRadius: 12,
-    // padding: 12, // Padding will be handled by content container if image is full width top
-    margin: 8,
-    // alignItems: 'center', // Content below image will handle its own alignment
+    backgroundColor: '#fff',
+    elevation: 4,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
-    elevation: 3,
-    width: width / 2 - 24, 
-    position: 'relative', // For absolute positioning of favorite icon
+    alignSelf: 'center', // Center the card within its wrapper
   },
-  gridHeroImageContainer: { // Renamed and restyled from gridImageContainer
-    width: '100%', // Full width of the card
-    height: 120,    // Aspect ratio for hero image, adjust as needed
-    borderTopLeftRadius: 12, // Match card's border radius
-    borderTopRightRadius: 12,
-    marginBottom: 10,
-    justifyContent: 'center', 
-    alignItems: 'center',
-    backgroundColor: '#E0E0E0', 
-    overflow: 'hidden', // Ensures image respects border radius
-    position: 'relative', // Needed for absolute positioned favorite icon
+  
+  // Grid inner container with border radius
+  gridCardInner: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#fff',
+    height: 240, // Longer to prevent text cropping
   },
-  gridImage: {
-    width: '100%', // Takes full width of gridHeroImageContainer
-    height: '100%', // Takes full height of gridHeroImageContainer
-    // borderRadius: 40, // Removed: no longer circular
-    // marginBottom: 10, // Handled by gridHeroImageContainer
-    backgroundColor: '#E0E0E0', // Kept for placeholder look
-  },
-  gridContentContainer: {
-    alignItems: 'center',
+  
+  // ===== MODERN LIST VIEW STYLES =====
+  // List card container
+  listCardContainer: {
     width: '100%',
-    paddingHorizontal: 12, 
-    paddingBottom: 36, 
-    paddingTop: 8,     
-  },
-  gridTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
-    textAlign: 'center',
-    marginBottom: 6,
-    minHeight: 40, 
-  },
-  gridDetailText: { 
-    fontSize: 12,
-    color: '#555',
-    marginLeft: 5,
-    textAlign: 'center',
-    marginBottom: 3, // Space between lines of detail
-  },
-  gridDetailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-    // alignSelf: 'center', // Already centered by gridContentContainer
-  },
-  gridFavoriteIconContainer: { // Style for favorite icon on grid image
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    padding: 5,
-    // backgroundColor: 'rgba(0,0,0,0.3)', // Optional for better visibility
-    // borderRadius: 15,
-  },
-  gridRatingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    width: '100%',
-    marginTop: 4,
-  },
-  gridShareButton: {
-    position: 'absolute',
-    bottom: 8,
-    right: 8,
-    padding: 6,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    borderRadius: 20,
+    paddingHorizontal: 0,
+    marginBottom: 8, // Reduced spacing between cards for more compact look
+    backgroundColor: '#fff',
+    borderRadius: 8, // Subtle rounded corners
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 1.5,
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
     elevation: 2,
   },
-  listCardContainer: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: SIZES.radius, // Consistent radius with HousingCard
-    marginVertical: 8,
-    marginHorizontal: SIZES.padding, // Consistent padding
+  
+  // List card inner
+  listCardInner: {
     flexDirection: 'row',
-    padding: SIZES.base, // Slightly reduced padding
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 }, // Consistent shadow
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3, // Consistent elevation
-    position: 'relative', // For share icon
+    backgroundColor: '#fff',
+    overflow: 'hidden',
+    padding: 12, // Reduced padding for more compact look
+    paddingBottom: 8, // Even less padding at bottom
+    borderRadius: 8,
   },
-  listImageContainer: { 
-    width: 100, // Adjusted size for ServiceCard list image
-    height: 100, // Square image
-    borderRadius: SIZES.radiusSml, // Consistent image border radius
-    marginRight: SIZES.paddingSml, // Space between image and text
+  
+  // List image container
+  listImageContainer: {
+    width: 100, // Larger image for better visibility
+    height: 100,
+    position: 'relative',
+    borderRadius: 8,
+    overflow: 'hidden',
+    marginRight: 16,
+    backgroundColor: '#f8f8f8',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#E0E0E0', 
-    overflow: 'hidden', // Important for image border radius
-    position: 'relative', // For favorite icon overlay
   },
+  
+  // List image
   listImage: {
     width: '100%',
     height: '100%',
-    backgroundColor: '#E0E0E0',
+    resizeMode: 'cover', // Cover mode for better appearance
   },
-  listFavoriteIconContainer: { // Style for favorite icon on list image
-    position: 'absolute',
-    top: 6,
-    right: 6,
-    padding: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.75)', // Slight background for visibility
-    borderRadius: 15, // Circular background
-  },
+  
+  // List content container
   listContentContainer: {
-    flex: 1, 
-    justifyContent: 'space-between', // Changed to space-between for better vertical distribution
-    paddingVertical: SIZES.base / 4, // Minimal vertical padding
+    flex: 1,
+    justifyContent: 'space-between',
   },
-  listTitle: {
-    fontSize: SIZES.font * 1.05, // Slightly adjusted size
-    fontWeight: '600', // Semibold
-    color: COLORS.text, // Use theme color
-    marginBottom: SIZES.base / 2,
+  
+  // Top section with title and rating
+  listTopSection: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
   },
-  listDetailRow: {
+  
+  // Modern rating container
+  modernRatingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: SIZES.base / 2, // Consistent spacing
+    backgroundColor: '#f9f9f9',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
   },
-  descriptionContainerList: {
-    marginTop: SIZES.base / 2, // Add a little space before description
+  
+  // Modern rating text
+  modernRatingText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#333',
+    marginLeft: 4,
   },
-  descriptionTextList: {
-    fontSize: SIZES.font * 0.85, // Slightly smaller description text
-    color: COLORS.gray, // Lighter color for description
+  
+  // Bottom section with location and price
+  listBottomSection: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 5,
+    marginBottom: 0, // Removed bottom margin to make card more compact
   },
-  detailText: { 
-    fontSize: SIZES.font * 0.9, // Consistent detail text size
-    color: COLORS.textSecondary, // Use secondary text color
-    marginLeft: SIZES.base / 2, // Space from icon
-    flexShrink: 1, // Allow text to shrink
+  
+  // List title
+  listTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#000',
+    marginBottom: 2,
+    flex: 1,
+    paddingRight: 8,
   },
-  detailTextMuted: {
-    fontSize: SIZES.font * 0.9,
-    color: COLORS.gray, // Muted color for less important details
-    marginLeft: SIZES.base / 4,
+  
+  // List category
+  listCategory: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#000',
+    marginBottom: 6,
   },
-  listShareIconContainer: { // For share icon on the card itself
+  
+  // List description
+  listDescription: {
+    fontSize: 14,
+    color: '#000',
+    marginBottom: 5, // Reduced spacing
+    lineHeight: 19, // Slightly tighter line height
+  },
+  
+  // List location container
+  listLocationContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  
+  // List location text
+  listLocationText: {
+    fontSize: 14,
+    color: '#000',
+    marginLeft: 4,
+  },
+  
+  // List price container
+  listPriceContainer: {
+    alignItems: 'flex-end',
+  },
+  
+  // List price value
+  listPriceValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#000',
+  },
+  
+  // List price unit
+  listPriceUnit: {
+    fontSize: 12,
+    color: '#000',
+    marginTop: 2,
+  },
+  
+  // List credentials container
+  listCredentialsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 2.5, // Reduced spacing
+  },
+  
+  // List credential button
+  listCredentialButton: {
+    backgroundColor: '#f0f0f0',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    marginRight: 8,
+    marginBottom: 4,
+  },
+  
+  // List credential text
+  listCredentialText: {
+    fontSize: 12,
+    color: '#000',
+    fontWeight: '500',
+  },
+  
+  // Image container
+  imageContainer: {
+    height: 120,
+    width: '100%',
+    position: 'relative',
+    backgroundColor: '#f5f5f5',
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+    overflow: 'hidden', // This is critical to ensure the rounded corners are visible
+  },
+  
+  // Image styles
+  image: {
+    height: '100%',
+    width: '100%',
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+    resizeMode: 'cover', // Changed to cover for better Airbnb-style appearance
+  },
+  
+  // Loading container
+  loaderContainer: {
     position: 'absolute',
-    top: SIZES.base,
-    right: SIZES.base,
-    padding: 4,
-    // backgroundColor: 'rgba(0, 0, 0, 0.05)', // Optional subtle background
-    // borderRadius: 15,
-  },
-  iconButton: { // General icon button style (can be removed if not used elsewhere)
-    padding: 8,
-  },
-  imageLoader: {
-    position: 'absolute',
+    top: 0,
     left: 0,
     right: 0,
-    top: 0,
     bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(248, 248, 248, 0.7)',
+    zIndex: 1,
+    borderRadius: 8,
+  },
+  
+  // Heart icon container for grid view
+  heartIconContainer: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    zIndex: 10,
+  },
+  
+  // Circle background for heart icon (grid view)
+  heartIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  
+  // Heart icon container for list view
+  listHeartIconContainer: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    zIndex: 10,
+  },
+  
+  // Circle background for heart icon (list view)
+  listHeartIconCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  
+  // Content container
+  contentContainer: {
+    flex: 1,
+    padding: 10,
+  },
+  
+  // Credentials container - grid view
+  credentialsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 10,
+  },
+  
+  // Credential button - grid view
+  credentialButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 16,
+    marginRight: 8,
+    marginBottom: 6,
+  },
+  
+  // Credential text - grid view
+  credentialText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  
+  // List credentials container
+  listCredentialsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 4,
+  },
+  
+  // List credential button
+  listCredentialButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    marginRight: 6,
+    marginBottom: 4,
+  },
+  
+  // List credential text
+  listCredentialText: {
+    color: 'white',
+    fontSize: 10,
+    fontWeight: '500',
+  },
+  
+  // Title text
+  title: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 4,
+    color: '#000',
+  },
+  
+  // Category text
+  category: {
+    fontSize: 14,
+    color: '#888',
+  },
+  
+  // Top content row container for title and rating
+  categoryRatingRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  
+  // Title container
+  titleContainer: {
+    width: '100%',
+  },
+  
+  // Rating outer container on right side
+  ratingOuterContainer: {
+    alignItems: 'flex-end',
+  },
+  
+  // Stars container
+  starsContainer: {
+    flexDirection: 'row',
+    marginBottom: 4,
+  },
+  
+  // Reviews text
+  reviewsText: {
+    fontSize: 14,
+    color: '#000',
+    textAlign: 'right',
+  },
+  
+  // Bottom content row for location and price
+  bottomContentRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 12,
+    paddingTop: 0, // Remove any implicit dividing line
+  },
+  
+  // Location container
+  locationContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 0, // Remove gap between location and category
+    marginBottom: 12,
+  },
+  
+  // Location text
+  locationText: {
+    fontSize: 13,
+    marginLeft: 4,
+    color: '#444',
+  },
+  
+  // Price container
+  priceContainer: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+  },
+  
+  // Price label (small 'from' text above price value)
+  priceLabel: {
+    fontSize: 12,
+    color: '#000',
+    textAlign: 'right',
+  },
+  
+  // Price value
+  priceValue: {
+    fontSize: 17,
+    fontWeight: 'bold',
+    color: '#000',
+  },
+  
+  // Price unit ('per hour' text below price value)
+  priceUnit: {
+    fontSize: 12,
+    color: '#000',
+    textAlign: 'right',
   },
 });
 
-const arePropsEqual = (prevProps, nextProps) => {
-  const itemContentBasicallySame = 
-    prevProps.item?.id === nextProps.item?.id && 
-    prevProps.item?.title === nextProps.item?.title &&
-    prevProps.item?.media_urls?.[0] === nextProps.item?.media_urls?.[0];
-  // Note: For objects/arrays like 'item', true stability means same reference or deep equality.
-  // React.memo by default does shallow (reference) comparison for object props.
-
-  const itemRefChanged = prevProps.item !== nextProps.item;
-  const onPressChanged = prevProps.onPress !== nextProps.onPress;
-  const displayAsChanged = prevProps.displayAs !== nextProps.displayAs;
-
-  if (!itemContentBasicallySame || onPressChanged || displayAsChanged) {
-    console.log(`[ServiceCard.arePropsEqual] Props changed for ID ${nextProps.item?.id}. Re-rendering.`);
-    if (itemRefChanged) console.log(`  - Item reference changed: ${!itemContentBasicallySame ? 'Content also diff' : 'Content same, ref diff'}`);
-    if (prevProps.item?.id === nextProps.item?.id && prevProps.item?.media_urls?.[0] !== nextProps.item?.media_urls?.[0]) {
-        console.log(`  - Item media_urls changed: ${prevProps.item?.media_urls?.[0]} vs ${nextProps.item?.media_urls?.[0]}`);
-    }
-    if (onPressChanged) console.log('  - onPress function reference changed.');
-    if (displayAsChanged) console.log('  - displayAs changed.');
-    return false; // Props are not equal, re-render
-  }
-  // console.log(`[ServiceCard.arePropsEqual] Props ARE equal for ID ${nextProps.item?.id}. Skipping render.`);
-  return true; // Props are equal, skip re-render
-};
-
-export default React.memo(ServiceCard, arePropsEqual);
+export default ServiceCard;

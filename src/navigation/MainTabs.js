@@ -67,10 +67,18 @@ const MainTabsTabs = () => {
       <Tab.Screen 
         name="Explore" 
         component={ExploreStackNavigator} 
-        // Do NOT forcibly reset Explore stack on every tab press. This prevents unnecessary remounts and repeated data fetching.
+        // Optimized navigation to prevent remounting
         listeners={({ navigation, route }) => ({
           tabPress: e => {
-            navigation.navigate(route.name);
+            // Prevent default behavior which could cause remounting
+            e.preventDefault();
+            // Navigate to the route but don't reset the stack
+            navigation.navigate(route.name, {
+              screen: 'ProviderDiscovery',
+              // Don't pass initialCategory here - let component handle it internally
+              params: {},
+              merge: true, // Merge params instead of replacing
+            });
           },
         })}
       />

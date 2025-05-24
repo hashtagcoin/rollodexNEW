@@ -22,6 +22,11 @@ const mockFriends = Array.from({ length: 8 }, (_, i) => ({ id: i + '', name: `Fr
 
 const ProfileScreen = () => {
   const navigation = useNavigation();
+  
+  // Get user profile from context - move this to the top
+  const { user, profile: userProfile } = useUser();
+  
+  // UI state
   const [selectedTab, setSelectedTab] = useState('Posts');
   const scrollViewRef = useRef(null);
   
@@ -31,7 +36,13 @@ const ProfileScreen = () => {
   const [isScrolling, setIsScrolling] = useState(false);
   const scrollEndTimer = useRef(null);
   
-  // Use useFocusEffect to reset the screen state when navigated to
+  // Posts state
+  const [posts, setPosts] = useState([]);
+  const [loadingPosts, setLoadingPosts] = useState(false);
+  const [showCreatePostModal, setShowCreatePostModal] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
+  
+  // Friends state
   useFocusEffect(
     React.useCallback(() => {
       // When the screen is focused via BottomNavbar, reset to the first tab
@@ -76,15 +87,7 @@ const ProfileScreen = () => {
     { id: '102', name: 'Morgan', avatar: 'https://randomuser.me/api/portraits/women/22.jpg' },
   ]);
   
-  // New state variables for posts
-  const [posts, setPosts] = useState([]);
-  const [loadingPosts, setLoadingPosts] = useState(false);
-  const [showCreatePostModal, setShowCreatePostModal] = useState(false);
-  const [currentUser, setCurrentUser] = useState(null);
-  
-  // Get user profile from context
-  const { user, profile: userProfile } = useUser();
-
+  // Handle navigation back to dashboard
   const handleBackToDashboard = () => {
     navigation.navigate('DashboardScreen');
   };

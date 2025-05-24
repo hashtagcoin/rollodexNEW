@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  Image,
   TouchableOpacity,
   Dimensions,
   ScrollView,
@@ -11,7 +10,9 @@ import {
   ActivityIndicator,
   Modal,
   FlatList,
+  Image,
 } from 'react-native';
+import { getValidImageUrl, getDefaultImage } from '../../utils/imageHelper';
 import { TapGestureHandler, State } from 'react-native-gesture-handler';
 import { supabase } from '../../lib/supabaseClient';
 import { COLORS, FONTS } from '../../constants/theme';
@@ -54,6 +55,17 @@ const PostCard = ({ post, onPress, showActions = true }) => {
   
   // Image loading states
   const [imageLoading, setImageLoading] = useState(true);
+
+  // Memoize image source for better performance, using our new utility function
+  const imageSource = React.useMemo(() => {
+    if (post.media_urls && post.media_urls.length > 0) {
+      // Use our new helper to get a properly formatted URL for Supabase storage
+      const validUrl = getValidImageUrl(post.media_urls[currentImageIndex], 'postsimages');
+      return { uri: validUrl };
+    }
+    // Use our helper function to get the default image
+    return getDefaultImage('post');
+  }, [post.media_urls, currentImageIndex]);
 
   useEffect(() => {
     fetchUserDetails();
@@ -295,16 +307,24 @@ const PostCard = ({ post, onPress, showActions = true }) => {
           <View style={styles.imageContainer}>
             {post.media_urls && post.media_urls.length > 0 ? (
               <>
-                <Image
-                  source={{ uri: post.media_urls[currentImageIndex] }}
-                  style={styles.image}
-                  onLoad={handleImageLoad}
-                />
                 {imageLoading && (
                   <View style={styles.imageLoadingContainer}>
                     <ActivityIndicator size="large" color={COLORS.primary} />
                   </View>
                 )}
+                <Image
+                  key={`post-img-${post.post_id}-${currentImageIndex}`}
+                  source={imageSource}
+                  style={styles.image}
+                  resizeMode="cover"
+                  onLoad={() => {
+                    handleImageLoad();
+                    if (typeof onImageLoaded === 'function' && post.media_urls && post.media_urls.length > 0) {
+                      onImageLoaded(post.media_urls[currentImageIndex]);
+                    }
+                  }}
+                  onError={(e) => console.log('Image error:', e.nativeEvent.error)}
+                />
                 
                 {/* Heart animation on double-tap */}
                 <Animated.View
