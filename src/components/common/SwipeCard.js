@@ -1,289 +1,573 @@
 /**
  * SwipeCard Component
  * An optimized card component for use with SwipeCardDeck
- * Handles proper image loading and prevents flicker
+ * Displays provider/service information in a Tinder-style card layout
  */
 
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, memo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   Dimensions,
   ActivityIndicator,
-  Image
+  Image,
+  TouchableOpacity,
+  ScrollView,
+  Platform
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { getValidImageUrl, getDefaultImage } from '../../utils/imageHelper';
-
-// Colors
-const DARK_GREEN = '#006400';
-const LIGHT_GRAY = '#f0f0f0';
+import { COLORS } from '../../constants/theme';
 
 const { width, height } = Dimensions.get('window');
 
 /**
- * SwipeCard - A component that renders a single card with image and details
- * Uses optimized rendering to prevent flicker and unnecessary re-renders
+ * SwipeCard - A component that renders a single provider/service card with image and details
+ * Optimized for smooth swiping animations and performance
  */
-const SwipeCard = React.memo(({
+const SwipeCard = memo(({
   item,
   isHousing = false,
-  displayAs = 'current', // 'current' or 'next'
-  cardId = null,
-  debugMode = false
+  onPress = null
 }) => {
-  const mountTimestamp = useRef(Date.now()).current;
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
-  const componentId = useRef(`card-${mountTimestamp}-${Math.floor(Math.random() * 1000)}`).current;
-  
-  // Helper for consistent debug logging
-  const logCardEvent = useCallback((event, details = {}) => {
-    if (debugMode) {
-      console.log(`[CARD-DEBUG][${new Date().toISOString()}][${event}]`, {
-        componentId,
-        cardId: cardId || item?.id,
-        displayAs,
-        mountTimestamp,
-        ...details
-      });
-    }
-  }, [componentId, item?.id, cardId, displayAs, mountTimestamp, debugMode]);
-  
-  // Log mount and unmount events
-  useEffect(() => {
-    logCardEvent('CARD_MOUNTED', {
-      imageUrl: getMainImageUrl(),
-      isPreCached: imagePreloader.isImageCached(getMainImageUrl())
-    });
-    
-    return () => {
-      const unmountTime = Date.now();
-      logCardEvent('CARD_UNMOUNTED', {
-        timeOnScreenMs: unmountTime - mountTimestamp,
-        imageLoaded,
-        imageError
-      });
-    };
-  }, []);
-  
-  // Extract main image URL from item
-  const getMainImageUrl = useCallback(() => {
+
+  // Get image URL with fallbacks
+  const getImageUrl = useCallback(() => {
     if (!item) return null;
     
-    // Get the raw URL from the item
-    let rawUrl = item.media_urls?.[0] || // Primary approach - direct access to first media URL
-                item.image_url || 
-                item.images?.[0]?.url || 
-                item.avatar_url;
+    // Debug log to see what we're getting
+    console.log('SwipeCard item:', item);
+    console.log('SwipeCard item properties:', Object.keys(item));
     
-    // Use our helper to get a properly formatted URL for the appropriate bucket
-    if (rawUrl) {
-      // Determine which bucket to use based on the item properties
-      const bucket = isHousing ? 'housingimages' : 'providerimages';
-      const validUrl = getValidImageUrl(rawUrl, bucket);
-      console.log(`[SwipeCard] Using validated image URL: ${validUrl}`);
-      return validUrl;
-    }
+    // Try multiple possible image URL fields
+    const url = item.media_urls?.[0] || 
+           item.image_url || 
+           item.images?.[0]?.url || 
+           item.avatar_url ||
+           item.cover_image_url ||
+           item.imageurl ||
+           (isHousing 
+             ? 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=800&h=1200&fit=crop'
+             : 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=800&h=1200&fit=crop');
     
-    // Return a default fallback URL if no image is found
-    return 'https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/providerimages/therapy/1.png';
+    console.log('Using image URL:', url);
+    return url;
   }, [item, isHousing]);
-  
-  // Get the source for the image, properly memoized
-  const imageSource = React.useMemo(() => {
-    const url = getMainImageUrl();
-    return url ? { uri: url } : getDefaultImage(isHousing ? 'housing' : 'service');
-  }, [getMainImageUrl, isHousing]);
-  
+
+  const imageUrl = getImageUrl();
+
   // Handle image load success
   const handleImageLoad = useCallback(() => {
     setImageLoaded(true);
     setImageError(false);
-    logCardEvent('IMAGE_LOADED', {
-      loadTimeMs: Date.now() - mountTimestamp,
-      imageUrl: getMainImageUrl()
-    });
-  }, [mountTimestamp, logCardEvent, getMainImageUrl]);
-  
+  }, []);
+
   // Handle image load error
-  const handleImageError = useCallback((error) => {
-    setImageLoaded(false);
+  const handleImageError = useCallback(() => {
     setImageError(true);
-    logCardEvent('IMAGE_ERROR', {
-      error: error?.message || 'Unknown error',
-      imageUrl: getMainImageUrl()
-    });
-  }, [logCardEvent, getMainImageUrl]);
-  
-  // Early return if no item
+    setImageLoaded(false);
+  }, []);
+
+  // Handle card press
+  const handleCardPress = useCallback(() => {
+    if (onPress) {
+      onPress(item);
+    }
+  }, [onPress, item]);
+
+  // Format price for display
+  const formatPrice = useCallback((price) => {
+    if (!price) return 'Contact for pricing';
+    if (typeof price === 'number') {
+      return `$${price.toLocaleString()}`;
+    }
+    return price;
+  }, []);
+
+  // Get category color
+  const getCategoryColor = useCallback((category) => {
+    const colors = {
+      'Therapy': '#3498DB',
+      'Housing': '#E74C3C',
+      'Support': '#27AE60',
+      'Transport': '#F39C12',
+      'Tech': '#9B59B6',
+      'Personal': '#1ABC9C',
+      'Social': '#E67E22'
+    };
+    return colors[category] || COLORS.DARK_GREEN;
+  }, []);
+
   if (!item) {
-    return null;
-  }
-  
-  // Determine main content based on whether it's housing or service
-  const title = isHousing ? item.property_name || 'Housing' : item.name || 'Provider';
-  const subtitle = isHousing ? `${item.bedrooms || '?'} BR • ${item.bathrooms || '?'} BA` : item.specialty || 'Professional';
-  const location = isHousing ? item.neighborhood || item.address : item.location;
-  
-  // Main card render
-  return (
-    <View style={styles.card}>
-      {/* Card Image */}
-      <View style={styles.imageContainer}>
-        {!imageLoaded && !imageError && (
-          <View style={styles.loaderContainer}>
-            <ActivityIndicator size="large" color={DARK_GREEN} />
-          </View>
-        )}
-        <Image
-          source={imageSource}
-          style={styles.cardImage}
-          resizeMode="cover"
-          onLoad={handleImageLoad}
-          onError={handleImageError}
-          testID={`card-image-${item.id}`}
-        />
-        
-        {/* Price or Rate Tag (Airbnb-style card) */}
-        <View style={styles.priceTag}>
-          <Text style={styles.priceText}>
-            {isHousing 
-              ? `$${item.price || '??'}/night` 
-              : `$${item.rate || '??'}/hr`}
-          </Text>
+    return (
+      <View style={styles.card}>
+        <View style={styles.emptyCard}>
+          <Text style={styles.emptyText}>No data available</Text>
         </View>
       </View>
-      
-      {/* Card Content */}
-      <View style={styles.cardContent}>
-        <View style={styles.titleRow}>
-          <Text style={styles.title} numberOfLines={1}>
-            {title}
-          </Text>
-          <View style={styles.ratingContainer}>
-            <Ionicons name="star" size={16} color={DARK_GREEN} />
-            <Text style={styles.rating}>{item.rating || '4.5'}</Text>
-          </View>
-        </View>
+    );
+  }
+
+  const CardContent = (
+    <View style={styles.card}>
+      {/* Image Section */}
+      <View style={styles.imageContainer}>
+        {/* Always attempt to render the image */}
+        <Image
+          source={{ uri: imageUrl || 'https://via.placeholder.com/400x600?text=Loading...' }}
+          style={styles.cardImage}
+          onLoad={handleImageLoad}
+          onError={handleImageError}
+          resizeMode="cover"
+        />
         
-        <Text style={styles.subtitle} numberOfLines={1}>
-          {subtitle}
-        </Text>
-        
-        <Text style={styles.location} numberOfLines={1}>
-          {location || 'Location not specified'}
-        </Text>
-        
-        {/* Additional features (Airbnb-style) */}
-        {isHousing && (
-          <View style={styles.features}>
-            {item.amenities?.slice(0, 3).map((amenity, index) => (
-              <View key={index} style={styles.feature}>
-                <Ionicons name="checkmark-circle" size={14} color={DARK_GREEN} />
-                <Text style={styles.featureText}>{amenity}</Text>
-              </View>
-            ))}
+        {/* Loading indicator overlay */}
+        {!imageLoaded && !imageError && (
+          <View style={styles.imageLoader}>
+            <ActivityIndicator size="large" color={COLORS.DARK_GREEN} />
           </View>
         )}
+        
+        {/* Error fallback overlay */}
+        {imageError && (
+          <View style={styles.imageError}>
+            <Ionicons name="image-outline" size={48} color="#ccc" />
+            <Text style={styles.imageErrorText}>Image unavailable</Text>
+          </View>
+        )}
+
+        {/* Gradient overlay */}
+        <LinearGradient
+          colors={['transparent', 'rgba(0,0,0,0.5)', 'rgba(0,0,0,0.8)']}
+          style={styles.gradientOverlay}
+        />
+        
+        {/* Category badge */}
+        {item.category && (
+          <View style={[styles.categoryBadge, { backgroundColor: getCategoryColor(item.category) }]}>
+            <Text style={styles.categoryText}>{item.category}</Text>
+          </View>
+        )}
+
+        {/* Bottom info overlay */}
+        <View style={styles.infoOverlay}>
+          {/* Title */}
+          <Text style={styles.overlayTitle} numberOfLines={2}>
+            {item.title || item.name || 'Untitled'}
+          </Text>
+
+          {/* Location and Price */}
+          <View style={styles.overlayDetails}>
+            {item.location && (
+              <View style={styles.locationContainer}>
+                <Ionicons name="location" size={16} color="white" />
+                <Text style={styles.overlayLocation} numberOfLines={1}>
+                  {item.location}
+                </Text>
+              </View>
+            )}
+            
+            {(item.price || item.cost || item.rent) && (
+              <Text style={styles.overlayPrice}>
+                {formatPrice(item.price || item.cost || item.rent)}
+                {isHousing && '/mo'}
+              </Text>
+            )}
+          </View>
+
+          {/* Tags or Quick Info */}
+          {item.tags && item.tags.length > 0 && (
+            <View style={styles.overlayTags}>
+              {item.tags.slice(0, 3).map((tag, index) => (
+                <View key={index} style={styles.overlayTag}>
+                  <Text style={styles.overlayTagText}>{tag}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+      </View>
+
+      {/* Expandable Content Section */}
+      <ScrollView style={styles.contentContainer} showsVerticalScrollIndicator={false}>
+        <View style={styles.content}>
+          {/* Description */}
+          {item.description && (
+            <Text style={styles.description} numberOfLines={4}>
+              {item.description}
+            </Text>
+          )}
+
+          {/* Additional Info for Housing */}
+          {isHousing && (
+            <View style={styles.housingDetails}>
+              {item.bedrooms && (
+                <View style={styles.detailItem}>
+                  <Ionicons name="bed-outline" size={20} color={COLORS.DARK_GREEN} />
+                  <Text style={styles.detailText}>{item.bedrooms} bed</Text>
+                </View>
+              )}
+              {item.bathrooms && (
+                <View style={styles.detailItem}>
+                  <Ionicons name="water-outline" size={20} color={COLORS.DARK_GREEN} />
+                  <Text style={styles.detailText}>{item.bathrooms} bath</Text>
+                </View>
+              )}
+              {item.square_feet && (
+                <View style={styles.detailItem}>
+                  <Ionicons name="resize-outline" size={20} color={COLORS.DARK_GREEN} />
+                  <Text style={styles.detailText}>{item.square_feet} sq ft</Text>
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* Service Provider Info */}
+          {!isHousing && item.provider_name && (
+            <View style={styles.providerInfo}>
+              <Text style={styles.providerName}>By {item.provider_name}</Text>
+              {item.rating && (
+                <View style={styles.ratingContainer}>
+                  <Ionicons name="star" size={16} color="#FFD700" />
+                  <Text style={styles.ratingText}>{item.rating}</Text>
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* Features/Amenities */}
+          {item.features && item.features.length > 0 && (
+            <View style={styles.featuresSection}>
+              <Text style={styles.sectionTitle}>Features</Text>
+              <View style={styles.featuresGrid}>
+                {item.features.slice(0, 6).map((feature, index) => (
+                  <View key={index} style={styles.featureItem}>
+                    <Ionicons name="checkmark-circle" size={16} color={COLORS.DARK_GREEN} />
+                    <Text style={styles.featureText}>{feature}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+        </View>
+      </ScrollView>
+
+      {/* Action hint at bottom */}
+      <View style={styles.actionHint}>
+        <View style={styles.actionItem}>
+          <View style={[styles.actionIcon, styles.passIcon]}>
+            <Ionicons name="close" size={24} color="white" />
+          </View>
+          <Text style={styles.actionText}>Pass</Text>
+        </View>
+        
+        <View style={styles.actionItem}>
+          <View style={[styles.actionIcon, styles.superLikeIcon]}>
+            <Ionicons name="star" size={20} color="white" />
+          </View>
+          <Text style={styles.actionText}>Super</Text>
+        </View>
+        
+        <View style={styles.actionItem}>
+          <View style={[styles.actionIcon, styles.likeIcon]}>
+            <Ionicons name="heart" size={22} color="white" />
+          </View>
+          <Text style={styles.actionText}>Like</Text>
+        </View>
       </View>
     </View>
   );
+
+  // If onPress is provided, wrap in TouchableOpacity
+  if (onPress) {
+    return (
+      <TouchableOpacity activeOpacity={0.95} onPress={handleCardPress}>
+        {CardContent}
+      </TouchableOpacity>
+    );
+  }
+
+  return CardContent;
 });
 
 const styles = StyleSheet.create({
   card: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 10,
+    flex: 1,
     backgroundColor: 'white',
+    borderRadius: 20,
     overflow: 'hidden',
-    // Airbnb-style shadow
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
+    minHeight: height * 0.7, // Force minimum height
+    width: width - 20, // Force width
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: {
+          width: 0,
+          height: 8,
+        },
+        shadowOpacity: 0.25,
+        shadowRadius: 10,
+      },
+      android: {
+        elevation: 15,
+      },
+    }),
   },
   imageContainer: {
-    height: '70%',
-    width: '100%',
+    height: height * 0.55,
     position: 'relative',
   },
   cardImage: {
     width: '100%',
     height: '100%',
   },
-  loaderContainer: {
-    ...StyleSheet.absoluteFillObject,
+  imageLoader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(240, 240, 240, 0.7)',
+    backgroundColor: '#f5f5f5',
   },
-  cardContent: {
-    padding: 16,
+  imageError: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
   },
-  titleRow: {
+  imageErrorText: {
+    marginTop: 8,
+    color: '#ccc',
+    fontSize: 14,
+  },
+  gradientOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: '60%', // Increased for better visibility
+    zIndex: 5, // Ensure overlay is on top
+  },
+  categoryBadge: {
+    position: 'absolute',
+    top: 20,
+    right: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  categoryText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  infoOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 20,
+    paddingBottom: 15,
+    zIndex: 10, // Ensure info is on top of gradient
+    backgroundColor: 'rgba(0,0,0,0.3)', // Add slight background for better text contrast
+  },
+  overlayTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: 'white',
+    marginBottom: 8,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  overlayDetails: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  locationContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 10,
+  },
+  overlayLocation: {
+    fontSize: 14,
+    color: 'white',
+    marginLeft: 4,
+    flex: 1,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  overlayPrice: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: 'white',
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  overlayTags: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  overlayTag: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginRight: 6,
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  overlayTagText: {
+    fontSize: 11,
+    color: 'white',
+    fontWeight: '500',
+  },
+  contentContainer: {
+    flex: 1,
+    minHeight: height * 0.15,
+    maxHeight: height * 0.2,
+    backgroundColor: '#ffffff',
+  },
+  content: {
+    padding: 20,
+    paddingTop: 15,
+    backgroundColor: '#ffffff',
+  },
+  description: {
+    fontSize: 15,
+    color: '#444',
+    lineHeight: 22,
+    marginBottom: 16,
+  },
+  housingDetails: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 16,
+  },
+  detailItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 20,
+    marginBottom: 8,
+  },
+  detailText: {
+    fontSize: 14,
+    color: '#666',
+    marginLeft: 6,
+    fontWeight: '500',
+  },
+  providerInfo: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 4,
+    marginBottom: 16,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
   },
-  title: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    flex: 1,
+  providerName: {
+    fontSize: 14,
+    color: '#666',
+    fontStyle: 'italic',
   },
   ratingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  rating: {
+  ratingText: {
+    fontSize: 14,
+    color: '#666',
     marginLeft: 4,
-    fontWeight: 'bold',
+    fontWeight: '600',
   },
-  subtitle: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 4,
+  featuresSection: {
+    marginTop: 16,
   },
-  location: {
-    fontSize: 14,
-    color: '#666',
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 10,
+  },
+  featuresGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  featureItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '50%',
     marginBottom: 8,
   },
-  features: {
-    marginTop: 8,
+  featureText: {
+    fontSize: 13,
+    color: '#666',
+    marginLeft: 6,
   },
-  feature: {
+  actionHint: {
     flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingHorizontal: 40,
+    paddingVertical: 12,
+    backgroundColor: '#fafafa',
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  actionItem: {
+    alignItems: 'center',
+  },
+  actionIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 4,
   },
-  featureText: {
+  passIcon: {
+    backgroundColor: '#E74C3C',
+  },
+  superLikeIcon: {
+    backgroundColor: '#3498DB',
+  },
+  likeIcon: {
+    backgroundColor: '#27AE60',
+  },
+  actionText: {
     fontSize: 12,
-    color: '#666',
-    marginLeft: 4,
+    color: '#999',
+    fontWeight: '500',
   },
-  priceTag: {
-    position: 'absolute',
-    bottom: 12,
-    left: 12,
-    backgroundColor: 'white',
-    borderRadius: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
-    elevation: 2,
+  emptyCard: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
   },
-  priceText: {
-    fontWeight: 'bold',
-    color: DARK_GREEN,
-  }
+  emptyText: {
+    fontSize: 16,
+    color: '#999',
+  },
 });
+
+SwipeCard.displayName = 'SwipeCard';
 
 export default SwipeCard;

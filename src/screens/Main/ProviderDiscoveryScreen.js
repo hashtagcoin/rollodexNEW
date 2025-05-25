@@ -5,7 +5,8 @@ import {
   StyleSheet, 
   ActivityIndicator, 
   FlatList, 
-  Dimensions
+  Dimensions,
+  Alert
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native'; 
 import { supabase } from '../../lib/supabaseClient'; 
@@ -14,6 +15,8 @@ import HousingCard from '../../components/cards/HousingCard';
 import AppHeader from '../../components/layout/AppHeader';
 import CachedImage from '../../components/common/CachedImage';
 import SearchComponent from '../../components/common/SearchComponent';
+import SwipeCardDeck from '../../components/common/SwipeCardDeck';
+import SwipeCard from '../../components/common/SwipeCard';
 import { 
   COLORS, 
   SIZES, 
@@ -47,10 +50,23 @@ const ProviderDiscoveryScreen = ({ route }) => {
   const navigation = useNavigation();
   
   // State variables
-  const [selectedCategory, setSelectedCategory] = useState(
-    initialParams.initialCategory && CATEGORIES.includes(initialParams.initialCategory) 
-      ? initialParams.initialCategory 
-      : CATEGORIES[0]
+  const [selectedCategory, setSelectedCategory] = useState(CATEGORIES[0]);
+  const listViewRef = useRef(null);
+  
+  // Handle initial category from params
+  useEffect(() => {
+    if (initialParams.initialCategory && CATEGORIES.includes(initialParams.initialCategory)) {
+      setSelectedCategory(initialParams.initialCategory);
+    }
+  }, [initialParams.initialCategory]);
+  
+  // Reset scroll position when tab is focused
+  useFocusEffect(
+    useCallback(() => {
+      if (listViewRef.current) {
+        listViewRef.current.scrollToOffset({ offset: 0, animated: true });
+      }
+    }, [])
   );
   const [viewMode, setViewMode] = useState(VIEW_MODES[0]);
   const [items, setItems] = useState([]);
@@ -64,21 +80,31 @@ const ProviderDiscoveryScreen = ({ route }) => {
   });
   
   // Refs
-  const fetchCounter = useRef(0);
-  const listViewRef = useRef(null);
+  const isMounted = useRef(true);
   
-  // Reset items when category changes
+  // Reset items and scroll position when category changes
   useEffect(() => {
-    setItems([]);
+    if (isMounted.current) {
+      setItems([]);
+      if (listViewRef.current) {
+        listViewRef.current.scrollToOffset({ offset: 0, animated: false });
+      }
+    }
+    
+    return () => {
+      isMounted.current = false;
+    };
   }, [selectedCategory]);
   
   // Main data fetching effect
   useEffect(() => {
-    let isMounted = true;
-    setLoading(true);
+    let isSubscribed = true;
     
     const fetchData = async () => {
+      if (!isMounted.current) return;
+      
       try {
+        setLoading(true);
         const isHousing = selectedCategory === 'Housing';
         const tableName = isHousing ? 'housing_listings' : 'services';
         const contentType = isHousing ? 'housing' : 'services';
@@ -132,7 +158,8 @@ const ProviderDiscoveryScreen = ({ route }) => {
     fetchData();
     
     return () => {
-      isMounted = false;
+      // Using isMounted ref which is properly set up
+      // No need to reassign isSubscribed which would cause a read-only error
     };
   }, [selectedCategory, searchTerm, sortConfig]);
   
@@ -155,6 +182,64 @@ const ProviderDiscoveryScreen = ({ route }) => {
   const handleImageLoaded = useCallback((uri) => {
     // Empty callback that maintains stable reference
     // No need to do anything here as the CachedImage component handles caching
+  }, []);
+  
+  // Swipe card handlers
+  const handleSwipeCard = useCallback(async (cardData, direction) => {
+    const isHousing = selectedCategory === 'Housing';
+    
+    try {
+      // Log swipe action - could save to favorites/likes in future
+      console.log(`Swiped ${direction} on:`, cardData.title || cardData.name);
+      
+      if (direction === 'right') {
+        // Like action - could save to favorites
+        Alert.alert(
+          'Liked!',
+          `You liked ${cardData.title || cardData.name}`,
+          [{ text: 'OK' }]
+        );
+      } else if (direction === 'up') {
+        // Super like action
+        Alert.alert(
+          'Super Liked!',
+          `You super liked ${cardData.title || cardData.name}`,
+          [{ text: 'OK' }]
+        );
+      }
+      
+      // Could implement saving to user's favorites/likes here
+      // Example:
+      // if (direction === 'right' || direction === 'up') {
+      //   await supabase
+      //     .from('user_favorites')
+      //     .insert({
+      //       user_id: currentUserId,
+      //       item_id: cardData.id,
+      //       item_type: isHousing ? 'housing' : 'service',
+      //       super_liked: direction === 'up'
+      //     });
+      // }
+    } catch (error) {
+      console.error('Error handling swipe:', error);
+    }
+  }, [selectedCategory]);
+  
+  const handleSwipeCardPress = useCallback((item) => {
+    const isHousing = selectedCategory === 'Housing';
+    if (isHousing) {
+      navigation.navigate('HousingDetail', { item });
+    } else {
+      navigation.navigate('ServiceDetail', { serviceId: item.id });
+    }
+  }, [navigation, selectedCategory]);
+  
+  const handleAllCardsViewed = useCallback(() => {
+    Alert.alert(
+      'All caught up!',
+      "You've viewed all available items in this category. Try another category or come back later for more!",
+      [{ text: 'OK' }]
+    );
   }, []);
   
   // Main content renderer based on view mode
@@ -220,8 +305,63 @@ const ProviderDiscoveryScreen = ({ route }) => {
       );
     }
     
+    // Swipe view
+    else if (viewMode === 'Swipe') {
+      const isHousing = selectedCategory === 'Housing';
+      
+      // Transform data to ensure it has all required properties for SwipeCard
+      const transformedItems = items.map(item => ({
+        id: item.id,
+        title: item.title || item.name || 'Untitled',
+        name: item.title || item.name || 'Untitled',
+        description: item.description || item.desc || 'No description available',
+        category: item.category || selectedCategory,
+        location: item.location || 'Location not specified',
+        price: item.price || item.cost || item.rent,
+        image_url: item.image_url || item.cover_image_url || item.avatar_url || `https://source.unsplash.com/featured/?${isHousing ? 'apartment' : selectedCategory.toLowerCase()}`,
+        tags: item.tags || [],
+        // Copy all other properties
+        ...item
+      }));
+      
+      console.log('Transformed items for SwipeCard:', transformedItems[0]);
+      
+      return (
+        <SwipeCardDeck
+          data={transformedItems}
+          renderCard={(cardData) => (
+            <SwipeCard
+              item={cardData}
+              isHousing={isHousing}
+              onPress={handleSwipeCardPress}
+            />
+          )}
+          onSwipeLeft={(cardData) => handleSwipeCard(cardData, 'left')}
+          onSwipeRight={(cardData) => handleSwipeCard(cardData, 'right')}
+          onSwipeTop={(cardData) => handleSwipeCard(cardData, 'up')}
+          onSwipeBottom={(cardData) => handleSwipeCard(cardData, 'down')}
+          onCardDisappear={handleAllCardsViewed}
+          backgroundColor="#F8F7F3"
+          cardStyle={styles.swipeCardStyle}
+          overlayLabels={{
+            left: {
+              title: 'NOPE',
+              color: '#E74C3C',
+              fontSize: 32
+            },
+            right: {
+              title: 'LIKE',
+              color: '#27AE60',
+              fontSize: 32
+            }
+          }}
+          containerStyle={styles.swipeContainer}
+        />
+      );
+    }
+    
     return null;
-  }, [items, viewMode, selectedCategory, loading, handleHousingPress, handleServicePress, handleImageLoaded]);
+  }, [items, viewMode, selectedCategory, loading, handleHousingPress, handleServicePress, handleImageLoaded, handleSwipeCard, handleSwipeCardPress, handleAllCardsViewed]);
 
   // Back button handler with view mode cycling
   const handleBackPressProviderDiscovery = useCallback(() => {
@@ -277,28 +417,39 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F8F7F3', // Match screen background
   },
-  loadingIndicator: {
+  swipeContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingTop: 20,
+  },
+  gridContainer: {
+    paddingBottom: 20,
+    paddingHorizontal: CARD_MARGIN,
+  },
+  listContainer: {
+    paddingBottom: 20,
+    paddingHorizontal: CARD_MARGIN,
+  },
+  loadingIndicator: {
+    marginTop: 50,
+  },
+  swipeCardStyle: {
+    backgroundColor: 'white',
+    borderRadius: 15,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    overflow: 'hidden',
   },
   emptyText: {
     textAlign: 'center',
-    marginTop: 40,
     fontSize: 16,
-    color: '#666666',
+    color: '#666',
+    marginTop: 50,
+    paddingHorizontal: 20,
   },
-  gridContainer: {
-    paddingVertical: 10,
-    paddingHorizontal: 2,
-    width: '100%',
-  },
-  listContainer: {
-    paddingTop: 12,
-    paddingBottom: 8,
-    paddingHorizontal: 16,
-    backgroundColor: '#F8F7F3'
-  }
 });
 
 export default ProviderDiscoveryScreen;

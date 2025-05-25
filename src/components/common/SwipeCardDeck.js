@@ -1,887 +1,516 @@
 /**
  * SwipeCardDeck Component
- * A reusable, optimized card swiping component that prevents image flickering
- * and unmounting issues during animations.
+ * A high-performance Tinder-style card swiping component optimized for React Native
  */
 
-import React, { useState, useRef, useEffect, useCallback, useMemo, useImperativeHandle } from 'react';
+import React, { useState, useRef, useCallback, useMemo, useImperativeHandle, forwardRef } from 'react';
 import {
   View, 
+  Text,
   Animated, 
   PanResponder, 
   Dimensions, 
   StyleSheet,
-  TouchableWithoutFeedback,
   InteractionManager
 } from 'react-native';
-import * as imagePreloader from '../../utils/imagePreloader';
+import { COLORS } from '../../constants/theme';
 
 // Get screen dimensions
 const { width, height } = Dimensions.get('window');
 
-// Performance tracking
-const performanceMetrics = {
-  swipeCount: 0,
-  totalSwipeTime: 0,
-  successfulSwipes: 0,
-  failedSwipes: 0,
-  animationDrops: 0,
-  lastSwipeTime: 0,
-  swipeTimings: [],
-  lastLogTime: 0,
-};
-
-// Enhanced logging with timestamps and performance data
-const log = (action, details = {}) => {
-  const now = Date.now();
-  const timestamp = new Date(now).toISOString().split('T')[1].split('Z')[0];
-  
-  // Calculate time since last log if applicable
-  let timeSinceLast = '';
-  if (performanceMetrics.lastLogTime) {
-    timeSinceLast = `+${now - performanceMetrics.lastLogTime}ms`;
-  }
-  performanceMetrics.lastLogTime = now;
-  
-  // Add timestamp to all logs
-  console.log(`[SwipeCardDeck][${timestamp}]${timeSinceLast} ${action}`, {
-    ...details,
-    performanceMetrics: {
-      swipeCount: performanceMetrics.swipeCount,
-      avgSwipeTime: performanceMetrics.swipeCount > 0 ? 
-        Math.round(performanceMetrics.totalSwipeTime / performanceMetrics.swipeCount) : 0,
-      successRate: performanceMetrics.swipeCount > 0 ? 
-        Math.round((performanceMetrics.successfulSwipes / performanceMetrics.swipeCount) * 100) : 0,
-      animationDrops: performanceMetrics.animationDrops,
-    }
-  });
-};
-
-// Add global performance logging
-const trackSwipePerformance = (start, end, success) => {
-  const duration = end - start;
-  performanceMetrics.swipeCount++;
-  performanceMetrics.totalSwipeTime += duration;
-  
-  if (success) {
-    performanceMetrics.successfulSwipes++;
-  } else {
-    performanceMetrics.failedSwipes++;
-  }
-  
-  performanceMetrics.swipeTimings.push({
-    timestamp: Date.now(),
-    duration,
-    success,
-  });
-  
-  // Keep only the last 10 timings
-  if (performanceMetrics.swipeTimings.length > 10) {
-    performanceMetrics.swipeTimings.shift();
-  }
-  
-  // Log abnormal durations
-  if (duration > 500) {
-    console.warn(`[SwipeCardDeck] SLOW SWIPE DETECTED: ${duration}ms`, {
-      timestamp: new Date().toISOString(),
-      duration,
-      success,
-      recentTimings: performanceMetrics.swipeTimings,
-    });
-  }
-};
-
-// Check for potential memory issues
-const checkMemoryUsage = () => {
-  try {
-    if (global.performance && typeof global.performance.memory === 'object') {
-      const memory = global.performance.memory;
-      console.log('[SwipeCardDeck] MEMORY USAGE', {
-        totalJSHeapSize: Math.round(memory.totalJSHeapSize / (1024 * 1024)) + 'MB',
-        usedJSHeapSize: Math.round(memory.usedJSHeapSize / (1024 * 1024)) + 'MB',
-        jsHeapSizeLimit: Math.round(memory.jsHeapSizeLimit / (1024 * 1024)) + 'MB',
-      });
-    }
-  } catch (e) {
-    // Memory API not available
-  }
-};
-
+// Constants for swipe behavior
 const SWIPE_THRESHOLD = width * 0.25;
 const SWIPE_OUT_DURATION = 250;
+const ROTATION_RANGE = 30;
+const ROTATION_MULTIPLIER = ROTATION_RANGE / width;
+const VERTICAL_THRESHOLD = height * 0.25;
 
-// Colors
-const DARK_GREEN = '#006400';
+// Performance constants
+const CARD_PRELOAD_COUNT = 3; // Number of cards to preload
+const MAX_VISIBLE_CARDS = 3;  // Maximum cards visible in stack
 
-// Fail-safe global animation reset timer to prevent hung animations
-let lastAnimationResetTime = 0;
-const ANIMATION_STUCK_THRESHOLD = 5000; // 5 seconds
-
-// Global animation state monitoring
-const resetStuckAnimations = () => {
-  const now = Date.now();
-  // Only check every 5 seconds to avoid performance impact
-  if (now - lastAnimationResetTime < 5000) return;
-  
-  lastAnimationResetTime = now;
-  
-  // Get all SwipeCardDeck components that might be stuck
-  const stuckComponents = Object.values(activeSwipeDecks).filter(deck => {
-    return deck.isAnimating && (now - deck.animationStartTime > ANIMATION_STUCK_THRESHOLD);
-  });
-  
-  if (stuckComponents.length > 0) {
-    console.warn(`[SwipeCardDeck] DETECTED ${stuckComponents.length} STUCK ANIMATIONS. Resetting...`, {
-      stuckComponents: stuckComponents.map(c => c.id)
-    });
-    
-    // Force reset all stuck animations
-    stuckComponents.forEach(deck => {
-      if (deck.resetFn) {
-        console.log(`[SwipeCardDeck] Resetting stuck animation for deck ${deck.id}`);
-        deck.resetFn();
-      }
-    });
-  }
-};
-
-// Track all active swipe decks to monitor for stuck animations
-const activeSwipeDecks = {};
-
-// Start the global monitoring interval
-setInterval(resetStuckAnimations, 1000);
-
-/**
- * SwipeCardDeck - A component that renders a deck of cards that can be swiped
- * with proper animation handling and image preloading
- */
-const SwipeCardDeck = React.forwardRef(({ 
-  data = [], 
-  renderCard, 
-  renderNoMoreCards,
-  onSwipeLeft, 
+const SwipeCardDeck = forwardRef(({ 
+  data = [],
+  renderCard,
+  onSwipeLeft,
   onSwipeRight, 
-  onCardTap,
-  onIndexChange,
-  getCardImage, // Function to get image URL from card data
-  cardKey = item => item.id, // Function to get unique key from card data
-  style,
+  onSwipeTop,
+  onSwipeBottom,
+  onCardDisappear,
+  backgroundColor = 'transparent',
+  cardStyle = {},
+  stackSize = 3,
+  infinite = false,
+  disableTopSwipe = false,
+  disableBottomSwipe = false,
+  disableLeftSwipe = false,
+  disableRightSwipe = false,
+  animationOverlayOpacity = 0.8,
   animationDuration = SWIPE_OUT_DURATION,
-  initialIndex = 0,
-  loopCards = false,
-  preloadLimit = 3, // How many cards ahead to preload
-  debugMode = false
+  rotationEnabled = true,
+  scaleEnabled = true,
+  stackSeparation = 10,
+  stackScale = 0.05,
+  overlayLabels = {
+    left: {
+      title: 'NOPE',
+      color: '#E74C3C',
+      fontSize: 45
+    },
+    right: {
+      title: 'LIKE',
+      color: '#27AE60',
+      fontSize: 45
+    },
+    top: {
+      title: 'SUPER LIKE',
+      color: '#3498DB',
+      fontSize: 30
+    },
+    bottom: {
+      title: 'DISMISS',
+      color: '#7F8C8D',
+      fontSize: 30
+    }
+  }
 }, ref) => {
-  // Track which card is on top of the stack
+  
+  // State
   const [currentIndex, setCurrentIndex] = useState(0);
-  const isAnimatingRef = useRef(false);
-  const panResponderRef = useRef(null);
-  const componentId = useRef(`swipe-deck-${Date.now()}-${Math.floor(Math.random() * 1000)}`);
-  const animationStartTimeRef = useRef(0);
+  const [isAnimating, setIsAnimating] = useState(false);
   
-  // Register this component with the global animation monitoring system
-  useEffect(() => {
-    // Register this deck with the global monitor
-    activeSwipeDecks[componentId.current] = {
-      id: componentId.current,
-      isAnimating: false,
-      animationStartTime: 0,
-      resetFn: () => {
-        console.warn(`[SwipeCardDeck] Force resetting animation state for ${componentId.current}`);
-        // Force reset animation state
-        isAnimatingRef.current = false;
-        position.setValue({ x: 0, y: 0 });
-      }
-    };
-    
-    // Clean up on unmount
-    return () => {
-      delete activeSwipeDecks[componentId.current];
-    };
-  }, []);
+  // Refs
+  const cardRefs = useRef([]);
+  const animatedValues = useRef([]);
+  const panRef = useRef(new Animated.ValueXY()).current;
+  const rotateRef = useRef(new Animated.Value(0)).current;
+  const nextCardScale = useRef(new Animated.Value(1 - stackScale)).current;
   
-  // Expose methods to parent component via ref
-  useImperativeHandle(ref, () => ({
-    forceSwipeLeft: () => {
-      if (!isAnimatingRef.current && data.length > 0) {
-        forceSwipeLeft();
-      }
-    },
-    forceSwipeRight: () => {
-      if (!isAnimatingRef.current && data.length > 0) {
-        forceSwipeRight();
-      }
-    },
-    getCurrentIndex: () => currentIndex,
-    swipeToCard: (index) => {
-      if (!isAnimatingRef.current && index >= 0 && index < data.length) {
-        setCurrentIndex(index);
-      }
+  // Initialize animated values for each card
+  if (animatedValues.current.length < data.length) {
+    for (let i = animatedValues.current.length; i < data.length; i++) {
+      animatedValues.current[i] = {
+        x: new Animated.Value(0),
+        y: new Animated.Value(i * stackSeparation),
+        scale: new Animated.Value(1 - (i * stackScale)),
+        opacity: new Animated.Value(i < MAX_VISIBLE_CARDS ? 1 : 0)
+      };
     }
-  }));
+  }
   
-  // Animation position values
-  const position = useRef(new Animated.ValueXY()).current;
-  const rotation = position.x.interpolate({
-    inputRange: [-width, 0, width],
-    outputRange: ['-10deg', '0deg', '10deg'],
-    extrapolate: 'clamp'
-  });
+  // Get current card data
+  const currentCard = useMemo(() => {
+    if (currentIndex >= data.length) return null;
+    return data[currentIndex];
+  }, [currentIndex, data]);
   
-  // Logging helper
-  const log = useCallback((event, data = {}) => {
-    if (debugMode) {
-      console.log(`[SwipeCardDeck][${new Date().toISOString()}][${event}]`, {
-        currentIndex,
-        totalCards: data.length,
-        ...data
-      });
-    }
-  }, [currentIndex, debugMode]);
-  
-  // Reset position when currentIndex changes
-  useEffect(() => {
-    position.setValue({ x: 0, y: 0 });
-    onIndexChange?.(currentIndex);
-  }, [currentIndex, position, onIndexChange]);
-  
-  // Preload images for upcoming cards
-  useEffect(() => {
-    // Only preload if we have data and current index is valid
-    if (data && data.length > 0 && currentIndex < data.length) {
-      // Determine how many cards to preload (limited by remaining cards)
-      const numToPreload = Math.min(preloadLimit, data.length - currentIndex);
-      
-      // Create array of promises for preloading
-      for (let i = 0; i < numToPreload; i++) {
-        const idx = currentIndex + i;
-        if (idx >= data.length) break;
-        
-        const item = data[idx];
-        
-        // Extract image URL directly, similar to ServiceDetailScreen approach
-        const imageUrl = item.media_urls?.[0] || // Primary approach - direct access to first media URL
-                        item.image_url || 
-                        item.images?.[0]?.url || 
-                        item.avatar_url || 
-                        'https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/providerimages/therapy/1.png'; // Default fallback
-        
-        console.log(`[SwipeCardDeck] Preloading image: ${imageUrl}`);
-        
-        // Add to preload queue
-        if (imageUrl) {
-          imagePreloader.preloadImage(imageUrl, `SwipeCardDeck-${componentId.current}-${idx}`);
-        }
-      }
-    }
-  }, [currentIndex, data, preloadLimit]);
-  
-  // Helper to get next card index
-  const getNextCardIndex = useCallback(() => {
-    if (currentIndex >= data.length - 1) {
-      return loopCards ? 0 : -1;
-    }
-    return currentIndex + 1;
-  }, [currentIndex, data.length, loopCards]);
-  
-  // Completion callback for right swipe with detailed diagnostics
-  const onSwipeRightComplete = useCallback(() => {
-    const completeStartTime = Date.now();
-    const item = data[currentIndex];
-    
-    log('SWIPE_RIGHT_COMPLETE_START', { 
-      timestamp: completeStartTime,
-      item,
-      currentIndex,
-      nextIndex: getNextCardIndex(),
-      dataLength: data.length
-    });
-    
-    // Track this operation with unique ID
-    const operationId = `complete_right_${completeStartTime}`;
-    console.log(`[CALLBACK_TRACE] ${operationId} - Starting right swipe completion`);
-    
-    try {
-      // Reset animation position
-      position.setValue({ x: 0, y: 0 });
-      console.log(`[CALLBACK_TRACE] ${operationId} - Position reset complete`);
-      
-      // Execute callback if provided inside error boundary
-      if (onSwipeRight) {
-        console.log(`[CALLBACK_TRACE] ${operationId} - Calling onSwipeRight callback`);
-        try {
-          onSwipeRight(item, currentIndex);
-          console.log(`[CALLBACK_TRACE] ${operationId} - onSwipeRight callback completed successfully`);
-        } catch (err) {
-          console.error(`[CALLBACK_TRACE] ${operationId} - ERROR in onSwipeRight callback:`, err);
-        }
-      }
-      
-      // Update index after animation with careful error handling
-      const nextIndex = getNextCardIndex();
-      console.log(`[CALLBACK_TRACE] ${operationId} - Next index calculated: ${nextIndex}`);
-      
-      if (nextIndex !== -1) {
-        console.log(`[CALLBACK_TRACE] ${operationId} - Scheduling index update to ${nextIndex}`);
-        InteractionManager.runAfterInteractions(() => {
-          console.log(`[CALLBACK_TRACE] ${operationId} - Executing index update to ${nextIndex}`);
-          setCurrentIndex(nextIndex);
-        });
-      }
-      
-      // Allow animations again
-      isAnimatingRef.current = false;
-      console.log(`[CALLBACK_TRACE] ${operationId} - Animation flag cleared`);
-      
-      // Update global animation tracking
-      if (activeSwipeDecks[componentId.current]) {
-        activeSwipeDecks[componentId.current].isAnimating = false;
-        console.log(`[CALLBACK_TRACE] ${operationId} - Global animation tracking updated`);
-      }
-      
-      // Log completion timing
-      const completeEndTime = Date.now();
-      log('SWIPE_RIGHT_COMPLETE_END', {
-        duration: completeEndTime - completeStartTime,
-        nextIndex
-      });
-      
-      // Performance check
-      InteractionManager.runAfterInteractions(() => {
-        checkMemoryUsage();
-      });
-    } catch (err) {
-      console.error(`[CALLBACK_TRACE] ${operationId} - CRITICAL ERROR in onSwipeRightComplete:`, err);
-      // Force reset on error to prevent hung state
-      isAnimatingRef.current = false;
-      position.setValue({ x: 0, y: 0 });
-    }
-  }, [currentIndex, data, getNextCardIndex, log, onSwipeRight, position]);
-  
-  // Handle a successful left swipe
-  const onSwipeLeftComplete = useCallback(() => {
-    const item = data[currentIndex];
-    log('SWIPE_LEFT_COMPLETE', { item });
-    
-    // Execute callback if provided
-    onSwipeLeft?.(item, currentIndex);
-    
-    // Update index after animation
-    const nextIndex = getNextCardIndex();
-    if (nextIndex !== -1) {
-      InteractionManager.runAfterInteractions(() => {
-        setCurrentIndex(nextIndex);
-      });
-    }
-    
-    // Allow animations again
-    isAnimatingRef.current = false;
-  }, [currentIndex, data, getNextCardIndex, log, onSwipeLeft]);
-  
-  // Force swipe right programmatically with optimized animation and performance tracking
-  const forceSwipeRight = useCallback(() => {
-    if (isAnimatingRef.current) {
-      log('ANIMATION_BLOCKED', { reason: 'isAnimatingRef is true', value: isAnimatingRef.current });
-      
-      // Auto-recovery: If animation has been running too long, force reset it
-      const now = Date.now();
-      const lastAnimTime = animationStartTimeRef.current;
-      if (lastAnimTime > 0 && (now - lastAnimTime > 3000)) {
-        console.warn(`[SwipeCardDeck] Detected stuck animation running for ${now - lastAnimTime}ms. Force resetting.`);
-        isAnimatingRef.current = false;
-        position.setValue({ x: 0, y: 0 });
-        
-        // Update global tracking
-        if (activeSwipeDecks[componentId.current]) {
-          activeSwipeDecks[componentId.current].isAnimating = false;
-        }
-      } else {
-        return;
-      }
-    }
-    
-    const startTime = Date.now();
-    animationStartTimeRef.current = startTime;
-    isAnimatingRef.current = true;
-    
-    // Update global tracking
-    if (activeSwipeDecks[componentId.current]) {
-      activeSwipeDecks[componentId.current].isAnimating = true;
-      activeSwipeDecks[componentId.current].animationStartTime = startTime;
-    }
-    
-    log('FORCE_SWIPE_RIGHT_START', { 
-      timestamp: startTime,
-      position: position.__getValue(),
-      currentIndex,
-      dataLength: data.length
-    });
-    
-    // Track current operation with ID to trace animation flow
-    const operationId = `swipe_right_${startTime}`;
-    console.log(`[ANIM_TRACE] ${operationId} - Starting right swipe animation`);
-    
-    // Use spring animation for more natural feel and better performance
-    // Use faster animation parameters to prevent timeouts
-    const animation = Animated.spring(position, {
-      toValue: { x: width * 1.5, y: 0 },
-      tension: 65,   // Higher tension = faster animation
-      friction: 5,   // Lower friction = faster animation
-      useNativeDriver: true
-    });
-    
-    // Monitor animation performance
-    const startAnimation = () => {
-      console.log(`[ANIM_TRACE] ${operationId} - Animation loop started`);
-      
-      // Set a safety timeout to detect hung animations
-      const timeoutId = setTimeout(() => {
-        console.warn(`[ANIM_TRACE] ${operationId} - ANIMATION TIMEOUT (1000ms) - Possible hang detected`);
-        performanceMetrics.animationDrops++;
-        
-        // Force animation state reset if we detect a hang
-        if (isAnimatingRef.current) {
-          console.log(`[ANIM_TRACE] ${operationId} - Forcing animation state reset due to timeout`);
-          isAnimatingRef.current = false;
-          position.setValue({ x: 0, y: 0 });
-          InteractionManager.runAfterInteractions(() => {
-            log('ANIMATION_RESET_AFTER_TIMEOUT');
-          });
-        }
-      }, 1000);
-      
-      animation.start(({ finished }) => {
-        clearTimeout(timeoutId);
-        const endTime = Date.now();
-        console.log(`[ANIM_TRACE] ${operationId} - Animation complete: finished=${finished}, duration=${endTime - startTime}ms`);
-        
-        // Track performance metrics
-        trackSwipePerformance(startTime, endTime, finished);
-        
-        // Only complete if animation actually finished
-        if (finished) {
-          log('FORCE_SWIPE_RIGHT_COMPLETE', { 
-            duration: endTime - startTime,
-            finished,
-            position: position.__getValue()
-          });
-          onSwipeRightComplete();
-        } else {
-          // Reset animation state if interrupted
-          log('FORCE_SWIPE_RIGHT_INTERRUPTED', { 
-            duration: endTime - startTime,
-            reason: 'Animation not finished' 
-          });
-          isAnimatingRef.current = false;
-          position.setValue({ x: 0, y: 0 });
-        }
-      });
-    };
-    
-    // Ensure animations run after interactions complete
-    InteractionManager.runAfterInteractions(startAnimation);
-    
-  }, [position, width, log, onSwipeRightComplete, currentIndex, data.length]);
-  
-  // Force swipe left programmatically with optimized animation and performance tracking
-  const forceSwipeLeft = useCallback(() => {
-    if (isAnimatingRef.current) {
-      log('ANIMATION_BLOCKED', { reason: 'isAnimatingRef is true', value: isAnimatingRef.current });
-      
-      // Auto-recovery: If animation has been running too long, force reset it
-      const now = Date.now();
-      const lastAnimTime = animationStartTimeRef.current;
-      if (lastAnimTime > 0 && (now - lastAnimTime > 3000)) {
-        console.warn(`[SwipeCardDeck] Detected stuck animation running for ${now - lastAnimTime}ms. Force resetting.`);
-        isAnimatingRef.current = false;
-        position.setValue({ x: 0, y: 0 });
-        
-        // Update global tracking
-        if (activeSwipeDecks[componentId.current]) {
-          activeSwipeDecks[componentId.current].isAnimating = false;
-        }
-      } else {
-        return;
-      }
-    }
-    
-    const startTime = Date.now();
-    animationStartTimeRef.current = startTime;
-    isAnimatingRef.current = true;
-    
-    // Update global tracking
-    if (activeSwipeDecks[componentId.current]) {
-      activeSwipeDecks[componentId.current].isAnimating = true;
-      activeSwipeDecks[componentId.current].animationStartTime = startTime;
-    }
-    
-    log('FORCE_SWIPE_LEFT_START', { 
-      timestamp: startTime,
-      position: position.__getValue(),
-      currentIndex,
-      dataLength: data.length
-    });
-    
-    // Track current operation with ID to trace animation flow
-    const operationId = `swipe_left_${startTime}`;
-    console.log(`[ANIM_TRACE] ${operationId} - Starting left swipe animation`);
-    
-    // Use spring animation for more natural feel and better performance
-    // Use faster animation parameters to prevent timeouts
-    const animation = Animated.spring(position, {
-      toValue: { x: -width * 1.5, y: 0 },
-      tension: 65,   // Higher tension = faster animation
-      friction: 5,   // Lower friction = faster animation
-      useNativeDriver: true
-    });
-    
-    // Monitor animation performance
-    const startAnimation = () => {
-      console.log(`[ANIM_TRACE] ${operationId} - Animation loop started`);
-      
-      // Set a safety timeout to detect hung animations
-      const timeoutId = setTimeout(() => {
-        console.warn(`[ANIM_TRACE] ${operationId} - ANIMATION TIMEOUT (1000ms) - Possible hang detected`);
-        performanceMetrics.animationDrops++;
-        
-        // Force animation state reset if we detect a hang
-        if (isAnimatingRef.current) {
-          console.log(`[ANIM_TRACE] ${operationId} - Forcing animation state reset due to timeout`);
-          isAnimatingRef.current = false;
-          position.setValue({ x: 0, y: 0 });
-          InteractionManager.runAfterInteractions(() => {
-            log('ANIMATION_RESET_AFTER_TIMEOUT');
-          });
-        }
-      }, 1000);
-      
-      animation.start(({ finished }) => {
-        clearTimeout(timeoutId);
-        const endTime = Date.now();
-        console.log(`[ANIM_TRACE] ${operationId} - Animation complete: finished=${finished}, duration=${endTime - startTime}ms`);
-        
-        // Track performance metrics
-        trackSwipePerformance(startTime, endTime, finished);
-        
-        // Only complete if animation actually finished
-        if (finished) {
-          log('FORCE_SWIPE_LEFT_COMPLETE', { 
-            duration: endTime - startTime,
-            finished,
-            position: position.__getValue()
-          });
-          onSwipeLeftComplete();
-        } else {
-          // Reset animation state if interrupted
-          log('FORCE_SWIPE_LEFT_INTERRUPTED', { 
-            duration: endTime - startTime,
-            reason: 'Animation not finished' 
-          });
-          isAnimatingRef.current = false;
-          position.setValue({ x: 0, y: 0 });
-        }
-      });
-    };
-    
-    // Ensure animations run after interactions complete
-    InteractionManager.runAfterInteractions(startAnimation);
-    
-  }, [position, width, log, onSwipeLeftComplete, currentIndex, data.length]);
-  
-  // Reset card position (for rejecting swipes that don't cross threshold)
+  // Reset position
   const resetPosition = useCallback(() => {
-    const resetStartTime = Date.now();
-    const operationId = `reset_${resetStartTime}`;
-    console.log(`[SwipeCardDeck] ${operationId} - Resetting card position`);
+    Animated.parallel([
+      Animated.spring(panRef, {
+        toValue: { x: 0, y: 0 },
+        useNativeDriver: true,
+        tension: 20,
+        friction: 5
+      }),
+      Animated.timing(rotateRef, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true
+      }),
+      Animated.spring(nextCardScale, {
+        toValue: 1 - stackScale,
+        duration: 200,
+        useNativeDriver: true
+      })
+    ]).start();
+  }, [panRef, rotateRef, nextCardScale, stackScale]);
+  
+  // Swipe card animation
+  const swipeCard = useCallback((direction) => {
+    if (isAnimating) return;
+    setIsAnimating(true);
     
-    // Use faster animation parameters to prevent timeouts
-    Animated.spring(position, {
-      toValue: { x: 0, y: 0 },
-      tension: 65,   // Higher tension = faster animation
-      friction: 5,   // Lower friction = faster animation
-      useNativeDriver: true
-    }).start(({ finished }) => {
-      isAnimatingRef.current = false;
-      
-      // Update global tracking
-      if (activeSwipeDecks[componentId.current]) {
-        activeSwipeDecks[componentId.current].isAnimating = false;
-      }
-      
-      const resetEndTime = Date.now();
-      log('RESET_POSITION_COMPLETE', {
-        operationId,
-        duration: resetEndTime - resetStartTime,
-        finished
+    let toX = 0;
+    let toY = 0;
+    let rotation = 0;
+    
+    switch (direction) {
+      case 'left':
+        toX = -width * 1.5;
+        rotation = -ROTATION_RANGE;
+        break;
+      case 'right':
+        toX = width * 1.5;
+        rotation = ROTATION_RANGE;
+        break;
+      case 'up':
+        toY = -height * 1.5;
+        break;
+      case 'down':
+        toY = height * 1.5;
+        break;
+    }
+    
+    Animated.parallel([
+      Animated.timing(panRef, {
+        toValue: { x: toX, y: toY },
+        duration: animationDuration,
+        useNativeDriver: true
+      }),
+      Animated.timing(rotateRef, {
+        toValue: rotation,
+        duration: animationDuration,
+        useNativeDriver: true
+      }),
+      // Animate next card to full size
+      Animated.spring(nextCardScale, {
+        toValue: 1,
+        duration: animationDuration,
+        useNativeDriver: true
+      })
+    ]).start(() => {
+      InteractionManager.runAfterInteractions(() => {
+        panRef.setValue({ x: 0, y: 0 });
+        rotateRef.setValue(0);
+        nextCardScale.setValue(1 - stackScale);
+        
+        const oldIndex = currentIndex;
+        const newIndex = infinite && currentIndex >= data.length - 1 ? 0 : currentIndex + 1;
+        
+        setCurrentIndex(newIndex);
+        setIsAnimating(false);
+        
+        // Call appropriate callback
+        if (currentCard) {
+          switch (direction) {
+            case 'left':
+              onSwipeLeft?.(currentCard, oldIndex);
+              break;
+            case 'right':
+              onSwipeRight?.(currentCard, oldIndex);
+              break;
+            case 'up':
+              onSwipeTop?.(currentCard, oldIndex);
+              break;
+            case 'down':
+              onSwipeBottom?.(currentCard, oldIndex);
+              break;
+          }
+          onCardDisappear?.(currentCard, oldIndex);
+        }
       });
     });
-  }, [position, log]);
-  
-  // Handle tap on card
-  const handleCardTap = useCallback(() => {
-    if (isAnimatingRef.current) return;
-    
-    const item = data[currentIndex];
-    log('CARD_TAP', { item });
-    onCardTap?.(item, currentIndex);
-  }, [currentIndex, data, log, onCardTap]);
-  
-  // Configure pan responder for swipe gestures
-  const panResponder = useMemo(() => PanResponder.create({
-    onStartShouldSetPanResponder: () => !isAnimatingRef.current,
-    onPanResponderGrant: () => {
-      log('PAN_RESPONDER_GRANT');
-    },
-    onPanResponderMove: (event, gesture) => {
-      position.setValue({ x: gesture.dx, y: gesture.dy });
-    },
-    onPanResponderRelease: (event, gesture) => {
-      // CRITICAL FIX: Implement a forced advance timeout to ensure cards move
-      // This will advance the index if the animation gets stuck
-      let forceAdvanceTimeout = null;
-      const swipeStartTime = Date.now();
-      const operationId = `panResponder_${swipeStartTime}`;
-      
-      log('PAN_RESPONDER_RELEASE', { 
-        dx: gesture.dx, 
-        dy: gesture.dy,
-        timestamp: swipeStartTime,
-        operationId
-      });
-      
-      // Determine if this is a tap or a swipe
-      if (Math.abs(gesture.dx) < 5 && Math.abs(gesture.dy) < 5) {
-        log('DETECTED_TAP');
-        handleCardTap();
-        return;
-      }
-      
-      // Check if already animating - safety check
-      if (isAnimatingRef.current) {
-        console.warn(`[SwipeCardDeck] ${operationId} - Animation already in progress, forcing reset`);
-        isAnimatingRef.current = false;
-        // Update global tracking
-        if (activeSwipeDecks[componentId.current]) {
-          activeSwipeDecks[componentId.current].isAnimating = false;
-        }
-      }
-      
-      // Update animation timestamps
-      animationStartTimeRef.current = swipeStartTime;
-      
-      // Right swipe
-      if (gesture.dx > SWIPE_THRESHOLD) {
-        console.log(`[SwipeCardDeck] ${operationId} - Right swipe detected, dx: ${gesture.dx}`);
-        
-        // Set a backup timeout to force advance the card if animation gets stuck
-        forceAdvanceTimeout = setTimeout(() => {
-          console.log(`[SwipeCardDeck] ${operationId} - FORCE ADVANCING CARD after right swipe timeout`);
-          
-          // Only force advance if we're still on the same card (animation didn't complete)
-          if (isAnimatingRef.current) {
-            // Force state reset and advance to next card
-            isAnimatingRef.current = false;
-            position.setValue({ x: 0, y: 0 });
-            
-            // Advance to next card
-            const nextIndex = getNextCardIndex();
-            if (nextIndex !== -1) {
-              setCurrentIndex(nextIndex);
-            }
-          }
-        }, 1000);
-        
-        // Start the animation
-        forceSwipeRight();
-      } 
-      // Left swipe
-      else if (gesture.dx < -SWIPE_THRESHOLD) {
-        console.log(`[SwipeCardDeck] ${operationId} - Left swipe detected, dx: ${gesture.dx}`);
-        
-        // Set a backup timeout to force advance the card if animation gets stuck
-        forceAdvanceTimeout = setTimeout(() => {
-          console.log(`[SwipeCardDeck] ${operationId} - FORCE ADVANCING CARD after left swipe timeout`);
-          
-          // Only force advance if we're still on the same card (animation didn't complete)
-          if (isAnimatingRef.current) {
-            // Force state reset and advance to next card
-            isAnimatingRef.current = false;
-            position.setValue({ x: 0, y: 0 });
-            
-            // Advance to next card
-            const nextIndex = getNextCardIndex();
-            if (nextIndex !== -1) {
-              setCurrentIndex(nextIndex);
-            }
-          }
-        }, 1000);
-        
-        // Start the animation
-        forceSwipeLeft();
-      } 
-      // Not enough to trigger swipe, reset position
-      else {
-        console.log(`[SwipeCardDeck] ${operationId} - Threshold not met, resetting position`);
-        // Mark as animating just for the reset animation
-        isAnimatingRef.current = true;
-        // Update global tracking
-        if (activeSwipeDecks[componentId.current]) {
-          activeSwipeDecks[componentId.current].isAnimating = true;
-          activeSwipeDecks[componentId.current].animationStartTime = swipeStartTime;
-        }
-        resetPosition();
-      }
-    }
-  }), [
-    forceSwipeRight, 
-    forceSwipeLeft, 
-    position, 
-    resetPosition, 
-    log, 
-    handleCardTap
+  }, [
+    isAnimating,
+    currentCard,
+    currentIndex,
+    data.length,
+    infinite,
+    onSwipeLeft,
+    onSwipeRight,
+    onSwipeTop,
+    onSwipeBottom,
+    onCardDisappear,
+    panRef,
+    rotateRef,
+    nextCardScale,
+    stackScale,
+    animationDuration
   ]);
   
-  // Get an array of cards to render
-  const getCardsToRender = useCallback(() => {
-    if (!data.length) return [];
+  // Expose methods to parent via ref
+  useImperativeHandle(ref, () => ({
+    swipeLeft: () => swipeCard('left'),
+    swipeRight: () => swipeCard('right'),
+    swipeTop: () => swipeCard('up'),
+    swipeBottom: () => swipeCard('down'),
+    resetPosition,
+    getCurrentCard: () => currentCard,
+    getCurrentIndex: () => currentIndex,
+    isAnimating: () => isAnimating
+  }), [
+    swipeCard, 
+    resetPosition, 
+    currentCard, 
+    currentIndex, 
+    isAnimating
+  ]);
+  
+  // Create pan responder for gesture handling
+  const panResponder = useRef(PanResponder.create({
+    onStartShouldSetPanResponder: () => !isAnimating,
+    onMoveShouldSetPanResponder: (_, gesture) => {
+      const { dx, dy } = gesture;
+      return !isAnimating && (Math.abs(dx) > 5 || Math.abs(dy) > 5);
+    },
     
-    // If we're out of cards and not looping
-    if (currentIndex === -1 || currentIndex >= data.length) {
-      return [];
+    onPanResponderGrant: () => {
+      // Animation is starting
+      setIsAnimating(true);
+    },
+    
+    onPanResponderMove: (_, gesture) => {
+      panRef.setValue({ x: gesture.dx, y: gesture.dy });
+      
+      if (rotationEnabled) {
+        rotateRef.setValue(gesture.dx * ROTATION_MULTIPLIER);
+      }
+      
+      // Scale next card based on swipe progress
+      if (scaleEnabled) {
+        const swipeProgress = Math.min(Math.abs(gesture.dx) / width, 1);
+        const scale = (1 - stackScale) + (swipeProgress * stackScale);
+        nextCardScale.setValue(scale);
+      }
+    },
+    
+    onPanResponderRelease: (_, gesture) => {
+      const absX = Math.abs(gesture.dx);
+      const absY = Math.abs(gesture.dy);
+      const velocityX = Math.abs(gesture.vx);
+      const velocityY = Math.abs(gesture.vy);
+      
+      // Determine swipe direction with velocity consideration
+      if (!disableRightSwipe && (gesture.dx > SWIPE_THRESHOLD || velocityX > 0.5) && gesture.dx > 0) {
+        swipeCard('right');
+      } else if (!disableLeftSwipe && (gesture.dx < -SWIPE_THRESHOLD || velocityX > 0.5) && gesture.dx < 0) {
+        swipeCard('left');
+      } else if (!disableTopSwipe && (gesture.dy < -VERTICAL_THRESHOLD || velocityY > 0.5) && gesture.dy < 0) {
+        swipeCard('up');
+      } else if (!disableBottomSwipe && (gesture.dy > VERTICAL_THRESHOLD || velocityY > 0.5) && gesture.dy > 0) {
+        swipeCard('down');
+      } else {
+        // Reset card position
+        resetPosition();
+        setIsAnimating(false);
+      }
     }
+  })).current;
+  
+  // Calculate overlay opacity based on swipe position
+  const getOverlayOpacity = useCallback((type) => {
+    if (type === 'left') {
+      return panRef.x.interpolate({
+        inputRange: [-width, -SWIPE_THRESHOLD, 0],
+        outputRange: [animationOverlayOpacity, animationOverlayOpacity * 0.5, 0],
+        extrapolate: 'clamp'
+      });
+    } else if (type === 'right') {
+      return panRef.x.interpolate({
+        inputRange: [0, SWIPE_THRESHOLD, width],
+        outputRange: [0, animationOverlayOpacity * 0.5, animationOverlayOpacity],
+        extrapolate: 'clamp'
+      });
+    } else if (type === 'top') {
+      return panRef.y.interpolate({
+        inputRange: [-height, -VERTICAL_THRESHOLD, 0],
+        outputRange: [animationOverlayOpacity, animationOverlayOpacity * 0.5, 0],
+        extrapolate: 'clamp'
+      });
+    } else if (type === 'bottom') {
+      return panRef.y.interpolate({
+        inputRange: [0, VERTICAL_THRESHOLD, height],
+        outputRange: [0, animationOverlayOpacity * 0.5, animationOverlayOpacity],
+        extrapolate: 'clamp'
+      });
+    }
+    return new Animated.Value(0);
+  }, [panRef, animationOverlayOpacity]);
+  
+  // Render overlays during swipe
+  const renderOverlays = useCallback(() => {
+    const overlays = [];
     
-    // Keep track of rendered cards for debugging
-    const renderedCardInfo = [];
-    
-    // Generate cards, with the currentIndex card on top
-    // Important: Only generate cards for indices >= currentIndex
-    const cards = data.map((item, index) => {
-      // Calculate the relative position from current card
-      const indexDiff = index - currentIndex;
-      
-      // CRITICAL FIX: Never render cards with index < currentIndex
-      // This ensures swiped cards don't reappear in the deck
-      if (indexDiff < 0) {
-        return null; // Card already swiped, don't render
-      }
-      
-      // Only render current card and next few cards (optimization)
-      if (indexDiff > preloadLimit) {
-        return null; // Too far ahead, don't render yet
-      }
-      
-      // Track card for debugging
-      renderedCardInfo.push({ index, indexDiff, isCurrentCard: indexDiff === 0 });
-      
-      // Position values - Airbnb-style card stack appearance
-      const isCurrentCard = indexDiff === 0;
-      const zIndex = 10 - indexDiff; // Higher zIndex for top cards
-      const scale = 1 - (0.05 * indexDiff); // Each card is slightly smaller
-      const translateY = 10 * indexDiff; // Stack cards with slight offset
-      const opacity = isCurrentCard ? 1 : Math.max(0.7, 1 - (0.2 * indexDiff));
-      
-      // Create a card style based on its position in the stack
-      const cardStyle = {
-        zIndex,
-        opacity,
-        transform: [
-          { scale },
-          { translateY }
-        ]
-      };
-      
-      // Only the top card gets the animation and pan handlers
-      if (isCurrentCard) {
-        cardStyle.transform = [
-          { translateX: position.x },
-          { translateY: position.y },
-          { rotate: rotation },
-          { scale },
-        ];
-        
-        return (
-          <Animated.View 
-            key={cardKey(item)} 
-            style={[styles.card, cardStyle]}
-            {...panResponder.panHandlers}
-          >
-            {renderCard(item, index)}
-          </Animated.View>
-        );
-      }
-      
-      // All other cards are just positioned (not animated or interactive)
-      return (
+    if (!disableLeftSwipe) {
+      overlays.push(
         <Animated.View 
-          key={cardKey(item)} 
-          style={[styles.card, cardStyle]}
+          key="overlay-left"
+          style={[styles.overlay, styles.overlayLeft, { opacity: getOverlayOpacity('left') }]}
         >
-          {renderCard(item, index)}
+          <Text style={[styles.overlayText, { color: overlayLabels.left.color }]}>
+            {overlayLabels.left.title}
+          </Text>
         </Animated.View>
       );
-    }).filter(Boolean); // Remove null entries
+    }
     
-    // Add debugging to track card stack behavior
-    console.log(`[SwipeCardDeck] Rendering ${cards.length} cards at currentIndex=${currentIndex}`, {
-      renderedCardIndices: renderedCardInfo.map(info => info.index),
-      currentIndex,
-      swiped: currentIndex > 0 ? data.slice(0, currentIndex).map((item, idx) => idx) : []
-    });
+    if (!disableRightSwipe) {
+      overlays.push(
+        <Animated.View 
+          key="overlay-right"
+          style={[styles.overlay, styles.overlayRight, { opacity: getOverlayOpacity('right') }]}
+        >
+          <Text style={[styles.overlayText, { color: overlayLabels.right.color }]}>
+            {overlayLabels.right.title}
+          </Text>
+        </Animated.View>
+      );
+    }
     
-    // Don't reverse the cards - this is causing the issue with cards returning to top
-    // The z-index property already handles proper stacking
-    return cards;
+    return overlays;
+  }, [getOverlayOpacity, disableLeftSwipe, disableRightSwipe, overlayLabels]);
+  
+  // Render all cards in the deck
+  const renderCards = useMemo(() => {
+    // If no data or all cards have been swiped
+    if (!data.length || currentIndex >= data.length) {
+      // Call the onAllCardsViewed callback if provided
+      onCardDisappear && onCardDisappear(null, -1);
+      return null;
+    }
+    
+    console.log(`Rendering ${data.length} cards, current index: ${currentIndex}`);
+    
+    return data
+      .map((card, i) => {
+        // Don't render cards that have been swiped or are too far back in the stack
+        if (i < currentIndex || i >= currentIndex + stackSize) {
+          return null;
+        }
+        
+        // Get index relative to current card (0 is top card)
+        const relativeIndex = i - currentIndex;
+        
+        // Top card with pan responder
+        if (i === currentIndex) {
+          // Calculate rotation based on pan gesture
+          const rotate = rotationEnabled 
+            ? panRef.x.interpolate({
+                inputRange: [-width, 0, width],
+                outputRange: [`-${ROTATION_RANGE}deg`, '0deg', `${ROTATION_RANGE}deg`],
+                extrapolate: 'clamp'
+              }) 
+            : '0deg';
+          
+          // Move card based on pan gesture
+          const animatedCardStyle = {
+            transform: [{
+              translateX: panRef.x
+            }, {
+              translateY: panRef.y
+            }, {
+              rotate
+            }],
+            elevation: 999,
+            zIndex: 999 // Top card has highest z-index
+          };
+          
+          console.log(`Rendering top card (index ${i}):`, card?.title || card?.name || 'Unnamed card');
+          
+          // Create the top card with pan responder
+          return (
+            <Animated.View
+              key={`card-${i}-${card.id || i}`}
+              style={[styles.card, animatedCardStyle, cardStyle]}
+              {...panResponder.panHandlers}
+            >
+              {renderCard(card)}
+              {renderOverlays()}
+            </Animated.View>
+          );
+        }
+        
+        // Lower cards in the stack
+        const stackCardStyle = {
+          position: 'absolute',
+          top: relativeIndex * stackSeparation,
+          left: 0,
+          right: 0,
+          zIndex: data.length - i - 1,
+          elevation: data.length - i - 1,
+          transform: [{ scale: 1 - (relativeIndex * stackScale) }]
+        };
+        
+        return (
+          <Animated.View
+            key={`card-${i}-${card.id || i}`}
+            style={[styles.card, stackCardStyle, cardStyle]}
+          >
+            {renderCard(card)}
+          </Animated.View>
+        );
+      })
+      .filter(Boolean);
   }, [
-    data, 
     currentIndex, 
-    preloadLimit, 
+    data, 
     renderCard, 
-    position, 
-    rotation, 
-    panResponder.panHandlers,
-    cardKey
+    panResponder, 
+    renderOverlays, 
+    rotationEnabled, 
+    stackScale, 
+    stackSeparation, 
+    cardStyle, 
+    panRef,
+    stackSize,
+    onCardDisappear
   ]);
   
-  // Add debug effect to track current index changes
-  useEffect(() => {
-    console.log(`[SwipeCardDeck] Current index changed to ${currentIndex}`, {
-      timestamp: new Date().toISOString(),
-      remainingCards: data.length - currentIndex,
-      renderedCards: Math.min(preloadLimit + 1, data.length - currentIndex)
-    });
-  }, [currentIndex, data.length, preloadLimit]);
-  
-  // Check if we've run out of cards
-  const showNoMoreCards = !data.length || (currentIndex === -1 || currentIndex >= data.length);
-  
-  // Final render
+  // Return the component's JSX
   return (
-    <View style={[styles.container, style]}>
-      {showNoMoreCards ? renderNoMoreCards?.() : getCardsToRender()}
+    <View style={[styles.container, { backgroundColor }]}>
+      {renderCards}
     </View>
   );
 });
 
+// Component styles
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    position: 'relative',
-    alignItems: 'center',
     justifyContent: 'center',
+    alignItems: 'center',
   },
   card: {
-    position: 'absolute',
-    width: width - 40,
-    height: height * 0.6,
+    width: width - 20,
+    height: height * 0.7,
     borderRadius: 10,
-    overflow: 'hidden',
-    backgroundColor: '#FFF',
-    elevation: 3,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    shadowOpacity: 0.3,
+    elevation: 2,
+    backgroundColor: 'white',
+  },
+  overlay: {
+    position: 'absolute',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 100,
+    elevation: 100,
+    borderWidth: 2,
+    borderRadius: 10,
+    padding: 10,
+    backgroundColor: 'rgba(0,0,0,0.2)',
+  },
+  overlayLeft: {
+    left: 20,
+    top: 40,
+    borderColor: '#E74C3C',
+    transform: [{ rotate: '-30deg' }],
+  },
+  overlayRight: {
+    right: 20,
+    top: 40,
+    borderColor: '#27AE60',
+    transform: [{ rotate: '30deg' }],
+  },
+  overlayText: {
+    fontWeight: 'bold',
+    textAlign: 'center',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    fontSize: 32,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.8,
     shadowRadius: 3,
+    elevation: 5,
   }
 });
+
+// Display name for debugging
+SwipeCardDeck.displayName = 'SwipeCardDeck';
 
 export default SwipeCardDeck;
