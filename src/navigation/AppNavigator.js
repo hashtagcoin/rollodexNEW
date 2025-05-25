@@ -1,21 +1,16 @@
-import React, { useState } from 'react'; // Using a simple state for now
+import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
-import AuthStack from './AuthStack';
-import MainTabs from './MainTabs';
+import { createStackNavigator } from '@react-navigation/stack';
 import { AppStateProvider } from '../context/AppStateContext';
+import MainTabs from './MainTabs';
+import AuthStack from './AuthStack';
 
-// This is a placeholder. In a real app, this would come from your auth context/state management
-const useAuth = () => {
-  // For demonstration, toggle this to switch between Auth and Main screens
-  const [isAuthenticated, setIsAuthenticated] = useState(true); // Default to true for dashboard testing 
-  // Example function to simulate login, you'd call this from SignInScreen
-  // const login = () => setIsAuthenticated(true);
-  // const logout = () => setIsAuthenticated(false);
-  return { isAuthenticated }; 
-};
+const Stack = createStackNavigator();
 
-const AppNavigator = () => {
-  const { isAuthenticated } = useAuth(); // Replace with your actual auth state logic
+function AppNavigator() {
+  // For now, we'll assume the user is always authenticated
+  // In a real app, you would check the authentication state here
+  const isAuthenticated = true;
 
   return (
     <AppStateProvider>
@@ -24,6 +19,6 @@ const AppNavigator = () => {
       </NavigationContainer>
     </AppStateProvider>
   );
-};
+}
 
 export default AppNavigator;
