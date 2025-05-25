@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, Image, StyleSheet, TouchableOpacity, Platform } from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import { View, Text, Image, StyleSheet, TouchableOpacity, Platform, Dimensions } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import Feather from 'react-native-vector-icons/Feather';
 import { useUser } from '../../context/UserContext';
@@ -19,6 +19,52 @@ const AppHeader = ({
   
   // For optimistic UI updates, keep local state of avatar
   const [avatarUrl, setAvatarUrl] = useState(null);
+  
+  // Get screen width for calculating title length
+  const screenWidth = Dimensions.get('window').width;
+  
+  // Format title into two lines if needed
+  const formattedTitle = useMemo(() => {
+    if (!title || title.length <= 20) {
+      return { singleLine: title, firstLine: null, secondLine: null };
+    }
+    
+    // For longer titles, split into two balanced lines
+    const words = title.split(' ');
+    let firstLine = '';
+    let secondLine = '';
+    const targetLength = title.length / 2;
+    let currentLength = 0;
+    
+    for (let i = 0; i < words.length; i++) {
+      const word = words[i];
+      if (currentLength + word.length <= targetLength) {
+        firstLine += (firstLine ? ' ' : '') + word;
+        currentLength += word.length + (firstLine ? 1 : 0);
+      } else {
+        secondLine += (secondLine ? ' ' : '') + word;
+      }
+    }
+    
+    // If the balance is too uneven, adjust
+    if (Math.abs(firstLine.length - secondLine.length) > 5 && words.length > 3) {
+      const lastWordOfFirstLine = firstLine.split(' ').pop();
+      const firstWordOfSecondLine = secondLine.split(' ')[0];
+      
+      // Try moving a word from first line to second
+      if (firstLine.length > secondLine.length) {
+        firstLine = firstLine.substring(0, firstLine.length - lastWordOfFirstLine.length - 1);
+        secondLine = lastWordOfFirstLine + ' ' + secondLine;
+      } 
+      // Try moving a word from second line to first
+      else if (secondLine.length > firstLine.length) {
+        firstLine = firstLine + ' ' + firstWordOfSecondLine;
+        secondLine = secondLine.substring(firstWordOfSecondLine.length + 1);
+      }
+    }
+    
+    return { singleLine: null, firstLine, secondLine };
+  }, [title]);
   
   // Update local avatar when profile changes
   useEffect(() => {
@@ -59,7 +105,14 @@ const AppHeader = ({
         {showWelcomeMessage && !!userName ? (
           <Text style={styles.welcomeText}>Welcome, {userName}</Text>
         ) : !!title ? (
-          <Text style={styles.headerTitle}>{title}</Text>
+          formattedTitle.singleLine ? (
+            <Text style={styles.headerTitle}>{formattedTitle.singleLine}</Text>
+          ) : (
+            <View style={styles.twoLineTitle}>
+              <Text style={styles.headerTitleLine}>{formattedTitle.firstLine}</Text>
+              <Text style={styles.headerTitleLine}>{formattedTitle.secondLine}</Text>
+            </View>
+          )
         ) : null}
       </View>
 
@@ -144,6 +197,18 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: '#333',
+    textAlign: 'center',
+  },
+  twoLineTitle: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitleLine: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    textAlign: 'center',
+    lineHeight: 22,
   },
   iconButton: { 
     padding: 5,

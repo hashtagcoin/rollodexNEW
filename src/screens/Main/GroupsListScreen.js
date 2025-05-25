@@ -80,7 +80,13 @@ const GroupsListScreen = () => {
     }, [isFavorited, item.name]);
 
     return (
-      <TouchableOpacity onPress={() => navigation.navigate('GroupDetailScreen', { groupId: item.id })} style={styles.card}>
+      <TouchableOpacity 
+        onPress={() => {
+          console.log('Navigating to GroupDetail with groupId:', item.id);
+          navigation.navigate('GroupDetail', { groupId: item.id });
+        }} 
+        style={styles.card}
+      >
         <Image source={{ uri: item.image || 'https://via.placeholder.com/100x100.png?text=No+Image' }} style={styles.cardImage} />
         <View style={styles.cardContent}>
           <View style={styles.cardHeader}>

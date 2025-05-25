@@ -129,16 +129,20 @@ const SocialFeedScreen = () => {
   const HeaderComponent = () => (
     <View style={styles.stickyHeader}>
       <TouchableOpacity style={styles.stickerBtn} onPress={() => navigation.navigate('GroupsListScreen')}>
-        <Feather name="users" size={20} color="#007AFF" />
+        <Feather name="users" size={20} color="#000" />
         <Text style={styles.stickerBtnText}>Groups</Text>
       </TouchableOpacity>
       <TouchableOpacity style={styles.stickerBtn} onPress={() => navigation.navigate('HousingGroupsScreen')}>
-        <Feather name="home" size={20} color="#007AFF" />
+        <Feather name="home" size={20} color="#000" />
         <Text style={styles.stickerBtnText}>Housing</Text>
       </TouchableOpacity>
       <TouchableOpacity style={styles.stickerBtn} onPress={() => navigation.navigate('EventsListScreen')}>
-        <Feather name="calendar" size={20} color="#007AFF" />
+        <Feather name="calendar" size={20} color="#000" />
         <Text style={styles.stickerBtnText}>Events</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={styles.stickerBtn} onPress={() => navigation.navigate('BookmarksScreen')}>
+        <Feather name="bookmark" size={20} color="#000" />
+        <Text style={styles.stickerBtnText}>Saved</Text>
       </TouchableOpacity>
     </View>
   );
@@ -300,25 +304,18 @@ const styles = StyleSheet.create({
   },
   stickyHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-    paddingVertical: 12,
-    backgroundColor: '#f5f5f5',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    backgroundColor: '#fff',
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: '#eee',
   },
   stickerBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
-    padding: 8,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 1,
-    elevation: 1,
+    padding: 6,
+    paddingHorizontal: 10,
+    marginHorizontal: 4,
   },
   stickerBtnText: {
     marginLeft: 4,

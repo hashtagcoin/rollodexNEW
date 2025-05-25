@@ -12,6 +12,7 @@ import {
   Modal,
   FlatList,
 } from 'react-native';
+import FallbackImage from '../common/FallbackImage';
 import { TapGestureHandler, State } from 'react-native-gesture-handler';
 import { supabase } from '../../lib/supabaseClient';
 import { COLORS, FONTS } from '../../constants/theme';
@@ -339,9 +340,10 @@ const PostCard = ({ post, onPress, showActions = true }) => {
           // Navigate to user profile
         }}
       >
-        <Image 
+        <FallbackImage 
           source={{ uri: user?.avatar_url || 'https://via.placeholder.com/40' }} 
           style={styles.avatar}
+          fallbackSource={'https://via.placeholder.com/40'}
         />
         <View>
           <Text style={styles.username}>{user?.username || 'User'}</Text>
@@ -368,26 +370,14 @@ const PostCard = ({ post, onPress, showActions = true }) => {
           <View style={styles.imageContainer}>
             {post.media_urls && post.media_urls.length > 0 ? (
               <>
-                <Image
-                  source={{ uri: processImageUri(post.media_urls[currentImageIndex]) }}
+                <FallbackImage
+                  source={processImageUri(post.media_urls[currentImageIndex])}
                   style={styles.image}
+                  fallbackSource={'https://via.placeholder.com/400x300?text=Image+Not+Available'}
                   onLoad={handleImageLoad}
-                  onError={(e) => {
-                    console.error('Image load error:', e.nativeEvent.error);
-                    handleImageError();
-                  }}
+                  onError={handleImageError}
+                  imageProps={{ resizeMode: 'cover' }}
                 />
-                {imageLoading && (
-                  <View style={styles.imageLoadingContainer}>
-                    <ActivityIndicator size="large" color={COLORS.primary} />
-                  </View>
-                )}
-                {imageError && (
-                  <View style={styles.imageErrorContainer}>
-                    <Ionicons name="alert-circle-outline" size={32} color="#999" />
-                    <Text style={styles.imageErrorText}>Unable to load image</Text>
-                  </View>
-                )}
                 
                 {/* Heart animation on double-tap */}
                 <Animated.View

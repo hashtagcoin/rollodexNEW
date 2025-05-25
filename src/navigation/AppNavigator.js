@@ -13,6 +13,8 @@ import EventDetailScreen from '../screens/Main/EventDetailScreen';
 import GroupDetailScreen from '../screens/Main/GroupDetailScreen'; // Assuming this one exists as GroupDetailScreen.js
 import HousingGroupDetailScreen from '../screens/Main/HousingGroupDetailScreen';
 
+import { supabase } from '../lib/supabaseClient'; // Import Supabase client
+
 const RootStack = createStackNavigator();
 const AuthFlowStack = createStackNavigator();
 
@@ -23,22 +25,40 @@ const useAuth = () => {
   // You might want to integrate this with Supabase auth state listener
   const [isLoading, setIsLoading] = React.useState(true);
   const [isAuthenticated, setIsAuthenticated] = React.useState(false);
+  const [sessionChecked, setSessionChecked] = React.useState(false); // To ensure initial session check completes
 
   React.useEffect(() => {
-    // Simulate auth check or use actual Supabase listener
-    // For example:
-    // const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-    //   setIsAuthenticated(!!session);
-    //   setIsLoading(false);
-    // });
-    // return () => subscription.unsubscribe();
-    
-    // Simplified for now:
-    setTimeout(() => {
-      setIsAuthenticated(true); // Default to authenticated for testing navigation
-      setIsLoading(false);
-    }, 500); // Simulate loading
-  }, []);
+    // Check initial session state
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setIsAuthenticated(!!session);
+      setSessionChecked(true); // Mark initial session check as complete
+      // setIsLoading(false); // We'll let onAuthStateChange handle final isLoading
+    }).catch(() => {
+      setIsAuthenticated(false);
+      setSessionChecked(true);
+      // setIsLoading(false);
+    });
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('Auth event:', event, 'Session:', session);
+      setIsAuthenticated(!!session);
+      if (sessionChecked) { // Only set isLoading to false after initial check AND first auth event
+        setIsLoading(false);
+      }
+      // If it's the initial SIGNED_IN or INITIAL_SESSION event and session is present, ensure loading is false
+      if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN') && session && !isLoading) {
+        // This case might be redundant if sessionChecked logic is robust
+      } else if (event === 'SIGNED_OUT' || (event === 'INITIAL_SESSION' && !session)){
+        setIsLoading(false); // Ensure loading stops if signed out or no initial session
+      }
+    });
+
+    return () => {
+      if (authListener && authListener.subscription) {
+        authListener.subscription.unsubscribe();
+      }
+    };
+  }, [sessionChecked]); // Rerun if sessionChecked changes, though it should only change once
 
   return { isAuthenticated, isLoading }; 
 };

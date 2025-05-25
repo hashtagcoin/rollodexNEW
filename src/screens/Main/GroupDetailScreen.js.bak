@@ -1,0 +1,994 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, Image, TouchableOpacity, ActivityIndicator, ScrollView, SafeAreaView, Dimensions, FlatList, RefreshControl, Modal, TextInput } from 'react-native';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import { TabView, TabBar } from 'react-native-tab-view';
+import { supabase } from '../../lib/supabaseClient';
+import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
+import { COLORS, SIZES } from '../../constants/theme';
+import AppHeader from '../../components/layout/AppHeader';
+import ActionButton from '../../components/common/ActionButton';
+
+const initialLayout = { width: Dimensions.get('window').width };
+
+// Posts Tab Scene Component
+const PostsScene = ({ groupId, posts, loading, error, onRefresh, refreshing, onAddPost }) => {
+  if (loading && !refreshing) {
+    return (
+      <View style={styles.centeredContainer}>
+        <ActivityIndicator size="large" color={COLORS.DARK_GREEN} />
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={styles.centeredContainer}>
+        <Text style={styles.errorText}>{error}</Text>
+        <TouchableOpacity onPress={onRefresh} style={styles.retryButton}>
+          <Text style={styles.retryButtonText}>Try Again</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  const renderPostItem = ({ item }) => (
+    <View style={styles.postCard}>
+      <View style={styles.postHeader}>
+        <Image 
+          source={{ uri: item.author?.avatar_url || 'https://via.placeholder.com/40' }} 
+          style={styles.postAvatar}
+        />
+        <View style={styles.postAuthorInfo}>
+          <Text style={styles.postAuthorName}>
+            {item.author?.full_name || item.author?.username || 'User'}
+          </Text>
+          <Text style={styles.postTime}>
+            {new Date(item.created_at).toLocaleString()}
+          </Text>
+        </View>
+      </View>
+      <Text style={styles.postContent}>{item.content}</Text>
+      {item.media_url && (
+        <Image 
+          source={{ uri: item.media_url }} 
+          style={styles.postImage}
+          resizeMode="cover"
+        />
+      )}
+      <View style={styles.postActions}>
+        <TouchableOpacity style={styles.postAction}>
+          <Ionicons name="heart-outline" size={20} color="#666" />
+          <Text style={styles.postActionText}>Like</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.postAction}>
+          <Ionicons name="chatbubble-outline" size={20} color="#666" />
+          <Text style={styles.postActionText}>Comment</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.postAction}>
+          <Ionicons name="share-social-outline" size={20} color="#666" />
+          <Text style={styles.postActionText}>Share</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
+  return (
+    <View style={styles.sceneContainer}>
+      <TouchableOpacity 
+        style={styles.addPostButton}
+        onPress={onAddPost}
+      >
+        <Ionicons name="add" size={24} color={COLORS.DARK_GREEN} />
+        <Text style={styles.addPostText}>Add Post</Text>
+      </TouchableOpacity>
+      <FlatList
+        data={posts}
+        renderItem={renderPostItem}
+        keyExtractor={item => item.id}
+        contentContainerStyle={styles.postsList}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={[COLORS.DARK_GREEN]}
+            tintColor={COLORS.DARK_GREEN}
+          />
+        }
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Ionicons name="document-text-outline" size={48} color="#ccc" />
+            <Text style={styles.emptyText}>No posts yet</Text>
+            <Text style={styles.emptySubText}>Be the first to post in this group!</Text>
+          </View>
+        }
+      />
+    </View>
+  );
+};
+
+// Members Tab Scene Component
+const MembersScene = ({ members, loading, error, onRefresh, refreshing }) => {
+  if (loading && !refreshing) {
+    return (
+      <View style={styles.centeredContainer}>
+        <ActivityIndicator size="large" color={COLORS.DARK_GREEN} />
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={styles.centeredContainer}>
+        <Text style={styles.errorText}>{error}</Text>
+        <TouchableOpacity onPress={onRefresh} style={styles.retryButton}>
+          <Text style={styles.retryButtonText}>Try Again</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  const renderMemberItem = ({ item }) => (
+    <View style={styles.memberItem}>
+      <Image
+        source={{ uri: item.avatarUrl || 'https://via.placeholder.com/50' }}
+        style={styles.memberAvatar}
+      />
+      <View style={styles.memberInfo}>
+        <View style={styles.memberNameRow}>
+          <Text style={styles.memberName}>{item.fullName || item.username}</Text>
+          {item.role === 'admin' && (
+            <View style={styles.adminBadge}>
+              <MaterialIcons name="admin-panel-settings" size={12} color="#fff" />
+              <Text style={styles.adminText}>Admin</Text>
+            </View>
+          )}
+        </View>
+        {item.bio && (
+          <Text style={styles.memberBio} numberOfLines={1}>{item.bio}</Text>
+        )}
+      </View>
+    </View>
+  );
+
+  return (
+    <FlatList
+      data={members}
+      renderItem={renderMemberItem}
+      keyExtractor={(item) => item.id}
+      contentContainerStyle={styles.membersList}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          colors={[COLORS.DARK_GREEN]}
+          tintColor={COLORS.DARK_GREEN}
+        />
+      }
+      ListEmptyComponent={
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyText}>No members found</Text>
+        </View>
+      }
+    />
+  );
+};
+
+// Simple Post Creation Modal Component
+const PostCreationModal = ({ visible, onClose, onSubmit, groupId }) => {
+  const [content, setContent] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  const handleSubmit = async () => {
+    if (!content.trim()) return;
+    
+    setIsSubmitting(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('You must be logged in to post');
+      
+      const newPost = {
+        group_id: groupId,
+        user_id: user.id,
+        content: content.trim(),
+        created_at: new Date().toISOString()
+      };
+      
+      const { data, error } = await supabase
+        .from('group_posts')
+        .insert([newPost]);
+        
+      if (error) throw error;
+      
+      // Get the created post with author details
+      const { data: postWithAuthor, error: fetchError } = await supabase
+        .from('group_posts')
+        .select(`
+          id,
+          created_at,
+          group_id,
+          user_id,
+          content,
+          media_url,
+          media_type,
+          author:user_profiles (id, username, full_name, avatar_url)
+        `)
+        .eq('id', data[0].id)
+        .single();
+        
+      if (fetchError) throw fetchError;
+      
+      onSubmit(postWithAuthor);
+      setContent('');
+      onClose();
+    } catch (err) {
+      console.error('Error creating post:', err);
+      alert('Failed to create post: ' + err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+  
+  return (
+    <Modal
+      animationType="slide"
+      transparent={true}
+      visible={visible}
+      onRequestClose={onClose}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>New Post</Text>
+            <TouchableOpacity onPress={onClose}>
+              <Ionicons name="close" size={24} color="#333" />
+            </TouchableOpacity>
+          </View>
+          
+          <TextInput
+            style={styles.postInput}
+            placeholder="What's on your mind?"
+            multiline
+            value={content}
+            onChangeText={setContent}
+            maxLength={500}
+          />
+          
+          <View style={styles.modalFooter}>
+            <Text style={styles.charCount}>{content.length}/500</Text>
+            <TouchableOpacity 
+              style={[styles.postButton, !content.trim() && styles.postButtonDisabled]}
+              onPress={handleSubmit}
+              disabled={!content.trim() || isSubmitting}
+            >
+              {isSubmitting ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.postButtonText}>Post</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+const GroupDetailScreen = () => {
+  const navigation = useNavigation();
+  const route = useRoute();
+  const { groupId } = route.params || {};
+  
+  console.log('GroupDetailScreen simple version mounted. Received groupId:', groupId);
+  
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [group, setGroup] = useState(null);
+  const [members, setMembers] = useState([]);
+  const [memberCount, setMemberCount] = useState(0);
+  const [isFavorited, setIsFavorited] = useState(false);
+  const [showPostModal, setShowPostModal] = useState(false);
+  
+  // Tab view state
+  const [index, setIndex] = useState(0);
+  const [routes] = useState([
+    { key: 'posts', title: 'Posts' },
+    { key: 'members', title: 'Members' },
+  ]);
+  
+  // Posts state
+  const [posts, setPosts] = useState([]);
+  const [postsLoading, setPostsLoading] = useState(true);
+  const [postsError, setPostsError] = useState(null);
+  const [refreshingPosts, setRefreshingPosts] = useState(false);
+  
+  // Members state for refresh
+  const [membersLoading, setMembersLoading] = useState(true);
+  const [membersError, setMembersError] = useState(null);
+  const [refreshingMembers, setRefreshingMembers] = useState(false);
+  
+  // Handle post creation
+  const handlePostCreated = useCallback((newPost) => {
+    setPosts(prevPosts => [newPost, ...prevPosts]);
+  }, []);
+  
+  // Handle post refresh
+  const onRefreshPosts = useCallback(async () => {
+    setRefreshingPosts(true);
+    await fetchGroupPosts();
+    setRefreshingPosts(false);
+  }, [groupId]);
+  
+  // Handle members refresh
+  const onRefreshMembers = useCallback(async () => {
+    setRefreshingMembers(true);
+    await fetchGroupMembers();
+    setRefreshingMembers(false);
+  }, [groupId]);
+  
+  // Fetch group data when component mounts or groupId changes
+  useEffect(() => {
+    const fetchGroupData = async () => {
+      if (!groupId) {
+        setError('No group ID provided');
+        setLoading(false);
+        return;
+      }
+      
+      try {
+        console.log('Fetching group data for groupId:', groupId);
+        // Fetch the group details
+        const { data: groupData, error: groupError } = await supabase
+          .from('groups')
+          .select('*, owner_profile:user_profiles!owner_id(id, username, avatar_url)')
+          .eq('id', groupId)
+          .single();
+          
+        if (groupError) throw groupError;
+        console.log('Group data fetched successfully:', groupData.name);
+        setGroup(groupData);
+        
+        // Fetch initial data for posts and members
+        await Promise.all([
+          fetchGroupPosts(),
+          fetchGroupMembers()
+        ]);
+        
+        setLoading(false);
+      } catch (err) {
+        console.error('Error fetching group data:', err);
+        setError(err.message || 'Failed to load group data');
+        setLoading(false);
+      }
+    };
+    
+    fetchGroupData();
+    
+      // Note: We're commenting out the scroll animation for now to fix the hooks issue
+    // This can be reimplemented later with useRef to track scroll position
+    
+    return () => {
+      // Cleanup if needed
+    };
+  }, [groupId]);
+  
+  // Fetch posts for the group
+  const fetchGroupPosts = async () => {
+    if (!groupId) return;
+    
+    setPostsLoading(true);
+    setPostsError(null);
+    
+    try {
+      const { data, error: postsFetchError } = await supabase
+        .from('group_posts')
+        .select(`
+          id,
+          created_at,
+          group_id,
+          user_id,
+          content,
+          media_url,
+          media_type,
+          author:user_profiles (id, username, full_name, avatar_url)
+        `)
+        .eq('group_id', groupId)
+        .order('created_at', { ascending: false });
+
+      if (postsFetchError) throw postsFetchError;
+      setPosts(data || []);
+    } catch (e) {
+      console.error('Error fetching group posts:', e);
+      setPostsError(e.message || 'Failed to load posts.');
+    } finally {
+      setPostsLoading(false);
+    }
+  };
+  
+  // Fetch members for the group
+  const fetchGroupMembers = async () => {
+    if (!groupId) return;
+    
+    setMembersLoading(true);
+    setMembersError(null);
+    
+    try {
+      const { data: membersData, error: membersError } = await supabase
+        .from('group_members')
+        .select(`
+          id,
+          role,
+          joined_at,
+          user:user_profiles!inner(
+            id,
+            username,
+            full_name,
+            avatar_url,
+            bio
+          )
+        `)
+        .eq('group_id', groupId)
+        .order('joined_at', { ascending: true });
+          
+      if (membersError) throw membersError;
+      
+      const formattedMembers = (membersData || []).map(member => ({
+        id: member.user.id,
+        username: member.user.username,
+        fullName: member.user.full_name,
+        avatarUrl: member.user.avatar_url,
+        bio: member.user.bio,
+        role: member.role,
+        joinDate: member.joined_at,
+      }));
+      
+      setMembers(formattedMembers);
+      setMemberCount(formattedMembers.length);
+    } catch (e) {
+      console.error('Error fetching group members:', e);
+      setMembersError(e.message || 'Failed to load members.');
+    } finally {
+      setMembersLoading(false);
+    }
+  };
+
+  // Display loading state
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <AppHeader title="Group Details" navigation={navigation} canGoBack={true} />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={COLORS.DARK_GREEN} />
+          <Text style={styles.loadingText}>Loading group...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+  
+  // Display error state
+  if (error || !group) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <AppHeader title="Group Details" navigation={navigation} canGoBack={true} />
+        <View style={styles.errorContainer}>
+          <Ionicons name="alert-circle-outline" size={50} color="#ff6b6b" />
+          <Text style={styles.errorText}>{error || 'Group not found'}</Text>
+          <TouchableOpacity 
+            style={styles.retryButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Text style={styles.retryButtonText}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+  
+  // Tab view render scene callback
+  const renderScene = useCallback(({ route }) => {
+    switch (route.key) {
+      case 'posts':
+        return (
+          <PostsScene
+            groupId={groupId}
+            posts={posts}
+            loading={postsLoading}
+            error={postsError}
+            onRefresh={onRefreshPosts}
+            refreshing={refreshingPosts}
+            onAddPost={() => setShowPostModal(true)}
+          />
+        );
+      case 'members':
+        return (
+          <MembersScene
+            members={members}
+            loading={membersLoading}
+            error={membersError}
+            onRefresh={onRefreshMembers}
+            refreshing={refreshingMembers}
+          />
+        );
+      default:
+        return null;
+    }
+  }, [posts, postsLoading, postsError, members, membersLoading, membersError, refreshingPosts, refreshingMembers]);
+
+  // Tab bar rendering
+  const renderTabBar = props => (
+    <TabBar
+      {...props}
+      indicatorStyle={{ backgroundColor: COLORS.DARK_GREEN }}
+      style={{ backgroundColor: 'white' }}
+      labelStyle={{ color: '#333', fontWeight: '600' }}
+      activeColor={COLORS.DARK_GREEN}
+      inactiveColor={'#888'}
+    />
+  );
+  
+  // Placeholder image if needed
+  const placeholderImage = 'https://via.placeholder.com/400x150.png?text=Group+Image';
+  const displayImage = group?.imageurl || group?.avatar_url || group?.cover_image_url || placeholderImage;
+  
+  // Main content with group data
+  return (
+    <SafeAreaView style={styles.container}>
+      <AppHeader title={group.name} navigation={navigation} canGoBack={true} />
+      
+      <ScrollView style={styles.scrollView}>
+        {/* Hero Section with Cover Image */}
+        <View style={styles.heroContainer}>
+          <Image 
+            source={{ uri: displayImage }} 
+            style={styles.headerImage}
+            resizeMode="cover"
+          />
+          <View style={styles.heroOverlay} />
+          
+          {/* Group Info Card */}
+          <View style={styles.infoCard}>
+            <Text style={styles.groupName}>{group.name}</Text>
+            <Text style={styles.groupCategory}>{group.category}</Text>
+            
+            <View style={styles.statsRow}>
+              <View style={styles.statItem}>
+                <Feather name="users" size={16} color="#666" />
+                <Text style={styles.statText}>{memberCount} members</Text>
+              </View>
+              
+              {group.is_public && (
+                <View style={styles.publicBadge}>
+                  <Feather name="globe" size={14} color="#fff" />
+                  <Text style={styles.publicBadgeText}>Public</Text>
+                </View>
+              )}
+            </View>
+          </View>
+        </View>
+        
+        {/* Group Description */}
+        <View style={styles.sectionContainer}>
+          <Text style={styles.sectionTitle}>About</Text>
+          <Text style={styles.description}>{group.description || 'No description available.'}</Text>
+        </View>
+        
+        {/* Tab View for Posts and Members */}
+        <View style={styles.tabViewContainer}>
+          <TabView
+            navigationState={{ index, routes }}
+            renderScene={renderScene}
+            onIndexChange={setIndex}
+            initialLayout={initialLayout}
+            renderTabBar={renderTabBar}
+            lazy
+            style={styles.tabView}
+          />
+        </View>
+        
+        {/* Join Group Button */}
+        <TouchableOpacity style={styles.joinButton}>
+          <Text style={styles.joinButtonText}>Join Group</Text>
+        </TouchableOpacity>
+      </ScrollView>
+      
+      {/* Floating Action Button for Creating Posts */}
+      <View style={styles.floatingActionButton}>
+        <ActionButton
+          onPress={() => setShowPostModal(true)}
+          iconName="add"
+          color={COLORS.DARK_GREEN}
+          size={56}
+        />
+      </View>
+      
+      {/* Post Creation Modal */}
+      <PostCreationModal 
+        visible={showPostModal}
+        onClose={() => setShowPostModal(false)}
+        onSubmit={handlePostCreated}
+        groupId={groupId}
+      />
+    </SafeAreaView>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#666',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  errorText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+  },
+  retryButton: {
+    marginTop: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    backgroundColor: COLORS.DARK_GREEN,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  heroContainer: {
+    position: 'relative',
+    height: 200,
+  },
+  headerImage: {
+    width: '100%',
+    height: '100%',
+  },
+  heroOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+  },
+  infoCard: {
+    position: 'absolute',
+    bottom: -40,
+    left: 20,
+    right: 20,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 15,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  groupName: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  groupCategory: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 2,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    justifyContent: 'space-between',
+  },
+  statItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  statText: {
+    marginLeft: 5,
+    fontSize: 14,
+    color: '#666',
+  },
+  publicBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.DARK_GREEN,
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+  },
+  publicBadgeText: {
+    color: '#fff',
+    fontSize: 12,
+    marginLeft: 3,
+  },
+  sectionContainer: {
+    padding: 20,
+    marginTop: 20,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 10,
+    color: '#333',
+  },
+  description: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: '#444',
+  },
+  memberItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 15,
+    backgroundColor: '#f9f9f9',
+    padding: 10,
+    borderRadius: 10,
+  },
+  memberAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+  },
+  memberInfo: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  memberNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  memberName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+  },
+  adminBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#007bff',
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+    borderRadius: 8,
+    marginLeft: 8,
+  },
+  adminText: {
+    fontSize: 10,
+    color: '#fff',
+    marginLeft: 2,
+  },
+  memberBio: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 2,
+  },
+  emptyText: {
+    textAlign: 'center',
+    color: '#888',
+    fontStyle: 'italic',
+    marginTop: 10,
+  },
+  joinButton: {
+    backgroundColor: COLORS.DARK_GREEN,
+    marginHorizontal: 20,
+    marginTop: 10,
+    marginBottom: 30,
+    padding: 15,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  joinButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  
+  // Tab View Styles
+  tabViewContainer: {
+    height: 400, // Fixed height for tab view
+    marginTop: 20,
+  },
+  tabView: {
+    flex: 1,
+  },
+  sceneContainer: {
+    flex: 1,
+  },
+  
+  // Posts Styles
+  postsList: {
+    padding: 15,
+  },
+  postCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 15,
+    marginBottom: 15,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  postHeader: {
+    flexDirection: 'row',
+    marginBottom: 10,
+  },
+  postAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  postAuthorInfo: {
+    marginLeft: 10,
+    justifyContent: 'center',
+  },
+  postAuthorName: {
+    fontWeight: '600',
+    fontSize: 15,
+    color: '#333',
+  },
+  postTime: {
+    fontSize: 12,
+    color: '#888',
+    marginTop: 2,
+  },
+  postContent: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: '#333',
+    marginBottom: 10,
+  },
+  postImage: {
+    width: '100%',
+    height: 200,
+    borderRadius: 8,
+    marginBottom: 10,
+  },
+  postActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+    paddingTop: 10,
+  },
+  postAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 5,
+  },
+  postActionText: {
+    marginLeft: 5,
+    fontSize: 14,
+    color: '#666',
+  },
+  
+  // Common styles
+  centeredContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  emptyContainer: {
+    padding: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyText: {
+    fontSize: 16,
+    color: '#888',
+    marginTop: 10,
+    textAlign: 'center',
+  },
+  emptySubText: {
+    fontSize: 14,
+    color: '#aaa',
+    marginTop: 5,
+    textAlign: 'center',
+  },
+  membersList: {
+    padding: 15,
+  },
+  
+  // Post creation styles
+  floatingActionButton: {
+    position: 'absolute',
+    bottom: 20,
+    right: 20,
+    zIndex: 999,
+  },
+  addPostButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f0f0f0',
+    padding: 12,
+    borderRadius: 20,
+    margin: 15,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 1,
+    elevation: 1,
+  },
+  addPostText: {
+    marginLeft: 8,
+    fontSize: 16,
+    color: COLORS.DARK_GREEN,
+    fontWeight: '500',
+  },
+  
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContainer: {
+    backgroundColor: 'white',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  postInput: {
+    height: 150,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    textAlignVertical: 'top',
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 15,
+  },
+  charCount: {
+    fontSize: 14,
+    color: '#888',
+  },
+  postButton: {
+    backgroundColor: COLORS.DARK_GREEN,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+  },
+  postButtonDisabled: {
+    backgroundColor: '#ccc',
+  },
+  postButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+});
+
+export default GroupDetailScreen;

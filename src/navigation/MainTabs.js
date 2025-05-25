@@ -47,7 +47,6 @@ const MainTabs = () => (
   <Stack.Navigator screenOptions={{ headerShown: false }}>
     <Stack.Screen name="MainTabs" component={TabNavigator} />
     <Stack.Screen name="GroupsListScreen" component={GroupsListScreen} />
-    <Stack.Screen name="GroupDetailScreen" component={GroupDetailScreen} />
     <Stack.Screen 
       name="CreateGroupPostScreen" 
       component={CreateGroupPostScreen}
