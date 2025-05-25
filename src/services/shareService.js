@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabaseClient';
+import { Share } from 'react-native';
 
 /**
  * Share a post with optional caption
@@ -29,6 +30,44 @@ export const sharePost = async (postId, userId, caption = '') => {
     return data;
   } catch (error) {
     console.error('Error sharing post:', error);
+    throw error;
+  }
+};
+
+/**
+ * Share a group with a message
+ * @param {Object} group - Group data to share
+ * @param {string} message - Optional message to include with the share
+ */
+export const shareGroup = async (group, message = '') => {
+  try {
+    const shareUrl = `https://yourapp.com/groups/${group.id}`;
+    const shareMessage = `${message}\n\n${group.name}\n${shareUrl}`;
+    
+    const result = await Share.share({
+      message: shareMessage,
+      title: `Check out ${group.name} on Rollodex`,
+      url: shareUrl
+    });
+    
+    // Track successful shares in your analytics if needed
+    if (result.action === Share.sharedAction) {
+      // Share was successful
+      if (result.activityType) {
+        // Shared with activity type (e.g., Messages, Mail, etc.)
+        console.log(`Shared with activity type: ${result.activityType}`);
+      } else {
+        // Shared
+        console.log('Shared successfully');
+      }
+    } else if (result.action === Share.dismissedAction) {
+      // Dismissed
+      console.log('Share dismissed');
+    }
+    
+    return result;
+  } catch (error) {
+    console.error('Error sharing group:', error);
     throw error;
   }
 };

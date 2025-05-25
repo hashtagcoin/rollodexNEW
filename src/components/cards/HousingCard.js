@@ -15,15 +15,9 @@ const gridMarginHorizontal = 4; // Reduced from 8 to 4 (half the original value)
 // Calculate exactly half the screen width with just enough margin to fit two cards side by side
 const gridCardWidth = (width / numColumnsGrid) - (gridMarginHorizontal * 2);
 
-const HousingCard = ({ item, onPress, displayAs = 'grid', onImageLoaded }) => {
-  // State for image loading and favorite status
+const HousingCard = ({ item, onPress, displayAs = 'grid', onImageLoaded, isFavorited, onToggleFavorite }) => {
+  // State for image loading
   const [imageLoaded, setImageLoaded] = useState(false);
-  const [isFavorited, setIsFavorited] = useState(item.is_favourited || false);
-
-  // Update favorite status when item changes
-  useEffect(() => {
-    setIsFavorited(item.is_favourited || false);
-  }, [item]);
 
   // Extract and process data from the housing item
   const title = item.title || item.property_name || 'Beautiful Home';
@@ -120,7 +114,7 @@ const HousingCard = ({ item, onPress, displayAs = 'grid', onImageLoaded }) => {
             {/* Heart icon overlay */}
             <TouchableOpacity 
               style={styles.listHeartIconContainer}
-              onPress={() => setIsFavorited(!isFavorited)}
+              onPress={onToggleFavorite} // Use the passed onToggleFavorite prop
             >
               <View style={styles.listHeartIconCircle}>
                 <Ionicons name={isFavorited ? "heart" : "heart-outline"} size={16} color={isFavorited ? "#FF6B6B" : "white"} />
@@ -195,7 +189,7 @@ const HousingCard = ({ item, onPress, displayAs = 'grid', onImageLoaded }) => {
             {/* Heart icon overlay */}
             <TouchableOpacity 
               style={styles.heartIconContainer}
-              onPress={() => setIsFavorited(!isFavorited)}
+              onPress={onToggleFavorite} // Use the passed onToggleFavorite prop
             >
               <View style={styles.heartIconCircle}>
                 <Ionicons name={isFavorited ? "heart" : "heart-outline"} size={20} color={isFavorited ? "#FF6B6B" : "white"} />

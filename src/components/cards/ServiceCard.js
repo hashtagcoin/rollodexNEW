@@ -9,15 +9,9 @@ const GRID_CARD_WIDTH = (width / 2) - 10; // Half width for 2-column grid, with 
 const LIST_CARD_WIDTH = width; // Full width for list view
 
 // Main component
-const ServiceCard = ({ item, onPress, onImageLoaded, displayAs = 'grid' }) => { 
-  // State for favorite status
-  const [isFavorited, setIsFavorited] = useState(item.is_favourited || false);
+const ServiceCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', isFavorited, onToggleFavorite }) => { 
   // State for image loading
   const [imageLoaded, setImageLoaded] = useState(false);
-
-  useEffect(() => {
-    setIsFavorited(item.is_favourited || false);
-  }, [item]);
 
   // Modern rating display with just a number and a single star icon
   const renderModernRating = () => {
@@ -147,7 +141,7 @@ const ServiceCard = ({ item, onPress, onImageLoaded, displayAs = 'grid' }) => {
             {/* Heart icon overlay */}
             <TouchableOpacity 
               style={styles.listHeartIconContainer}
-              onPress={() => setIsFavorited(!isFavorited)}
+              onPress={onToggleFavorite} // Use the passed onToggleFavorite prop
             >
               <View style={styles.listHeartIconCircle}>
                 <Ionicons name={isFavorited ? "heart" : "heart-outline"} size={16} color={isFavorited ? "#FF6B6B" : "white"} />
@@ -235,7 +229,7 @@ const ServiceCard = ({ item, onPress, onImageLoaded, displayAs = 'grid' }) => {
               {/* Heart icon overlay */}
               <TouchableOpacity 
                 style={styles.heartIconContainer}
-                onPress={() => setIsFavorited(!isFavorited)}
+                onPress={onToggleFavorite} // Use the passed onToggleFavorite prop
               >
                 <View style={styles.heartIconCircle}>
                   <Ionicons name={isFavorited ? "heart" : "heart-outline"} size={20} color={isFavorited ? "#FF6B6B" : "white"} />
