@@ -4,20 +4,20 @@
  * Displays provider/service information in a Tinder-style card layout
  */
 
-import React, { useState, useCallback, memo } from 'react';
+import React, { useState, useEffect, useCallback, memo } from 'react';
 import {
   View,
   Text,
+  Image,
   StyleSheet,
   Dimensions,
-  ActivityIndicator,
-  Image,
   TouchableOpacity,
-  ScrollView,
-  Platform
+  ActivityIndicator,
+  Platform,
+  ScrollView
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, AntDesign, MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/theme';
 
 const { width, height } = Dimensions.get('window');
@@ -29,7 +29,10 @@ const { width, height } = Dimensions.get('window');
 const SwipeCard = memo(({
   item,
   isHousing = false,
-  onPress = null
+  onPress = null,
+  onImageLoad = null,
+  onLike = null,
+  onDismiss = null
 }) => {
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
@@ -255,28 +258,40 @@ const SwipeCard = memo(({
         </View>
       </ScrollView>
 
-      {/* Action hint at bottom */}
+      {/* Action buttons at bottom */}
       <View style={styles.actionHint}>
-        <View style={styles.actionItem}>
+        <TouchableOpacity 
+          style={styles.actionItem} 
+          onPress={() => onDismiss && onDismiss(item)}
+          activeOpacity={0.7}
+        >
           <View style={[styles.actionIcon, styles.passIcon]}>
             <Ionicons name="close" size={24} color="white" />
           </View>
           <Text style={styles.actionText}>Pass</Text>
-        </View>
+        </TouchableOpacity>
         
-        <View style={styles.actionItem}>
+        <TouchableOpacity 
+          style={styles.actionItem}
+          onPress={() => onPress && onPress(item)}
+          activeOpacity={0.7}
+        >
           <View style={[styles.actionIcon, styles.superLikeIcon]}>
             <Ionicons name="star" size={20} color="white" />
           </View>
           <Text style={styles.actionText}>Super</Text>
-        </View>
+        </TouchableOpacity>
         
-        <View style={styles.actionItem}>
+        <TouchableOpacity 
+          style={styles.actionItem}
+          onPress={() => onLike && onLike(item)}
+          activeOpacity={0.7}
+        >
           <View style={[styles.actionIcon, styles.likeIcon]}>
             <Ionicons name="heart" size={22} color="white" />
           </View>
           <Text style={styles.actionText}>Like</Text>
-        </View>
+        </TouchableOpacity>
       </View>
     </View>
   );
