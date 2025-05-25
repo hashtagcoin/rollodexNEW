@@ -6,6 +6,7 @@ import {
   ActivityIndicator, 
   FlatList, 
   Dimensions,
+  TouchableOpacity,
   Alert
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native'; 
@@ -192,20 +193,13 @@ const ProviderDiscoveryScreen = ({ route }) => {
       // Log swipe action - could save to favorites/likes in future
       console.log(`Swiped ${direction} on:`, cardData.title || cardData.name);
       
+      // No alerts in swipe view - just log the action
       if (direction === 'right') {
         // Like action - could save to favorites
-        Alert.alert(
-          'Liked!',
-          `You liked ${cardData.title || cardData.name}`,
-          [{ text: 'OK' }]
-        );
+        console.log('Liked:', cardData.title || cardData.name);
       } else if (direction === 'up') {
         // Super like action
-        Alert.alert(
-          'Super Liked!',
-          `You super liked ${cardData.title || cardData.name}`,
-          [{ text: 'OK' }]
-        );
+        console.log('Super liked:', cardData.title || cardData.name);
       }
       
       // Could implement saving to user's favorites/likes here
@@ -235,11 +229,8 @@ const ProviderDiscoveryScreen = ({ route }) => {
   }, [navigation, selectedCategory]);
   
   const handleAllCardsViewed = useCallback(() => {
-    Alert.alert(
-      'All caught up!',
-      "You've viewed all available items in this category. Try another category or come back later for more!",
-      [{ text: 'OK' }]
-    );
+    // No alert when all cards are viewed
+    console.log('All cards viewed in this category');
   }, []);
   
   // Main content renderer based on view mode
@@ -381,25 +372,49 @@ const ProviderDiscoveryScreen = ({ route }) => {
         title="Explore"
         navigation={navigation}
         canGoBack={true} 
-        onBackPressOverride={handleBackPressProviderDiscovery} 
+        onBackPressOverride={handleBackPressProviderDiscovery}
+        rightContent={
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            {VIEW_MODES.map((mode) => (
+              <TouchableOpacity
+                key={mode}
+                style={{
+                  paddingHorizontal: 8,
+                  paddingVertical: 5,
+                  borderRadius: 5,
+                  backgroundColor: viewMode === mode ? DARK_GREEN : 'transparent',
+                  marginLeft: 5
+                }}
+                onPress={() => setViewMode(mode)}
+              >
+                <Text style={{ color: viewMode === mode ? 'white' : DARK_GREEN, fontSize: 12 }}>
+                  {mode}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        }
       />
 
-      <SearchComponent
-        contentType={selectedCategory === 'Housing' ? 'housing' : 'services'}
-        categories={CATEGORIES}
-        selectedCategory={selectedCategory}
-        onCategoryChange={setSelectedCategory}
-        searchTerm={searchTerm}
-        onSearchChange={setSearchTerm}
-        viewMode={viewMode}
-        onViewModeChange={setViewMode}
-        sortConfig={sortConfig}
-        onSortChange={handleSortChange}
-        viewModes={VIEW_MODES}
-        showCategories={true}
-        showViewModes={true}
-        showSort={true}
-      />
+      {/* Only show search component when not in swipe view */}
+      {viewMode !== 'Swipe' && (
+        <SearchComponent
+          contentType={selectedCategory === 'Housing' ? 'housing' : 'services'}
+          categories={CATEGORIES}
+          selectedCategory={selectedCategory}
+          onCategoryChange={setSelectedCategory}
+          searchTerm={searchTerm}
+          onSearchChange={setSearchTerm}
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          sortConfig={sortConfig}
+          onSortChange={handleSortChange}
+          viewModes={VIEW_MODES}
+          showCategories={true}
+          showViewModes={true}
+          showSort={true}
+        />
+      )}
 
       <View style={styles.contentViewWrapper}>
         {renderContent()}
@@ -420,7 +435,7 @@ const styles = StyleSheet.create({
   swipeContainer: {
     flex: 1,
     paddingHorizontal: 10,
-    paddingTop: 20,
+    paddingTop: 5, // Reduced top padding for swipe view
   },
   gridContainer: {
     paddingBottom: 20,
