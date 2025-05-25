@@ -325,6 +325,8 @@ const ProviderDiscoveryScreen = ({ route }) => {
               item={cardData}
               isHousing={isHousing}
               onPress={handleSwipeCardPress}
+              onLike={() => handleSwipeCard(cardData, 'right')}
+              onDismiss={() => handleSwipeCard(cardData, 'left')}
             />
           )}
           onSwipeLeft={(cardData) => handleSwipeCard(cardData, 'left')}
@@ -396,8 +398,8 @@ const ProviderDiscoveryScreen = ({ route }) => {
         }
       />
 
-      {/* Only show search component when not in swipe view */}
-      {viewMode !== 'Swipe' && (
+      {/* Show full search component in grid/list views, or just view mode controls in swipe view */}
+      {viewMode !== 'Swipe' ? (
         <SearchComponent
           contentType={selectedCategory === 'Housing' ? 'housing' : 'services'}
           categories={CATEGORIES}
@@ -414,6 +416,23 @@ const ProviderDiscoveryScreen = ({ route }) => {
           showViewModes={true}
           showSort={true}
         />
+      ) : (
+        <View style={styles.viewModeSelectorContainer}>
+          <Text style={styles.categoryTitle}>{selectedCategory}</Text>
+          <View style={styles.viewModeControls}>
+            {VIEW_MODES.map((mode) => (
+              <TouchableOpacity
+                key={mode}
+                style={[styles.viewModeButton, viewMode === mode && styles.viewModeButtonActive]}
+                onPress={() => setViewMode(mode)}
+              >
+                <Text style={[styles.viewModeButtonText, viewMode === mode && styles.viewModeButtonTextActive]}>
+                  {mode}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
       )}
 
       <View style={styles.contentViewWrapper}>
@@ -431,6 +450,43 @@ const styles = StyleSheet.create({
   contentViewWrapper: {
     flex: 1,
     backgroundColor: '#F8F7F3', // Match screen background
+  },
+  viewModeSelectorContainer: {
+    backgroundColor: '#fff',
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  categoryTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: DARK_GREEN,
+  },
+  viewModeControls: {
+    flexDirection: 'row',
+    backgroundColor: '#f0f0f0',
+    borderRadius: 20,
+    padding: 4,
+  },
+  viewModeButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 16,
+  },
+  viewModeButtonActive: {
+    backgroundColor: DARK_GREEN,
+  },
+  viewModeButtonText: {
+    color: '#666',
+    fontWeight: '500',
+    fontSize: 14,
+  },
+  viewModeButtonTextActive: {
+    color: '#fff',
   },
   swipeContainer: {
     flex: 1,
