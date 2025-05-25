@@ -1,0 +1,218 @@
+✅ TASK LIST BY MODULE
+1️⃣ Onboarding
+Screens:
+
+Welcome animation (auto-dismiss)
+
+NDIS login or document upload
+
+Comfort trait selection (images/icons grid)
+
+Category & service format preferences
+
+Tasks:
+
+Design animated intro screen
+
+Build NDIS document upload flow (file picker + Supabase signed upload)
+
+Display comfort traits as tappable image cards
+
+Store trait selection in user_profiles.preferences
+
+Set service preferences (save in preferences.jsonb)
+
+→ Ask for comfort trait icon designs.
+
+2️⃣ Dashboard
+Screens:
+
+Greeting with wallet balance
+
+Recent activity carousel
+
+Featured services slider
+
+Tasks:
+
+Build wallet card (NDIS category breakdown)
+
+Horizontal slider for featured services
+
+Quick access buttons (e.g., “Book Again”, “Explore Housing”)
+
+→ Ask if dummy users/services should be generated.
+
+3️⃣ Provider Discovery
+Screens:
+
+Grid / List / Swipe view toggle
+
+Filter screen (category, availability, gender, transport)
+
+Service provider profile page
+
+Tasks:
+
+Build Tinder-style card swiper (right = fav, left = dismiss)
+
+Grid and list toggle logic (with shared card component)
+
+Implement filter modal (pass filters to Supabase query)
+
+→ Create at least 10 dummy services.
+
+4️⃣ Housing Discovery
+Screens:
+
+Swipe/List/Grid of accessible listings
+
+Filter (SDA type, location, availability)
+
+Listing detail page
+
+Apply / Join Group
+
+Tasks:
+
+Card design similar to Airbnb (wide image + overlay labels)
+
+SDA filter UI with dropdowns and toggles
+
+Show embedded virtual tour
+
+→ Create dummy listings (10+ with photos & SDA types).
+
+5️⃣ Bookings & Agreements
+Screens:
+
+Booking confirmation modal
+
+Service agreement e-sign view
+
+Booking status tracker
+
+Tasks:
+
+Auto-check wallet eligibility logic
+
+Split payment UI (NDIS + gap)
+
+Draw signature → upload as image + generate PDF
+
+→ Ask for e-signature design mockup
+
+6️⃣ Wallet & Claims
+Screens:
+
+Wallet summary view
+
+Claim status history
+
+Claim submission details
+
+Tasks:
+
+Animate wallet bar breakdown
+
+Color-code claim status (pending, approved, etc.)
+
+Claim form UI
+
+→ Create 5 dummy claims per category
+
+7️⃣ Groups & Subgroups
+Screens:
+
+Group list + search
+
+Create group flow
+
+Group detail view (members, chat stub, events)
+
+Subgroup creation
+
+Tasks:
+
+Grid of interest groups with icon/emoji covers
+
+Tabs for members/posts/events
+
+Membership roles (admin/member)
+
+→ Generate 10 dummy groups
+
+8️⃣ Social Feed
+Screens:
+
+Feed view (friends & public toggle)
+
+Post creation (image picker + tags + caption)
+
+Post detail (likes, reactions, comments)
+
+Tasks:
+
+Instagram-like post card
+
+Emoji reactions bar
+
+Comment section component
+
+→ Create 10 dummy posts with media
+
+9️⃣ Profile
+Screens:
+
+User profile with tabs (Posts, Groups, Appointments, Friends)
+
+Edit profile modal
+
+Avatar upload
+
+Tasks:
+
+Tabs design (rounded switchable segments)
+
+Badges display section (like streaks/rewards)
+
+→ Generate 5 dummy user profiles
+
+🔟 Rewards & Gamification
+Screens:
+
+Achievements tracker
+
+Claim reward modal
+
+Tasks:
+
+Badge grid (icon + description)
+
+Wallet credit claim logic
+
+→ Create 5 dummy rewards (e.g., "Booked 5 services")
+
+🔔 Notifications
+Screens:
+
+Notifications list view
+
+Settings (mute categories, smart alerts)
+
+Tasks:
+
+Smart alert logic (e.g. claim about to expire)
+
+Notification badge component
+
+→ Generate 10 dummy alerts
+
+🔄 Cross-Cutting Tasks
+Area	Task
+Auth	Supabase login, RLS setup, role detection
+Media	Supabase bucket uploads (/avatars, /posts, /housing)
+Security	Input sanitization, file type/size validation
+UX	High-contrast toggle, screen reader support
+Testing	Write unit tests for each core logic module
+QA	Visual consistency across screens

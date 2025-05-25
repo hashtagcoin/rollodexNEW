@@ -1,0 +1,189 @@
+🖼 SCREEN DESCRIPTIONS
+1️⃣ Onboarding Screens
+Welcome Screen
+
+Full-screen video animation or branded illustration
+
+Tagline: “Empowering your NDIS journey”
+
+Button: "Get Started" → transitions to onboarding flow
+
+NDIS Login or Document Upload
+
+Two-card split layout:
+
+Left: "Login via NDIS Portal" with secure browser pop-up
+
+Right: Upload field (PDF/image of plan), drag-and-drop enabled
+
+Progress bar at top (e.g., 20% complete)
+
+Comfort Trait Selection
+
+Full screen with a grid of large rounded image-cards (e.g., beach, quiet space, pets)
+
+Tap to select (highlights selected cards)
+
+“Continue” button floats at bottom when 1+ trait is selected
+
+Service Preferences
+
+Vertical list of service categories (icon + title + checkbox)
+
+Toggle for formats (online / in-person / hybrid)
+
+2️⃣ Dashboard (Home)
+Header: “Good morning, [Name]” with wallet balance chip
+
+Wallet Card:
+
+Horizontal bar with color-coded category spend
+
+Tap opens detailed breakdown
+
+Carousel: “Recently Used Services” (small square cards)
+
+Featured Section:
+
+Horizontal scroll of bold service cards (avatar + image + name + badge)
+
+Streaks/Badges Preview (if any): show last reward earned
+
+3️⃣ Provider Discovery
+Top Toggle: [Grid] [List] [Swipe]
+
+Grid View:
+
+2-column layout
+
+Card: image, name, tags (therapy, transport), favorite icon
+
+List View:
+
+Full-width card, larger image, schedule button
+
+Swipe View (Tinder style):
+
+Full-card image + name + category
+
+Left swipe = dismiss, Right swipe = favorite
+
+Filter Sheet:
+
+Bottom drawer modal
+
+Toggles and dropdowns: availability, transport, support level
+
+4️⃣ Housing Discovery
+Grid:
+
+Similar to Airbnb: square card with housing image
+
+Badges for "SDA", "Fully Accessible", rent per week
+
+List:
+
+Full-width listings with more description
+
+Detail Page:
+
+Image slider
+
+Virtual tour thumbnail
+
+Buttons: “Apply” and “Join Co-living Group”
+
+Filters: location picker, rent range, SDA type
+
+5️⃣ Bookings & Agreements
+Booking Summary Card: service name, time, wallet deduction
+
+Agreement Page:
+
+Scrollable text box (service agreement body)
+
+Digital signature pad at bottom
+
+“Sign & Submit” button → success screen
+
+6️⃣ Wallet & Claims
+Summary View:
+
+Pie chart or bar chart of NDIS categories
+
+Total balance
+
+Claim History:
+
+List of claims (color-coded by status)
+
+Expandable cards with full breakdown (NDIS vs. gap)
+
+7️⃣ Groups & Subgroups
+Group Grid:
+
+Colorful emoji-based icons for interest categories (e.g., 🎨, 🧘, 🎮)
+
+Group Detail:
+
+Top banner, group avatar, members count
+
+Subgroup tabs: Events, Chat (future), Files
+
+Create Group Flow:
+
+Step-by-step: Name → Type → Description → Icon
+
+8️⃣ Social Feed
+Post Feed:
+
+Like Instagram: rounded profile pic + username
+
+Media slider (max 5 per post), caption, emoji bar
+
+Reactions Bar: emojis animate slightly on tap
+
+Comment Drawer: full-screen modal, auto-focus on input
+
+Post Creation:
+
+Select media (grid preview)
+
+Add caption and tags
+
+Visibility toggle (Friends / Public)
+
+9️⃣ Profile
+Header: Avatar, Name, Stats (Posts | Groups | Friends)
+
+Tab Layout:
+
+Posts: Grid of user’s posts
+
+Groups: Joined or admin of
+
+Appointments: Past/future bookings
+
+Friends: List with avatars + badges
+
+Edit Profile Modal: name, disability type, avatar, preferences
+
+🔟 Rewards
+Badges Grid:
+
+Stylized medal icons with tooltips
+
+Earned Credit Tracker:
+
+“Claim $20 from Booking Streak”
+
+Claim button animates confetti effect
+
+🔔 Notifications
+Simple scrollable list of alert cards:
+
+Each: icon + text + timestamp
+
+Unread = bolded, background-highlighted
+
+Swipable to dismiss or mark as read
