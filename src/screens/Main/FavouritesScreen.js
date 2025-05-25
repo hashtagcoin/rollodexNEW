@@ -18,6 +18,7 @@ import SearchComponent from '../../components/common/SearchComponent';
 import AppHeader from '../../components/layout/AppHeader';
 import ServiceCardComponent from '../../components/cards/ServiceCard';
 import HousingCardComponent from '../../components/cards/HousingCard';
+import ShareTrayModal from '../../components/common/ShareTrayModal';
 
 const { width } = Dimensions.get('window');
 
@@ -33,6 +34,8 @@ const FavouritesScreen = () => {
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [shareModalVisible, setShareModalVisible] = useState(false);
+  const [itemToShare, setItemToShare] = useState(null);
 
   const categories = ['All', 'Services', 'Events', 'Housing', 'Groups', 'Housing Groups']; 
   const PAGE_SIZE = 10;
@@ -182,19 +185,43 @@ const FavouritesScreen = () => {
 
   const toggleFavorite = async (itemId, itemType) => {
     try {
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        console.error('Error getting user for un-favorite:', userError || 'No user found');
+        // Optionally, show an alert to the user
+        return; 
+      }
+
       const { error } = await supabase
         .from('favorites')
         .delete()
-        .eq('user_id', supabase.auth.user()?.id)
+        .eq('user_id', user.id) // Corrected
         .eq('item_id', itemId)
         .eq('item_type', itemType);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase error removing favorite:', error);
+        throw error; 
+      }
 
       setFavorites(prev => prev.filter(item => !(item.item_id === itemId && item.item_type === itemType)));
+      console.log(`[FavouritesScreen] Successfully removed favorite: ${itemType} - ${itemId}`);
     } catch (error) {
-      console.error('Error removing favorite:', error);
+      console.error('Error removing favorite (outer catch):', error);
+      // Optionally, show an alert to the user here
     }
+  };
+
+  const handleOpenShareTray = (item) => {
+    console.log("[FavouritesScreen] Opening share tray for item:", item);
+    setItemToShare(item);
+    setShareModalVisible(true);
+  };
+
+  const handleCloseShareTray = () => {
+    setShareModalVisible(false);
+    setItemToShare(null);
   };
 
   const renderItem = ({ item }) => {
@@ -233,6 +260,7 @@ const FavouritesScreen = () => {
       isFavorited: true,
       onToggleFavorite: () => toggleFavorite(item.item_id, item.item_type),
       displayAs: viewMode === 'Grid' ? 'grid' : 'list',
+      onSharePress: () => handleOpenShareTray(item),
     };
 
     switch (item.item_type) {
@@ -275,9 +303,14 @@ const FavouritesScreen = () => {
             <Text style={styles.cardTitle}>{item.item_title || 'Event Title'}</Text>
             <Text>{item.event_location?.description || item.event_location?.address || 'Location TBD'}</Text> 
             <Text>{new Date(item.event_start_time).toLocaleString()}</Text>
-            <TouchableOpacity onPress={() => toggleFavorite(item.item_id, item.item_type)} style={styles.favButton}>
-              <Ionicons name="heart" size={24} color={COLORS.primary} />
-            </TouchableOpacity>
+            <View style={styles.actionsContainer}>
+              <TouchableOpacity onPress={() => toggleFavorite(item.item_id, item.item_type)} style={styles.favButton}>
+                <Ionicons name="heart" size={24} color={COLORS.RED} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => handleOpenShareTray(item)} style={styles.shareButton}>
+                <Ionicons name="share-social-outline" size={24} color={COLORS.primary} />
+              </TouchableOpacity>
+            </View>
           </View>
         );
       case 'housing_group':
@@ -287,9 +320,14 @@ const FavouritesScreen = () => {
             <Image source={{ uri: item.item_image_url || 'https://via.placeholder.com/150' }} style={styles.cardImage} />
             <Text style={styles.cardTitle}>{item.item_title || 'Housing Group'}</Text>
             <Text numberOfLines={2}>{item.item_description || 'No description'}</Text>
-            <TouchableOpacity onPress={() => toggleFavorite(item.item_id, item.item_type)} style={styles.favButton}>
-              <Ionicons name="heart" size={24} color={COLORS.primary} />
-            </TouchableOpacity>
+            <View style={styles.actionsContainer}>
+              <TouchableOpacity onPress={() => toggleFavorite(item.item_id, item.item_type)} style={styles.favButton}>
+                <Ionicons name="heart" size={24} color={COLORS.RED} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => handleOpenShareTray(item)} style={styles.shareButton}>
+                <Ionicons name="share-social-outline" size={24} color={COLORS.primary} />
+              </TouchableOpacity>
+            </View>
           </View>
         );
       case 'group':
@@ -299,9 +337,14 @@ const FavouritesScreen = () => {
             <Image source={{ uri: item.item_image_url || 'https://via.placeholder.com/150' }} style={styles.cardImage} />
             <Text style={styles.cardTitle}>{item.item_title || 'Group'}</Text>
             <Text numberOfLines={2}>{item.item_description || 'No description'}</Text>
-            <TouchableOpacity onPress={() => toggleFavorite(item.item_id, item.item_type)} style={styles.favButton}>
-              <Ionicons name="heart" size={24} color={COLORS.primary} />
-            </TouchableOpacity>
+            <View style={styles.actionsContainer}>
+              <TouchableOpacity onPress={() => toggleFavorite(item.item_id, item.item_type)} style={styles.favButton}>
+                <Ionicons name="heart" size={24} color={COLORS.RED} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => handleOpenShareTray(item)} style={styles.shareButton}>
+                <Ionicons name="share-social-outline" size={24} color={COLORS.primary} />
+              </TouchableOpacity>
+            </View>
           </View>
         );
       default:
@@ -310,9 +353,14 @@ const FavouritesScreen = () => {
           <View style={styles.cardContainer}>
             <Text>Unsupported favorite type: {item.item_type}</Text>
             <Text>{item.item_title}</Text>
-            <TouchableOpacity onPress={() => toggleFavorite(item.item_id, item.item_type)} style={styles.favButton}>
-              <Ionicons name="heart" size={24} color={COLORS.primary} />
-            </TouchableOpacity>
+            <View style={styles.actionsContainer}>
+              <TouchableOpacity onPress={() => toggleFavorite(item.item_id, item.item_type)} style={styles.favButton}>
+                <Ionicons name="heart" size={24} color={COLORS.RED} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => handleOpenShareTray(item)} style={styles.shareButton}>
+                <Ionicons name="share-social-outline" size={24} color={COLORS.primary} />
+              </TouchableOpacity>
+            </View>
           </View>
         );
     }
@@ -324,9 +372,9 @@ const FavouritesScreen = () => {
       <SearchComponent 
         categories={categories}
         selectedCategory={selectedCategory}
-        onSelectCategory={setSelectedCategory}
+        onCategoryChange={setSelectedCategory}
         searchTerm={searchTerm}
-        onSearchTermChange={setSearchTerm}
+        onSearchChange={setSearchTerm}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
         sortConfig={sortConfig}
@@ -338,25 +386,27 @@ const FavouritesScreen = () => {
       ) : favorites.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Ionicons name="heart-dislike-outline" size={80} color={COLORS.gray} />
-          <Text style={styles.emptyText}>No favorites yet.</Text>
-          <Text style={styles.emptySubText}>Add items to your favorites to see them here.</Text>
+          <Text style={styles.emptyText}>You haven't favorited anything yet.</Text>
         </View>
       ) : (
         <FlatList
           data={favorites}
           renderItem={renderItem}
-          keyExtractor={(item) => `${item.item_type}-${item.item_id}`}
-          numColumns={viewMode === 'Grid' ? 2 : 1}
-          key={viewMode}
-          contentContainerStyle={viewMode === 'Grid' ? styles.gridContainer : styles.listContainer}
+          keyExtractor={(item, index) => `${item.item_id}-${item.item_type}-${index}`}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           onEndReached={loadMore}
           onEndReachedThreshold={0.5}
           ListFooterComponent={loadingMore ? <ActivityIndicator size="small" color={COLORS.primary} /> : null}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
-          }
+          numColumns={viewMode === 'Grid' ? 2 : 1}
+          key={viewMode} // Important for re-rendering on viewMode change
+          contentContainerStyle={styles.listContentContainer}
         />
       )}
+      <ShareTrayModal 
+        visible={shareModalVisible}
+        onClose={handleCloseShareTray}
+        itemToShare={itemToShare}
+      />
     </View>
   );
 };
@@ -367,9 +417,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.lightGray,
   },
   loader: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    marginTop: 20,
   },
   emptyContainer: {
     flex: 1,
@@ -379,15 +427,10 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
   },
   emptyText: {
-    ...FONTS.h3,
+    fontSize: SIZES.h3,
+    fontWeight: 'bold',
     marginTop: 16,
     color: COLORS.darkGray,
-  },
-  emptySubText: {
-    ...FONTS.body4,
-    marginTop: 8,
-    color: COLORS.gray,
-    textAlign: 'center',
   },
   gridContainer: {
     padding: 8,
@@ -402,19 +445,26 @@ const styles = StyleSheet.create({
     ...SHADOWS.small,
   },
   cardImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 8,
-    marginRight: 12,
+    width: '100%',
+    height: 150,
+    marginBottom: 8,
   },
   cardTitle: {
-    ...FONTS.h3,
+    fontSize: SIZES.h4,
+    fontWeight: 'bold',
     marginBottom: 4,
   },
   favButton: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
+    padding: 4, 
+  },
+  shareButton: {
+    padding: 4, 
+  },
+  actionsContainer: { 
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 8,
   },
 });
 

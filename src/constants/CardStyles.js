@@ -4,7 +4,7 @@ import { Dimensions } from 'react-native';
 const { width } = Dimensions.get('window');
 
 // Calculate card dimensions
-const GRID_CARD_WIDTH = (width / 2) - 10; // Half width for 2-column grid, with smaller margins
+const GRID_CARD_WIDTH = (width / 2) - (SIZES.base * 2); // Half width for 2-column grid, with increased margins
 const LIST_CARD_WIDTH = width; // Full width for list view
 
 export const CardStyles = {
@@ -27,7 +27,7 @@ export const CardStyles = {
     borderRadius: 12,
     overflow: 'hidden',
     backgroundColor: COLORS.white,
-    height: 240,
+    height: 270,
   },
   
   gridImageContainer: {
@@ -109,13 +109,13 @@ export const CardStyles = {
     fontSize: SIZES.h3,
     fontWeight: '600',
     color: COLORS.textPrimary,
-    marginBottom: 4,
+    marginBottom: 2,
   },
   
   subtitle: {
     fontSize: SIZES.body4,
     color: COLORS.textSecondary,
-    marginBottom: 4,
+    marginBottom: 2,
   },
   
   price: {
@@ -141,6 +141,10 @@ export const CardStyles = {
     marginLeft: 4,
   },
   
+  ratingStarIcon: {
+    color: '#FFD700',
+  },
+  
   // ===== ICON CONTAINERS =====
   iconContainer: {
     position: 'absolute',
@@ -156,6 +160,24 @@ export const CardStyles = {
     backgroundColor: 'rgba(0,0,0,0.3)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  
+  iconCircleActive: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: COLORS.white,
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...SHADOWS.small,
+  },
+  
+  favoriteIcon: {
+    color: COLORS.white,
+  },
+  
+  favoriteIconActive: {
+    color: COLORS.red,
   },
   
   // ===== LOADING =====

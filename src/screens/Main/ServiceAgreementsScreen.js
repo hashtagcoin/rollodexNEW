@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   View, 
   Text, 
@@ -20,7 +20,11 @@ import * as WebBrowser from 'expo-web-browser';
 // Status filter options
 const FILTERS = ['All', 'Active', 'Expired', 'Revoked'];
 
-
+// Helper to get current user ID
+const getCurrentUserId = async () => {
+  const { data: { user } } = await supabase.auth.getUser();
+  return user?.id;
+};
 
 const ServiceAgreementsScreen = ({ navigation }) => {
   const [agreements, setAgreements] = useState([]);
@@ -28,99 +32,159 @@ const ServiceAgreementsScreen = ({ navigation }) => {
   const [selectedFilter, setSelectedFilter] = useState('All');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [downloading, setDownloading] = useState(false);
-  const [downloadingId, setDownloadingId] = useState(null);
-  
-  // Fetch user's agreements from global variable
-  const fetchAgreements = async () => {
+  const [downloadingId, setDownloadingId] = useState(null); // Keep this for UI feedback
+
+  const fetchAgreements = useCallback(async () => {
     try {
       setLoading(true);
+      const userId = await getCurrentUserId();
+      if (!userId) {
+        Alert.alert('Error', 'Could not identify user. Please log in again.');
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('participant_agreements')
+        .select(`
+          *,
+          services (title, description),
+          service_providers (business_name)
+        `)
+        .eq('user_id', userId)
+        .order('signed_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching agreements from Supabase:', error.message);
+        Alert.alert('Error', 'Could not load your service agreements. Please try again.');
+        throw error;
+      }
       
-      // Get agreements from global variable (demo approach)
-      // In a production app, these would come from Supabase
-      const agreementsData = global.participantAgreements || [];
-      
-      console.log('Fetched agreements:', agreementsData);
-      setAgreements(agreementsData);
-      
-      // Apply filters
-      filterAgreements(agreementsData, selectedFilter);
+      setAgreements(data || []);
+      filterAgreements(data || [], selectedFilter); // Apply initial filter
+
     } catch (error) {
-      console.error('Error fetching agreements:', error.message);
-      Alert.alert('Error', 'Could not load your service agreements. Please try again.');
+      // Error already handled by alerts above or in the specific call
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  };
-  
+  }, [selectedFilter]); // Add selectedFilter to dependencies if filterAgreements is called inside
+
   // Filter agreements based on status
-  const filterAgreements = (agreements, filter) => {
+  const filterAgreements = (agreementsToFilter, filter) => {
     if (filter === 'All') {
-      setFilteredAgreements(agreements);
+      setFilteredAgreements(agreementsToFilter);
       return;
     }
-    
-    const filtered = agreements.filter(a => a.status.toLowerCase() === filter.toLowerCase());
+    const lowerCaseFilter = filter.toLowerCase();
+    const filtered = agreementsToFilter.filter(a => a.status && a.status.toLowerCase() === lowerCaseFilter);
     setFilteredAgreements(filtered);
   };
-  
+
   // Handle filter selection
   const handleFilterSelect = (filter) => {
     setSelectedFilter(filter);
     filterAgreements(agreements, filter);
   };
-  
-  // View agreement in full screen
-  const handleViewAgreement = (agreement) => {
-    // Navigate to a dedicated viewer screen with the agreement content
-    navigation.navigate('ServiceAgreement', { 
-      viewOnly: true, 
-      agreementId: agreement.id,
-      agreementContent: agreement.agreement_content,
-      serviceId: agreement.service_id
-    });
+
+  // View agreement (using agreement_url)
+  const handleViewAgreement = async (agreement) => {
+    if (agreement.agreement_url) {
+      try {
+        if (Platform.OS === 'web') {
+          window.open(agreement.agreement_url, '_blank');
+        } else {
+          // Use Expo WebBrowser to open the PDF in the system's browser on native
+          await WebBrowser.openBrowserAsync(agreement.agreement_url);
+        }
+      } catch (error) {
+        console.error('Error opening PDF:', error);
+        Alert.alert('Error', 'Could not open the agreement PDF. Please ensure you have a PDF viewer or web browser installed.');
+      }
+    } else {
+      Alert.alert('No PDF Available', 'The agreement PDF is not available for viewing.');
+      // Optional: Fallback to navigating with HTML content if that's a desired behavior for non-PDF cases
+      // navigation.navigate('ServiceAgreement', { 
+      //   viewOnly: true, 
+      //   agreementId: agreement.id,
+      //   agreementContent: agreement.agreement_content, // This might be HTML
+      //   serviceId: agreement.service_id,
+      //   agreementTitle: agreement.agreement_title
+      // });
+    }
   };
-  
-  // Share agreement
+
+  // Share agreement (using agreement_url)
   const handleShareAgreement = async (agreement) => {
+    if (!agreement.agreement_url) {
+      Alert.alert('Error', 'Agreement PDF URL not found.');
+      return;
+    }
     try {
       setDownloadingId(agreement.id);
+      if (Platform.OS === 'web') {
+        // Web share API or simple link sharing
+        if (navigator.share) {
+          await navigator.share({
+            title: agreement.agreement_title,
+            text: `Service agreement: ${agreement.agreement_title}`,
+            url: agreement.agreement_url,
+          });
+        } else {
+          Alert.alert('Share', `You can share this link: ${agreement.agreement_url}`);
+        }
+        setDownloadingId(null);
+        return;
+      }
+
+      // Native sharing
+      const fileName = `${agreement.agreement_title.replace(/\s+/g, '_') || 'ServiceAgreement'}_${agreement.id.substring(0,8)}.pdf`;
+      const localFileUri = FileSystem.documentDirectory + fileName;
       
-      // Share options
-      const title = agreement.agreement_title;
-      const message = `My service agreement with ${agreement.service_providers?.business_name} for ${agreement.services?.title}`;
-      
-      // For demo purposes, we'll just show a success message
-      setTimeout(() => {
-        Alert.alert(
-          'Agreement Shared',
-          'Your agreement has been shared successfully.',
-          [{ text: 'OK' }]
-        );
-      }, 1000);
+      Alert.alert('Download Started', 'Downloading agreement PDF for sharing...');
+      const { uri: downloadedUri, status } = await FileSystem.downloadAsync(agreement.agreement_url, localFileUri);
+
+      if (status !== 200) {
+          throw new Error('Failed to download PDF.');
+      }
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(downloadedUri, {
+          mimeType: 'application/pdf',
+          dialogTitle: `Share ${agreement.agreement_title}`,
+          UTI: 'com.adobe.pdf',
+        });
+      } else {
+        Alert.alert('Sharing Not Available', 'Sharing is not available on this device.');
+      }
     } catch (error) {
       console.error('Error sharing agreement:', error);
-      Alert.alert('Error', 'Could not share the agreement. Please try again.');
+      Alert.alert('Error', `Could not share the agreement: ${error.message}`);
     } finally {
       setDownloadingId(null);
     }
   };
-  
-  // Initial data load
+
+  // Initial data load and on focus
   useEffect(() => {
     fetchAgreements();
-  }, []);
-  
-  // Filter when selection changes
+    const unsubscribe = navigation.addListener('focus', () => {
+      fetchAgreements(); // Refetch when screen comes into focus
+    });
+    return unsubscribe; // Cleanup listener on unmount
+  }, [fetchAgreements, navigation]);
+
+  // Filter when selection changes or agreements data updates
   useEffect(() => {
     filterAgreements(agreements, selectedFilter);
-  }, [selectedFilter]);
-  
+  }, [selectedFilter, agreements]);
+
   // Handle refresh
   const handleRefresh = () => {
     setRefreshing(true);
-    fetchAgreements();
+    fetchAgreements(); // This will set refreshing to false in its finally block
   };
 
   if (loading && !refreshing) {
@@ -173,11 +237,11 @@ const ServiceAgreementsScreen = ({ navigation }) => {
             </View>
             
             <Text style={styles.cardSubText}>
-              Provider: {item.service_providers?.business_name || 'Unknown Provider'}
+              Provider: {item.service_providers?.business_name || item.provider_name || 'Unknown Provider'}
             </Text>
             
             <Text style={styles.cardSubText}>
-              Service: {item.services?.title || 'Unknown Service'}
+              Service: {item.services?.title || item.service_name || 'Unknown Service'}
             </Text>
             
             <Text style={styles.cardSubText}>
@@ -200,18 +264,16 @@ const ServiceAgreementsScreen = ({ navigation }) => {
               
               {/* Share Button */}
               <TouchableOpacity 
-                style={styles.agreementBtn}
+                style={[styles.agreementBtn, downloadingId === item.id && styles.agreementBtnDisabled]}
                 onPress={() => handleShareAgreement(item)}
                 disabled={downloadingId === item.id}
               >
                 {downloadingId === item.id ? (
-                  <ActivityIndicator size="small" color="#2E7D32" />
+                  <ActivityIndicator size="small" color="#2E7D32" style={styles.actionIcon} />
                 ) : (
-                  <>
-                    <Feather name="share-2" size={16} color="#2E7D32" style={styles.actionIcon} />
-                    <Text style={styles.agreementBtnText}>Share</Text>
-                  </>
+                  <Feather name="share-2" size={16} color="#2E7D32" style={styles.actionIcon} />
                 )}
+                <Text style={styles.agreementBtnText}>{downloadingId === item.id ? 'Sharing...' : 'Share'}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -341,6 +403,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  agreementBtnDisabled: {
+    opacity: 0.5,
   },
   actionIcon: {
     marginRight: 6,

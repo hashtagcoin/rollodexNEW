@@ -19,6 +19,7 @@ import * as Network from 'expo-network';
 import AppHeader from '../../components/layout/AppHeader';
 import { supabase } from '../../lib/supabaseClient';
 import { Feather } from '@expo/vector-icons';
+import * as Print from 'expo-print';
 
 // Helper function to safely parse date strings
 const parseDate = (dateString) => {
@@ -36,6 +37,8 @@ const ServiceAgreementScreen = ({ route, navigation }) => {
     serviceId: rootServiceId, 
     viewOnly, 
     agreementId, 
+    agreementUrl, 
+    agreementTitle, 
     agreementContent, 
     bookingDetails, 
     exploreParams 
@@ -50,10 +53,12 @@ const ServiceAgreementScreen = ({ route, navigation }) => {
     date: parseDate(bookingDetails.date)
   } : null;
   const [loading, setLoading] = useState(true);
+  const [loadingMessage, setLoadingMessage] = useState('');
   const [serviceData, setServiceData] = useState(null);
   const [providerData, setProviderData] = useState(null);
   const [userData, setUserData] = useState(null);
   const [agreementHtml, setAgreementHtml] = useState('');
+  const [agreementTitleState, setAgreementTitle] = useState('');
   const [signature, setSignature] = useState(null);
   const [showSignatureModal, setShowSignatureModal] = useState(false);
   const [ipAddress, setIpAddress] = useState('');
@@ -82,25 +87,27 @@ const ServiceAgreementScreen = ({ route, navigation }) => {
     getIpAddress();
     
     // If we're viewing an existing agreement, just set the HTML directly
-    if (viewOnly && agreementContent) {
-      setAgreementHtml(agreementContent);
+    if (route.params?.viewOnly && route.params?.agreementUrl) {
+      // If viewing and a URL is provided, try to load it in WebView
+      // This assumes WebView can render a remote PDF URL directly or via a viewer service
+      // For simplicity, we'll assume it can. Otherwise, a PDF viewer component would be needed.
+      setAgreementHtml(`<iframe src="${route.params.agreementUrl}" width="100%" height="100%" style="border:none;"></iframe>`);
+      setAgreementTitle(route.params.agreementTitle || 'View Agreement');
       setLoading(false);
-      return;
+    } else if (route.params?.viewOnly && route.params?.agreementContent) {
+      // Fallback for existing content if no URL
+      setAgreementHtml(route.params.agreementContent);
+      setAgreementTitle(route.params.agreementTitle || 'View Agreement');
+      setLoading(false);
+    } else if (serviceId) {
+      // Otherwise fetch the service and provider data
+      fetchData();
+    } else {
+      Alert.alert('Error', 'Missing required parameters to load agreement.');
+      setLoading(false);
     }
-    
-    // Validate serviceId before proceeding
-    if (!serviceId) {
-      console.error('No serviceId provided in navigation params');
-      Alert.alert('Error', 'Service information is missing. Please try again.', [
-        { text: 'OK', onPress: () => navigation.goBack() }
-      ]);
-      return;
-    }
-    
-    // Otherwise fetch the service and provider data
-    fetchData();
-  }, [serviceId, viewOnly, agreementContent]);
-  
+  }, [serviceId, route.params]);
+
   const fetchData = async () => {
     if (!serviceId) {
       console.error('Cannot fetch data: serviceId is undefined');
@@ -374,6 +381,7 @@ const ServiceAgreementScreen = ({ route, navigation }) => {
     `;
     
     setAgreementHtml(html);
+    setAgreementTitle(`Service Agreement - ${service.title}`);
   };
   
   // Handle signature
@@ -403,7 +411,6 @@ const ServiceAgreementScreen = ({ route, navigation }) => {
   
   const handleWebViewMessage = (event) => {
     // You can handle messages from the WebView here if needed
-    console.log('Message from WebView:', event.nativeEvent.data);
   };
   
   // Navigate back to Explore screen with the same filters
@@ -436,9 +443,10 @@ const ServiceAgreementScreen = ({ route, navigation }) => {
     
     try {
       setLoading(true);
+      setLoadingMessage('Generating agreement PDF...');
       
       // Create a timestamp for the agreement
-      const timestamp = new Date().toISOString();
+      const timestamp = new Date().getTime();
       
       // Use booking details if available, otherwise calculate
       const totalPrice = bookingDetails?.price || Number(serviceData.price) || 0;
@@ -446,8 +454,48 @@ const ServiceAgreementScreen = ({ route, navigation }) => {
       const gapPayment = bookingDetails?.gapPayment || (totalPrice - ndisCoveredAmount);
       const paymentMethod = bookingDetails?.paymentMethod || 'ndis';
       
-      // Generate a placeholder URL for the agreement - in a real app you'd upload to storage
-      const agreementUrl = `https://rollodex-agreements.storage.supabase.co/agreements/${userData.id}/${serviceId}/${new Date().getTime()}.pdf`;
+      // 1. Generate PDF from HTML using expo-print
+      const updatedHtml = agreementHtml.replace('<p>[Signature Pending]</p>', `<img src="${signature}" width="200" />`);
+
+      const { uri: pdfUri } = await Print.printToFileAsync({ html: updatedHtml });
+
+      // 2. Read the PDF file as base64
+      const base64Pdf = await FileSystem.readAsStringAsync(pdfUri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      // 5. Invoke Edge Function to upload PDF and get public URL
+      setLoadingMessage('Uploading agreement PDF...');
+      const { data: functionResponse, error: functionError } = await supabase.functions.invoke(
+        'upload-service-agreement',
+        {
+          body: {
+            base64Pdf,
+            userId: userData.id,
+            serviceId,
+            timestamp,
+          },
+        }
+      );
+
+      if (functionError) {
+        console.error('Edge Function Error:', functionError.message);
+        Alert.alert('Error Uploading PDF', `Failed to upload agreement PDF via function: ${functionError.message}`);
+        setLoading(false);
+        setLoadingMessage('');
+        return;
+      }
+
+      const agreementUrl = functionResponse?.publicURL;
+
+      if (!agreementUrl) {
+        console.error('Edge Function did not return a publicURL:', functionResponse);
+        Alert.alert('Error Uploading PDF', 'Failed to get PDF URL from upload service.');
+        setLoading(false);
+        setLoadingMessage('');
+        return;
+      }
+      console.log('Agreement PDF uploaded, public URL:', agreementUrl);
 
       // Use the selected date and time from booking details, or default to 3 days from now
       let scheduledAt = new Date();
@@ -486,12 +534,14 @@ const ServiceAgreementScreen = ({ route, navigation }) => {
 
       // Use the admin function to save both the agreement and booking
       // This bypasses RLS policies by using SECURITY DEFINER
+      setLoadingMessage('Finalizing agreement and booking...');
+      const titleToSave = agreementTitleState || `Service Agreement - ${serviceData?.title || 'Unknown Service'}`;
       const { data, error } = await supabase
         .rpc('admin_save_agreement_and_booking', {
           user_id: userData.id,
           provider_id: providerData.id,
           service_id: serviceId,
-          agreement_title: `Service Agreement - ${serviceData.title}`,
+          agreement_title: titleToSave,
           agreement_version: 1,
           ip_address: ipAddress,
           agreement_url: agreementUrl,
@@ -555,6 +605,7 @@ const ServiceAgreementScreen = ({ route, navigation }) => {
       Alert.alert('Error', 'Could not complete your booking. Please try again.');
     } finally {
       setLoading(false);
+      setLoadingMessage('');
     }
   };
   
@@ -562,7 +613,7 @@ const ServiceAgreementScreen = ({ route, navigation }) => {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#007AFF" />
-        <Text style={styles.loadingText}>Loading service agreement...</Text>
+        <Text style={styles.loadingText}>{loadingMessage}</Text>
       </View>
     );
   }
@@ -570,7 +621,7 @@ const ServiceAgreementScreen = ({ route, navigation }) => {
   return (
     <View style={styles.container}>
       <AppHeader
-        title={viewOnly ? "View Agreement" : "Service\nAgreement"}
+        title={viewOnly ? (route.params?.agreementTitle || "View Agreement") : (agreementTitleState || "Service\nAgreement")}
         navigation={navigation}
         canGoBack={true}
       />
