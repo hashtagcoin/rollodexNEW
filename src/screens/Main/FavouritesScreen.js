@@ -14,7 +14,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabaseClient';
 import { COLORS, SIZES, FONTS, SHADOWS } from '../../constants/theme';
-import { CardStyles } from '../../constants/CardStyles';
+import { CardStyles, ConsistentHeightTitle, isSingleLineTitle } from '../../constants/CardStyles';
 import SearchComponent from '../../components/common/SearchComponent';
 import AppHeader from '../../components/layout/AppHeader';
 import ServiceCardComponent from '../../components/cards/ServiceCard';
@@ -23,6 +23,9 @@ import ShareTrayModal from '../../components/common/ShareTrayModal';
 
 const { width } = Dimensions.get('window');
 
+// Constants
+const CARD_MARGIN = 10;
+
 const FavouritesScreen = () => { 
   const navigation = useNavigation(); 
   const [favorites, setFavorites] = useState([]);
@@ -30,7 +33,7 @@ const FavouritesScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
-  const [viewMode, setViewMode] = useState('List');
+  const [viewMode, setViewMode] = useState('Grid');
   const [sortConfig, setSortConfig] = useState({ field: 'favorited_at', direction: 'desc' });
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
@@ -426,9 +429,11 @@ const FavouritesScreen = () => {
                   </View>
                   
                   <View style={{padding: 10}}>
-                    <Text style={[CardStyles.title, {marginBottom: 0}]} numberOfLines={1}>{item.item_title}</Text>
-                    {/* Add blank line for single-line titles to maintain consistent height */}
-                    {singleLineTitle && <Text style={{height: 18}}>{"\u200B"}</Text>}
+                    <ConsistentHeightTitle 
+                      title={item.item_title} 
+                      style={[CardStyles.title, {marginBottom: 0}]} 
+                      numberOfLines={1} 
+                    />
                     <Text style={[CardStyles.subtitle, {marginTop: 0, marginBottom: 2}]} numberOfLines={2}>{item.item_description || 'No description'}</Text>
                     <View style={{flexDirection: 'row', marginTop: 0, alignItems: 'center', justifyContent: 'space-between'}}>
                       <View style={{flexDirection: 'row', alignItems: 'center'}}>
@@ -521,9 +526,11 @@ const FavouritesScreen = () => {
                 
                 <View style={CardStyles.listContentContainer}> 
                   <View style={[CardStyles.topSection, {marginBottom: 0, justifyContent: 'space-between'}]}> 
-                    <Text style={[CardStyles.title, {flex: 1, paddingRight: 5, marginBottom: 0}]} numberOfLines={1}>{item.item_title}</Text>
-                    {/* Add blank line for single-line titles to maintain consistent height */}
-                    {singleLineTitle && <Text style={{height: 18}}>{"\u200B"}</Text>}
+                    <ConsistentHeightTitle 
+                      title={item.item_title} 
+                      style={[CardStyles.title, {flex: 1, paddingRight: 5, marginBottom: 0}]} 
+                      numberOfLines={1} 
+                    />
                     {/* Application Status Badge */}
                     {item.membership_status === 'approved' && (
                       <View style={{backgroundColor: COLORS.success + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4}}>
@@ -620,7 +627,7 @@ const FavouritesScreen = () => {
 
   return (
     <View style={styles.container}>
-      <AppHeader title="Favorites" />
+      <AppHeader title="Favorites" navigation={navigation} />
       <SearchComponent 
         categories={categories}
         selectedCategory={selectedCategory}
@@ -651,7 +658,7 @@ const FavouritesScreen = () => {
           ListFooterComponent={loadingMore ? <ActivityIndicator size="small" color={COLORS.primary} /> : null}
           numColumns={viewMode === 'Grid' ? 2 : 1}
           key={viewMode} // Important for re-rendering on viewMode change
-          contentContainerStyle={styles.listContentContainer}
+          contentContainerStyle={viewMode === 'Grid' ? styles.gridContainer : styles.listContainer}
         />
       )}
       <ShareTrayModal 
@@ -685,10 +692,12 @@ const styles = StyleSheet.create({
     color: COLORS.darkGray,
   },
   gridContainer: {
-    padding: 4, // Reduced padding for closer cards
+    paddingBottom: 20,
+    paddingHorizontal: CARD_MARGIN,
   },
   listContainer: {
-    padding: 8,
+    paddingBottom: 20,
+    paddingHorizontal: CARD_MARGIN,
   },
   cardContainer: {
     backgroundColor: COLORS.white,

@@ -1,5 +1,5 @@
 import { COLORS, SIZES, SHADOWS } from './theme';
-import { Dimensions } from 'react-native';
+import { Dimensions, Text, View } from 'react-native';
 
 const { width } = Dimensions.get('window');
 
@@ -7,12 +7,32 @@ const { width } = Dimensions.get('window');
 const GRID_CARD_WIDTH = (width / 2) - (SIZES.base * 2); // Half width for 2-column grid, with increased margins
 const LIST_CARD_WIDTH = width; // Full width for list view
 
+// Utility function to determine if title is likely single line based on length
+export const isSingleLineTitle = (title) => {
+  // Approximate calculation based on average character width
+  const avgCharWidth = 9; // Approximate width in pixels of average character
+  const maxChars = 25; // Approximate characters that fit on one line for grid view
+  return !title || title.length < maxChars;
+};
+
+// Component to render a title with consistent height regardless of line count
+export const ConsistentHeightTitle = ({ title, style, numberOfLines = 2 }) => {
+  const singleLine = isSingleLineTitle(title);
+  
+  return (
+    <View>
+      <Text style={style} numberOfLines={numberOfLines}>{title}</Text>
+      {singleLine && <Text style={{ height: 18 }}>{"\u200B"}</Text>}
+    </View>
+  );
+};
+
 export const CardStyles = {
   // ===== GRID VIEW STYLES =====
   gridCardWrapper: {
     width: '50%',
     marginBottom: 8,
-    paddingHorizontal: 1,
+    paddingHorizontal: 0.5, // Halved the padding between cards in the same row
   },
   
   gridCardContainer: {
@@ -196,4 +216,9 @@ export const CardStyles = {
   },
 };
 
-export default CardStyles;
+// Export all utilities and styles
+export default {
+  ...CardStyles,
+  isSingleLineTitle,
+  ConsistentHeightTitle
+};

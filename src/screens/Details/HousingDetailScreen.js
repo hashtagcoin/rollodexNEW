@@ -19,6 +19,7 @@ import AppHeader from '../../components/layout/AppHeader';
 import { Feather, MaterialIcons, Ionicons, FontAwesome, FontAwesome5 } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabaseClient';
 import { COLORS } from '../../constants/theme';
+import { CardStyles, ConsistentHeightTitle } from '../../constants/CardStyles';
 
 const { width } = Dimensions.get('window');
 const IMAGE_HEIGHT = 300;
@@ -34,11 +35,13 @@ const HousingDetailScreen = ({ route }) => {
   const [activeTab, setActiveTab] = useState('Details');
   const [saved, setSaved] = useState(false);
   
-  // Fetch housing groups related to this listing
+  // Fetch housing groups related to this listing with member profiles
   useEffect(() => {
     const fetchHousingGroups = async () => {
+      setLoading(true);
       try {
-        const { data, error } = await supabase
+        // First get the housing groups for this listing
+        const { data: groupsData, error: groupsError } = await supabase
           .from('housing_groups')
           .select(`
             id, name, max_members, current_members, move_in_date, description,
@@ -47,17 +50,57 @@ const HousingDetailScreen = ({ route }) => {
           .eq('listing_id', housingData.id)
           .eq('is_active', true);
         
-        if (error) throw error;
+        if (groupsError) throw groupsError;
         
-        // Fetch member profiles separately if needed
-        if (data && data.length > 0) {
-          // Process the data here to match expected format
-          console.log('Housing groups:', data);
+        // If we have groups, fetch the member profiles for avatars
+        if (groupsData && groupsData.length > 0) {
+          const enhancedGroups = await Promise.all(groupsData.map(async (group) => {
+            // Extract user_ids from group members
+            const memberIds = group.housing_group_members
+              .filter(member => member.status === 'approved')
+              .map(member => member.user_id);
+            
+            if (memberIds.length > 0) {
+              // Fetch user profiles for these members
+              const { data: profilesData, error: profilesError } = await supabase
+                .from('user_profiles')
+                .select('id, username, full_name, avatar_url')
+                .in('id', memberIds);
+              
+              if (profilesError) throw profilesError;
+              
+              // Map member user_ids to their profiles
+              const memberProfiles = {};
+              profilesData.forEach(profile => {
+                memberProfiles[profile.id] = profile;
+              });
+              
+              // Enhance group members with profile data
+              const enhancedMembers = group.housing_group_members.map(member => ({
+                ...member,
+                profile: memberProfiles[member.user_id] || {
+                  username: 'Anonymous',
+                  avatar_url: null
+                }
+              }));
+              
+              return {
+                ...group,
+                housing_group_members: enhancedMembers
+              };
+            }
+            
+            return group;
+          }));
+          
+          setHousingGroups(enhancedGroups);
+        } else {
+          setHousingGroups([]);
         }
-        
-        setHousingGroups(data || []);
       } catch (error) {
-        console.error('Error fetching housing groups:', error);
+        console.error('Error fetching housing groups with profiles:', error);
+      } finally {
+        setLoading(false);
       }
     };
     
@@ -106,13 +149,13 @@ const HousingDetailScreen = ({ route }) => {
   
   // Join housing group
   const handleJoinGroup = (groupId) => {
-    // Navigate to housing group detail screen
-    navigation.navigate('HousingGroupDetailScreen', { groupId });
+    // Navigate to group detail screen
+    navigation.navigate('GroupDetailScreen', { groupId });
   };
   
   // Create new housing group
   const handleCreateGroup = () => {
-    // Navigate to create group screen
+    // Navigate to the CreateHousingGroup screen with the listing ID
     navigation.navigate('CreateHousingGroup', { listingId: housingData.id });
   };
   
@@ -352,14 +395,18 @@ const HousingDetailScreen = ({ route }) => {
           <View style={styles.sectionContainer}>
             <View style={styles.groupsHeaderContainer}>
               <Text style={styles.sectionTitle}>Housing Groups</Text>
+            </View>
+            
+            <View style={styles.groupsSubheaderContainer}>
+              <Text style={styles.groupsDescription}>
+                Join others looking for housemates for this property or create your own group.
+              </Text>
+              
               <TouchableOpacity style={styles.createGroupButton} onPress={handleCreateGroup}>
+                <Feather name="plus-circle" size={16} color="white" style={styles.buttonIcon} />
                 <Text style={styles.createGroupText}>Create Group</Text>
               </TouchableOpacity>
             </View>
-            
-            <Text style={styles.groupsDescription}>
-              Join others looking for housemates for this property or create your own group.
-            </Text>
             
             {housingGroups.length > 0 ? (
               <FlatList
@@ -367,48 +414,91 @@ const HousingDetailScreen = ({ route }) => {
                 keyExtractor={(item) => item.id}
                 scrollEnabled={false}
                 renderItem={({ item }) => (
-                  <View style={styles.groupCard}>
-                    <View style={styles.groupHeader}>
-                      <Text style={styles.groupName}>{item.name}</Text>
-                      <View style={styles.membersContainer}>
-                        <Feather name="users" size={16} color="#666" />
-                        <Text style={styles.membersText}>{item.current_members}/{item.max_members}</Text>
+                  <View style={[CardStyles.listCardContainer, styles.prominentGroupCard]}>
+                    <View style={CardStyles.listCardInner}>
+                      <View style={styles.groupAvatarContainer}>
+                        <View style={styles.groupAvatarCircle}>
+                          <Feather name="users" size={22} color={COLORS.primary} />
+                        </View>
                       </View>
-                    </View>
-                    
-                    <Text style={styles.groupDescription}>{item.description}</Text>
-                    
-                    <View style={styles.groupMeta}>
-                      <Text style={styles.moveInDate}>
-                        Move in: {new Date(item.move_in_date).toLocaleDateString()}
-                      </Text>
                       
-                      {/* Member avatars */}
-                      <View style={styles.memberAvatars}>
-                        {item.housing_group_members && item.housing_group_members.slice(0, 3).map((member, index) => (
-                          <View key={index} style={[styles.avatarContainer, { zIndex: 10 - index, marginLeft: index > 0 ? -10 : 0 }]}>
-                            <View style={[styles.memberAvatar, { backgroundColor: '#' + ((Math.random() * 0xffffff) << 0).toString(16) }]}>
-                              <Text style={styles.memberInitial}>{member.user_id.substring(0, 1).toUpperCase()}</Text>
-                            </View>
-                          </View>
-                        ))}
+                      <View style={CardStyles.listContentContainer}>
+                        <View style={CardStyles.topSection}>
+                          <ConsistentHeightTitle 
+                            title={item.name} 
+                            style={CardStyles.title} 
+                            numberOfLines={1} 
+                          />
+                        </View>
                         
-                        {item.housing_group_members && item.housing_group_members.length > 3 && (
-                          <View style={[styles.avatarContainer, { marginLeft: -10, zIndex: 1 }]}>
-                            <View style={styles.moreAvatars}>
-                              <Text style={styles.moreAvatarsText}>+{item.housing_group_members.length - 3}</Text>
+                        <Text style={[CardStyles.subtitle, styles.groupDescription]} numberOfLines={2}>
+                          {item.description}
+                        </Text>
+                        
+                        <View style={CardStyles.bottomSection}>
+                          <Text style={styles.moveInDate}>
+                            Move in: {new Date(item.move_in_date).toLocaleDateString()}
+                          </Text>
+                          
+                          {/* Member avatars - Instagram style */}
+                          <View style={styles.memberContainer}>
+                            <View style={styles.memberAvatars}>
+                              {item.housing_group_members && item.housing_group_members
+                                .filter(member => member.status === 'approved')
+                                .slice(0, 3).map((member, index) => (
+                                  <View key={index} style={[styles.avatarContainer, { zIndex: 10 - index, marginLeft: index > 0 ? -10 : 0 }]}>
+                                    {member.profile && member.profile.avatar_url ? (
+                                      <Image 
+                                        source={{ uri: member.profile.avatar_url }} 
+                                        style={styles.memberAvatar}
+                                      />
+                                    ) : (
+                                      <View style={[styles.memberAvatar, { backgroundColor: COLORS.primary + (80 + (index * 10)).toString(16) }]}>
+                                        <Text style={styles.memberInitial}>
+                                          {member.profile && member.profile.full_name 
+                                            ? member.profile.full_name.charAt(0).toUpperCase() 
+                                            : (member.profile && member.profile.username 
+                                              ? member.profile.username.charAt(0).toUpperCase() 
+                                              : '?')}
+                                        </Text>
+                                      </View>
+                                    )}
+                                    {index === 0 && member.is_admin && (
+                                      <View style={styles.adminBadge}>
+                                        <Feather name="star" size={8} color="white" />
+                                      </View>
+                                    )}
+                                  </View>
+                              ))}
+                              
+                              {item.housing_group_members && 
+                               item.housing_group_members.filter(member => member.status === 'approved').length > 3 && (
+                                <View style={[styles.avatarContainer, { marginLeft: -10, zIndex: 1 }]}>
+                                  <View style={styles.moreAvatars}>
+                                    <Text style={styles.moreAvatarsText}>
+                                      +{item.housing_group_members.filter(member => member.status === 'approved').length - 3}
+                                    </Text>
+                                  </View>
+                                </View>
+                              )}
+                            </View>
+                            
+                            <View style={styles.membersContainerProminent}>
+                              <Feather name="users" size={14} color="white" />
+                              <Text style={styles.membersTextProminent}>{item.current_members}/{item.max_members}</Text>
                             </View>
                           </View>
-                        )}
+                        </View>
+                        
+                        <TouchableOpacity 
+                          style={styles.joinGroupButton}
+                          onPress={() => navigation.navigate('GroupDetail', { groupId: item.id })}
+                        >
+                          <Feather name="users" size={16} color="white" style={styles.buttonIcon} />
+                          <Text style={styles.joinGroupText}>Join Group</Text>
+                        </TouchableOpacity>
                       </View>
                     </View>
-                    
-                    <TouchableOpacity 
-                      style={styles.joinGroupButton}
-                      onPress={() => handleJoinGroup(item.id)}
-                    >
-                      <Text style={styles.joinGroupText}>Join Group</Text>
-                    </TouchableOpacity>
                   </View>
                 )}
               />
@@ -614,7 +704,6 @@ const styles = StyleSheet.create({
   contentContainer: {
     backgroundColor: '#fff',
     borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
     marginTop: -24,
     paddingHorizontal: 20,
     paddingBottom: 100, // Extra padding for bottom bar
@@ -636,6 +725,126 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 4,
     elevation: 3,
+  },
+  groupsSubheaderContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  groupsDescription: {
+    fontSize: 14,
+    color: '#717171',
+    lineHeight: 20,
+    flex: 1,
+    marginRight: 12,
+  },
+  prominentGroupCard: {
+    borderWidth: 2,
+    borderColor: COLORS.primary + '30',
+    marginBottom: 20,
+    elevation: 4,
+  },
+  groupAvatarContainer: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+    overflow: 'hidden',
+    marginRight: 12,
+    backgroundColor: COLORS.lightGray,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  groupAvatarCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.primary + '20',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  membersContainerProminent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 16,
+    alignSelf: 'flex-start',
+  },
+  membersTextProminent: {
+    color: 'white',
+    fontWeight: '600',
+    fontSize: 14,
+    marginLeft: 4,
+  },
+  adminBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    backgroundColor: COLORS.primary,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'white',
+  },
+  groupButtonsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 12,
+    justifyContent: 'space-between',
+  },
+  buttonIcon: {
+    marginRight: 6,
+  },
+  joinGroupButton: {
+    backgroundColor: COLORS.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginTop: 12,
+    width: '100%',
+  },
+  joinGroupText: {
+    color: 'white',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  viewGroupButton: {
+    borderColor: COLORS.primary,
+    borderWidth: 1,
+    backgroundColor: 'white',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+  },
+  viewGroupText: {
+    color: COLORS.primary,
+    fontWeight: '500',
+    fontSize: 14,
+    marginLeft: 4,
+  },
+  createGroupButton: {
+    backgroundColor: COLORS.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+  },
+  createGroupText: {
+    color: 'white',
+    fontWeight: '600',
+    fontSize: 14,
   },
   titleContainer: {
     paddingTop: 24,
@@ -745,8 +954,13 @@ const styles = StyleSheet.create({
     color: '#444',
     flex: 1,
   },
+  memberContainer: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+  },
   memberAvatars: {
     flexDirection: 'row',
+    marginBottom: 8,
   },
   avatarContainer: {
     width: 36,

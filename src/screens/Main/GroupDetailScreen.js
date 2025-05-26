@@ -734,12 +734,13 @@ const GroupDetailScreen = () => {
             size={56}
           />
         </View>
-      )}
+      )}  
       
       {/* Main ScrollView for the entire content */}
-      <ScrollView 
-        style={styles.mainScrollView}
-        contentContainerStyle={styles.scrollViewContent}
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={true}
+        scrollEnabled={true}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}

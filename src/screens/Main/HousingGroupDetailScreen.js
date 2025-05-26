@@ -71,22 +71,33 @@ const HousingGroupDetailScreen = ({ route }) => {
         const { data: group, error: groupError } = await supabase
           .from('housing_groups')
           .select('*')
-          .eq('id', groupId)
-          .single();
+          .eq('id', groupId);
           
         if (groupError) throw groupError;
-        setGroupDetails(group);
+        
+        // Check if group was found
+        if (!group || group.length === 0) {
+          Alert.alert('Error', 'Group not found');
+          navigation.goBack();
+          return;
+        }
+        
+        setGroupDetails(group[0]);
         
         // Fetch housing listing details
-        if (group.listing_id) {
+        if (group[0].listing_id) {
           const { data: listing, error: listingError } = await supabase
             .from('housing_listings')
             .select('*')
-            .eq('id', group.listing_id)
-            .single();
+            .eq('id', group[0].listing_id);
             
           if (listingError) throw listingError;
-          setHousingListing(listing);
+          
+          if (listing && listing.length > 0) {
+            setHousingListing(listing[0]);
+          } else {
+            console.warn('No listing found for group:', group[0].id);
+          }
         }
         
         // Fetch group members

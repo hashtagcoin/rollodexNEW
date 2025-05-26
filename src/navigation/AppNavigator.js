@@ -8,10 +8,11 @@ import AuthStack from './AuthStack';
 
 // Import Detail Screens
 import ServiceDetailScreen from '../screens/Main/ServiceDetailScreen';
-import HousingDetailScreen from '../screens/Main/HousingDetailScreen';
+import HousingDetailScreen from '../screens/Details/HousingDetailScreen';
 import EventDetailScreen from '../screens/Main/EventDetailScreen';
-import GroupDetailScreen from '../screens/Main/GroupDetailScreen'; // Assuming this one exists as GroupDetailScreen.js
+import GroupDetailScreen from '../screens/Main/GroupDetailScreen';
 import HousingGroupDetailScreen from '../screens/Main/HousingGroupDetailScreen';
+import CreateHousingGroupScreen from '../screens/Groups/CreateHousingGroupScreen';
 
 import { supabase } from '../lib/supabaseClient'; // Import Supabase client
 
@@ -84,6 +85,7 @@ function AppNavigator() {
             <RootStack.Screen name="EventDetail" component={EventDetailScreen} />
             <RootStack.Screen name="GroupDetail" component={GroupDetailScreen} />
             <RootStack.Screen name="HousingGroupDetailScreen" component={HousingGroupDetailScreen} />
+            <RootStack.Screen name="CreateHousingGroup" component={CreateHousingGroupScreen} />
           </RootStack.Navigator>
         ) : (
           <AuthFlowStack.Navigator screenOptions={{ headerShown: false }}>

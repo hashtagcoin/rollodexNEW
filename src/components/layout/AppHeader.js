@@ -25,45 +25,57 @@ const AppHeader = ({
   
   // Format title into two lines if needed
   const formattedTitle = useMemo(() => {
-    if (!title || title.length <= 20) {
-      return { singleLine: title, firstLine: null, secondLine: null };
+    if (!title) {
+      return { singleLine: null, firstLine: null, secondLine: null };
     }
     
-    // For longer titles, split into two balanced lines
-    const words = title.split(' ');
-    let firstLine = '';
-    let secondLine = '';
-    const targetLength = title.length / 2;
-    let currentLength = 0;
-    
-    for (let i = 0; i < words.length; i++) {
-      const word = words[i];
-      if (currentLength + word.length <= targetLength) {
-        firstLine += (firstLine ? ' ' : '') + word;
-        currentLength += word.length + (firstLine ? 1 : 0);
-      } else {
-        secondLine += (secondLine ? ' ' : '') + word;
-      }
+    // Check if the title contains a newline character - explicit line break
+    if (typeof title === 'string' && title.includes('\n')) {
+      const [firstLine, secondLine] = title.split('\n');
+      return { singleLine: null, firstLine, secondLine };
     }
     
-    // If the balance is too uneven, adjust
-    if (Math.abs(firstLine.length - secondLine.length) > 5 && words.length > 3) {
-      const lastWordOfFirstLine = firstLine.split(' ').pop();
-      const firstWordOfSecondLine = secondLine.split(' ')[0];
+    // For titles without newlines but longer than threshold
+    if (typeof title === 'string' && title.length > 16) {
+      // For longer titles, split into two balanced lines
+      const words = title.split(' ');
+      let firstLine = '';
+      let secondLine = '';
+      const targetLength = title.length / 2;
+      let currentLength = 0;
       
-      // Try moving a word from first line to second
-      if (firstLine.length > secondLine.length) {
-        firstLine = firstLine.substring(0, firstLine.length - lastWordOfFirstLine.length - 1);
-        secondLine = lastWordOfFirstLine + ' ' + secondLine;
-      } 
-      // Try moving a word from second line to first
-      else if (secondLine.length > firstLine.length) {
-        firstLine = firstLine + ' ' + firstWordOfSecondLine;
-        secondLine = secondLine.substring(firstWordOfSecondLine.length + 1);
+      for (let i = 0; i < words.length; i++) {
+        const word = words[i];
+        if (currentLength + word.length <= targetLength) {
+          firstLine += (firstLine ? ' ' : '') + word;
+          currentLength += word.length + (firstLine ? 1 : 0);
+        } else {
+          secondLine += (secondLine ? ' ' : '') + word;
+        }
       }
+      
+      // If the balance is too uneven, adjust
+      if (Math.abs(firstLine.length - secondLine.length) > 5 && words.length > 3) {
+        const lastWordOfFirstLine = firstLine.split(' ').pop();
+        const firstWordOfSecondLine = secondLine.split(' ')[0];
+        
+        // Try moving a word from first line to second
+        if (firstLine.length > secondLine.length) {
+          firstLine = firstLine.substring(0, firstLine.length - lastWordOfFirstLine.length - 1);
+          secondLine = lastWordOfFirstLine + ' ' + secondLine;
+        } 
+        // Try moving a word from second line to first
+        else if (secondLine.length > firstLine.length) {
+          firstLine = firstLine + ' ' + firstWordOfSecondLine;
+          secondLine = secondLine.substring(firstWordOfSecondLine.length + 1);
+        }
+      }
+      
+      return { singleLine: null, firstLine, secondLine };
     }
     
-    return { singleLine: null, firstLine, secondLine };
+    // Default for short titles
+    return { singleLine: title, firstLine: null, secondLine: null };
   }, [title]);
   
   // Update local avatar when profile changes
