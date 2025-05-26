@@ -154,18 +154,18 @@ export const CardStyles = {
   },
   
   iconCircle: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: 'rgba(0,0,0,0.3)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   
   iconCircleActive: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: COLORS.white,
     justifyContent: 'center',
     alignItems: 'center',
@@ -174,10 +174,12 @@ export const CardStyles = {
   
   favoriteIcon: {
     color: COLORS.white,
+    fontSize: 18, // Explicitly set size for consistency
   },
   
   favoriteIconActive: {
-    color: COLORS.red,
+    color: 'red', // Using direct red color for consistency
+    fontSize: 18, // Explicitly set size for consistency
   },
   
   // ===== LOADING =====

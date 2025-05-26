@@ -60,7 +60,7 @@ export const FONTS = {
   body2: { fontFamily: 'System', fontSize: SIZES.body2, lineHeight: 30 },
   body3: { fontFamily: 'System', fontSize: SIZES.body3, lineHeight: 22 },
   body4: { fontFamily: 'System', fontSize: SIZES.body4, lineHeight: 22 },
-  body5: { fontFamily: 'System', fontSize: SIZES.body5, lineHeight: 22 },
+  body5: { fontFamily: 'System', fontSize: SIZES.body5, lineHeight: 16 }, // Was 22
 };
 
 export const SHADOWS = {

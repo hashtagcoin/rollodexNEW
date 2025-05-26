@@ -14,6 +14,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabaseClient';
 import { COLORS, SIZES, FONTS, SHADOWS } from '../../constants/theme';
+import { CardStyles } from '../../constants/CardStyles';
 import SearchComponent from '../../components/common/SearchComponent';
 import AppHeader from '../../components/layout/AppHeader';
 import ServiceCardComponent from '../../components/cards/ServiceCard';
@@ -120,18 +121,58 @@ const FavouritesScreen = () => {
       const favoritesWithAppStatus = await Promise.all(
         data.map(async (favorite) => {
           if (favorite.item_type === 'housing_group') {
-            const { data: appData, error: appError } = await supabase
-              .from('housing_applications')
-              .select('status')
+            // Check if user is a member of this housing group
+            const { data: memberData, error: memberError } = await supabase
+              .from('housing_group_members')
+              .select('id, status, join_date')
               .eq('user_id', user.id)
-              .eq('listing_id', favorite.item_id)
+              .eq('group_id', favorite.item_id)
               .single();
 
-            if (!appError && appData) {
-              return { ...favorite, application_status: appData.status };
-            }
-            if (appError) {
-              console.warn(`[FavouritesScreen] fetchFavorites: Error fetching app status for ${favorite.item_id}:`, appError);
+            // Get additional housing group data
+            const { data: groupData, error: groupError } = await supabase
+              .from('housing_groups')
+              .select('*')
+              .eq('id', favorite.item_id)
+              .single();
+              
+            if (!memberError && memberData) {
+              // User is a member (pending or approved)
+              return { 
+                ...favorite, 
+                membership_status: memberData.status,
+                membership_id: memberData.id,
+                join_date: memberData.join_date,
+                housing_group_data: groupError ? null : groupData
+              };
+            } else {
+              // Check if user has applied to the related housing listing
+              const housing_listing_id = groupError ? null : groupData?.listing_id;
+              
+              if (housing_listing_id) {
+                const { data: appData, error: appError } = await supabase
+                  .from('housing_applications')
+                  .select('status')
+                  .eq('user_id', user.id)
+                  .eq('listing_id', housing_listing_id)
+                  .single();
+                  
+                if (!appError && appData) {
+                  return { 
+                    ...favorite, 
+                    application_status: appData.status,
+                    housing_group_data: groupData
+                  };
+                }
+              }
+              
+              // User is not a member and hasn't applied
+              return { 
+                ...favorite, 
+                membership_status: null,
+                application_status: null,
+                housing_group_data: groupError ? null : groupData
+              };
             }
           }
           return favorite;
@@ -224,8 +265,46 @@ const FavouritesScreen = () => {
     setItemToShare(null);
   };
 
+  const handleLeaveHousingGroup = async (groupId, membershipId) => {
+    try {
+      console.log(`[FavouritesScreen] Attempting to leave housing group: ${groupId}, membership: ${membershipId}`);
+      if (!membershipId) {
+        console.error('[FavouritesScreen] Cannot leave group: No membership ID provided');
+        return;
+      }
+      
+      const { error } = await supabase
+        .from('housing_group_members')
+        .delete()
+        .eq('id', membershipId);
+        
+      if (error) {
+        console.error('[FavouritesScreen] Error leaving housing group:', error);
+        return;
+      }
+      
+      // Refresh the favorites list
+      fetchFavorites(0, true);
+      console.log(`[FavouritesScreen] Successfully left housing group: ${groupId}`);
+    } catch (error) {
+      console.error('[FavouritesScreen] Error in handleLeaveHousingGroup:', error);
+    }
+  };
+
+  // Function to measure title text width to determine if it's single line
+  const isSingleLineTitle = (title) => {
+    // Approximate calculation based on average character width
+    const avgCharWidth = 10; // Approximate width in pixels of average character
+    const maxChars = 25; // Approximate characters that fit on one line
+    return title?.length < maxChars;
+  };
+  
   const renderItem = ({ item }) => {
     console.log('[FavouritesScreen] renderItem called for item:', JSON.stringify(item, null, 2));
+    
+    // Check if title is single line for housing groups
+    const singleLineTitle = item.item_type === 'housing_group' && isSingleLineTitle(item.item_title);
+    
     const commonCardProps = {
       onPress: () => {
         if (item.item_type === 'service_provider' && item.item_id) {
@@ -260,9 +339,8 @@ const FavouritesScreen = () => {
       isFavorited: true,
       onToggleFavorite: () => toggleFavorite(item.item_id, item.item_type),
       displayAs: viewMode === 'Grid' ? 'grid' : 'list',
-      onSharePress: () => handleOpenShareTray(item),
+      onSharePress: () => handleOpenShareTray(item)
     };
-
     switch (item.item_type) {
       case 'service_provider':
         const serviceCardItem = {
@@ -314,22 +392,196 @@ const FavouritesScreen = () => {
           </View>
         );
       case 'housing_group':
-        console.log('[FavouritesScreen] Rendering local HousingGroupCard for item:', JSON.stringify(item, null, 2));
-        return (
-          <View style={styles.cardContainer}>
-            <Image source={{ uri: item.item_image_url || 'https://via.placeholder.com/150' }} style={styles.cardImage} />
-            <Text style={styles.cardTitle}>{item.item_title || 'Housing Group'}</Text>
-            <Text numberOfLines={2}>{item.item_description || 'No description'}</Text>
-            <View style={styles.actionsContainer}>
-              <TouchableOpacity onPress={() => toggleFavorite(item.item_id, item.item_type)} style={styles.favButton}>
-                <Ionicons name="heart" size={24} color={COLORS.RED} />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => handleOpenShareTray(item)} style={styles.shareButton}>
-                <Ionicons name="share-social-outline" size={24} color={COLORS.primary} />
+        console.log('[FavouritesScreen] Rendering enhanced HousingGroupCard for item:', JSON.stringify(item, null, 2));
+        if (viewMode === 'Grid') {
+          // Grid view rendering with CardStyles for consistent width
+          return (
+            <View style={CardStyles.gridCardWrapper}>
+              <TouchableOpacity 
+                style={CardStyles.gridCardContainer} 
+                onPress={commonCardProps.onPress} 
+                activeOpacity={0.8}
+              >
+                <View style={CardStyles.gridCardInner}>
+                  <View style={CardStyles.gridImageContainer}>
+                    {!item.item_image_url ? (
+                      <View style={{alignItems: 'center', justifyContent: 'center', height: '100%'}}>
+                        <Ionicons name="home-outline" size={60} color={COLORS.darkGray} />
+                      </View>
+                    ) : (
+                      <Image 
+                        source={{ uri: item.item_image_url }} 
+                        style={CardStyles.gridImage}
+                        onError={() => console.log('Housing Group Image Error')} 
+                      />
+                    )}
+                    <TouchableOpacity 
+                      style={CardStyles.iconContainer} 
+                      onPress={() => toggleFavorite(item.item_id, item.item_type)}
+                    >
+                      <View style={CardStyles.iconCircleActive}> 
+                        <Ionicons name="heart" style={CardStyles.favoriteIconActive} />
+                      </View>
+                    </TouchableOpacity>
+                  </View>
+                  
+                  <View style={{padding: 10}}>
+                    <Text style={[CardStyles.title, {marginBottom: 0}]} numberOfLines={1}>{item.item_title}</Text>
+                    {/* Add blank line for single-line titles to maintain consistent height */}
+                    {singleLineTitle && <Text style={{height: 18}}>{"\u200B"}</Text>}
+                    <Text style={[CardStyles.subtitle, {marginTop: 0, marginBottom: 2}]} numberOfLines={2}>{item.item_description || 'No description'}</Text>
+                    <View style={{flexDirection: 'row', marginTop: 0, alignItems: 'center', justifyContent: 'space-between'}}>
+                      <View style={{flexDirection: 'row', alignItems: 'center'}}>
+                        <Ionicons name="people-outline" size={14} color={COLORS.darkGray} style={{marginRight: 4}} />
+                        <Text style={{fontSize: SIZES.body5, color: COLORS.darkGray}} numberOfLines={1}>
+                          {item.housing_group_data?.current_members}/{item.housing_group_data?.max_members || 'TBD'}
+                        </Text>
+                      </View>
+                      {/* Application Status Badge */}
+                      {item.membership_status === 'approved' && (
+                        <View style={{backgroundColor: COLORS.success + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4}}>
+                          <Text style={{fontSize: SIZES.body5, color: COLORS.success, fontWeight: '500'}}>Member</Text>
+                        </View>
+                      )}
+                      {item.membership_status === 'pending' && (
+                        <View style={{backgroundColor: '#FFA500' + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4}}>
+                          <Text style={{fontSize: SIZES.body5, color: '#FFA500', fontWeight: '500'}}>Pending</Text>
+                        </View>
+                      )}
+                      {!item.membership_status && item.application_status === 'pending' && (
+                        <View style={{backgroundColor: '#FFA500' + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4}}>
+                          <Text style={{fontSize: SIZES.body5, color: '#FFA500', fontWeight: '500'}}>Pending</Text>
+                        </View>
+                      )}
+                    </View>
+                    {/* Position container for bottom right Leave button */}
+                    <View style={{position: 'relative', marginTop: 5, height: 20, flexDirection: 'row', justifyContent: 'flex-end'}}>
+                      {/* Leave Button - shown for all housing groups temporarily for testing */}
+                      <TouchableOpacity
+                        onPress={() => {
+                          console.log('Leave button pressed for housing group:', item.item_id);
+                          console.log('Membership status:', item.membership_status);
+                          console.log('Membership ID:', item.membership_id);
+                          handleLeaveHousingGroup(item.item_id, item.membership_id || 'test-id');
+                        }}
+                        style={{
+                          position: 'absolute',
+                          bottom: 0,
+                          right: 0,
+                          backgroundColor: 'rgba(255, 0, 0, 0.2)',
+                          paddingHorizontal: 8,
+                          paddingVertical: 3,
+                          borderRadius: 4,
+                        }}
+                      >
+                        <Ionicons name="exit-outline" size={16} color="red" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
               </TouchableOpacity>
             </View>
-          </View>
-        );
+          );
+        } else {
+          // List view rendering - use CardStyles for consistent height
+          return (
+            <TouchableOpacity 
+              style={CardStyles.listCardContainer} 
+              onPress={commonCardProps.onPress} 
+              activeOpacity={0.8}
+            >
+              <View style={CardStyles.listCardInner}> 
+                <View style={CardStyles.listImageContainer}> 
+                  {!item.item_image_url ? (
+                    <Ionicons name="home-outline" size={40} color={COLORS.darkGray} />
+                  ) : (
+                    <Image 
+                      source={{ uri: item.item_image_url }} 
+                      style={CardStyles.listImage}
+                      onError={() => console.log('Housing Group Image Error')} 
+                    />
+                  )}
+                  <TouchableOpacity 
+                    style={CardStyles.iconContainer} 
+                    onPress={() => toggleFavorite(item.item_id, item.item_type)}
+                  >
+                    <View style={CardStyles.iconCircleActive}> 
+                      <Ionicons name="heart" style={CardStyles.favoriteIconActive} />
+                    </View>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[CardStyles.iconContainer, { top: 48 }]}
+                    onPress={() => handleOpenShareTray(item)}
+                  >
+                    <View style={CardStyles.iconCircle}> 
+                      <Ionicons name="share-social-outline" style={CardStyles.favoriteIcon} />
+                    </View>
+                  </TouchableOpacity>
+                </View>
+                
+                <View style={CardStyles.listContentContainer}> 
+                  <View style={[CardStyles.topSection, {marginBottom: 0, justifyContent: 'space-between'}]}> 
+                    <Text style={[CardStyles.title, {flex: 1, paddingRight: 5, marginBottom: 0}]} numberOfLines={1}>{item.item_title}</Text>
+                    {/* Add blank line for single-line titles to maintain consistent height */}
+                    {singleLineTitle && <Text style={{height: 18}}>{"\u200B"}</Text>}
+                    {/* Application Status Badge */}
+                    {item.membership_status === 'approved' && (
+                      <View style={{backgroundColor: COLORS.success + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4}}>
+                        <Text style={{fontSize: SIZES.body5, color: COLORS.success, fontWeight: '500'}}>Member</Text>
+                      </View>
+                    )}
+                    {item.membership_status === 'pending' && (
+                      <View style={{backgroundColor: '#FFA500' + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4}}>
+                        <Text style={{fontSize: SIZES.body5, color: '#FFA500', fontWeight: '500'}}>Pending</Text>
+                      </View>
+                    )}
+                    {!item.membership_status && item.application_status === 'pending' && (
+                      <View style={{backgroundColor: '#FFA500' + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4}}>
+                        <Text style={{fontSize: SIZES.body5, color: '#FFA500', fontWeight: '500'}}>Pending</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={[CardStyles.subtitle, {marginTop: 0, marginBottom: 0}]} numberOfLines={2}>{item.item_description || 'No description available'}</Text>
+                  <View style={[CardStyles.bottomSection, {marginTop: 4, flexDirection: 'row', alignItems: 'center'}]}>
+                    <View style={{flexDirection: 'row', alignItems: 'center', flex: 1}}>
+                      <View style={{flexDirection: 'row', alignItems: 'center', marginRight: 15}}>
+                        <Ionicons name="people-outline" size={16} color={COLORS.darkGray} />
+                        <Text style={[CardStyles.subtitle, {marginLeft: 4, color: COLORS.darkGray}]} numberOfLines={1}>
+                          {item.housing_group_data?.current_members}/{item.housing_group_data?.max_members || 'TBD'} members
+                        </Text>
+                      </View>
+                      <View style={{flexDirection: 'row', alignItems: 'center', flex: 1}}>
+                        <Ionicons name="calendar-outline" size={16} color={COLORS.darkGray} />
+                        <Text style={[CardStyles.subtitle, {marginLeft: 4, color: COLORS.darkGray}]} numberOfLines={1}>
+                          {item.housing_group_data?.move_in_date ? new Date(item.housing_group_data.move_in_date).toLocaleDateString() : 'Flexible'}
+                        </Text>
+                      </View>
+                    </View>
+                    {/* Leave Button (exit icon) - shown for all housing groups temporarily for testing */}
+                    <TouchableOpacity
+                      onPress={() => {
+                        console.log('Leave button pressed for housing group (list view):', item.item_id);
+                        console.log('Membership status:', item.membership_status);
+                        console.log('Membership ID:', item.membership_id);
+                        handleLeaveHousingGroup(item.item_id, item.membership_id || 'test-id');
+                      }}
+                      style={{
+                        backgroundColor: 'rgba(255, 0, 0, 0.2)',
+                        paddingHorizontal: 8,
+                        paddingVertical: 3,
+                        borderRadius: 4,
+                        marginLeft: 'auto',
+                        alignItems: 'center'
+                      }}
+                    >
+                      <Ionicons name="exit-outline" size={16} color="red" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            </TouchableOpacity>
+          );
+        }
       case 'group':
         console.log('[FavouritesScreen] Rendering local GroupCard for item:', JSON.stringify(item, null, 2));
         return (
@@ -433,7 +685,7 @@ const styles = StyleSheet.create({
     color: COLORS.darkGray,
   },
   gridContainer: {
-    padding: 8,
+    padding: 4, // Reduced padding for closer cards
   },
   listContainer: {
     padding: 8,

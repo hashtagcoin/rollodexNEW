@@ -83,7 +83,7 @@ function AppNavigator() {
             <RootStack.Screen name="HousingDetail" component={HousingDetailScreen} />
             <RootStack.Screen name="EventDetail" component={EventDetailScreen} />
             <RootStack.Screen name="GroupDetail" component={GroupDetailScreen} />
-            <RootStack.Screen name="HousingGroupDetail" component={HousingGroupDetailScreen} />
+            <RootStack.Screen name="HousingGroupDetailScreen" component={HousingGroupDetailScreen} />
           </RootStack.Navigator>
         ) : (
           <AuthFlowStack.Navigator screenOptions={{ headerShown: false }}>

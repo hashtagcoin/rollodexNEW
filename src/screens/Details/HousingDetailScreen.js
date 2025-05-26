@@ -106,8 +106,8 @@ const HousingDetailScreen = ({ route }) => {
   
   // Join housing group
   const handleJoinGroup = (groupId) => {
-    // Navigate to join group screen
-    navigation.navigate('JoinHousingGroup', { groupId, listingId: housingData.id });
+    // Navigate to housing group detail screen
+    navigation.navigate('HousingGroupDetailScreen', { groupId });
   };
   
   // Create new housing group
