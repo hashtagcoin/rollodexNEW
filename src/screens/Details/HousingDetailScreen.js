@@ -20,13 +20,15 @@ import { Feather, MaterialIcons, Ionicons, FontAwesome, FontAwesome5 } from '@ex
 import { supabase } from '../../lib/supabaseClient';
 import { COLORS } from '../../constants/theme';
 import { CardStyles, ConsistentHeightTitle } from '../../constants/CardStyles';
+import ShareTrayModal from '../../components/common/ShareTrayModal';
 
 const { width } = Dimensions.get('window');
 const IMAGE_HEIGHT = 300;
 
 const HousingDetailScreen = ({ route }) => {
-  const { item } = route.params;
+  const { item } = route.params || {};
   const navigation = useNavigation();
+  const scrollViewRef = useRef(null);
   const scrollY = useRef(new Animated.Value(0)).current;
   
   const [loading, setLoading] = useState(false);
@@ -34,17 +36,59 @@ const HousingDetailScreen = ({ route }) => {
   const [housingGroups, setHousingGroups] = useState([]);
   const [activeTab, setActiveTab] = useState('Details');
   const [saved, setSaved] = useState(false);
+  const [shareModalVisible, setShareModalVisible] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0); // Add refresh key for forcing re-fetch
+  
+  // Add a focus listener to refresh data when returning to this screen
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      console.log('HousingDetailScreen focused - refreshing groups');
+      setRefreshKey(prevKey => prevKey + 1); // Increment refresh key to trigger re-fetch
+    });
+    
+    // Cleanup subscription on unmount
+    return unsubscribe;
+  }, [navigation]);
   
   // Fetch housing groups related to this listing with member profiles
   useEffect(() => {
+    const checkIfSaved = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        
+        const { data, error } = await supabase
+          .from('favorites')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('item_id', housingData.id)
+          .eq('item_type', 'housing_listing')
+          .maybeSingle();
+          
+        if (error && error.code !== 'PGRST116') {
+          console.error('Error checking favorites:', error);
+          return;
+        }
+        
+        setSaved(!!data); // Convert to boolean
+      } catch (error) {
+        console.error('Error checking if listing is saved:', error);
+      }
+    };
+    
     const fetchHousingGroups = async () => {
       setLoading(true);
       try {
+        // Get current user for checking membership
+        const { data: { user } } = await supabase.auth.getUser();
+        const currentUserId = user?.id;
+        
         // First get the housing groups for this listing
         const { data: groupsData, error: groupsError } = await supabase
           .from('housing_groups')
           .select(`
-            id, name, max_members, current_members, move_in_date, description,
+            id, name, max_members, current_members, move_in_date, description, avatar_url,
+            gender_preference, support_needs,
             housing_group_members(id, user_id, status)
           `)
           .eq('listing_id', housingData.id)
@@ -59,6 +103,10 @@ const HousingDetailScreen = ({ route }) => {
             const memberIds = group.housing_group_members
               .filter(member => member.status === 'approved')
               .map(member => member.user_id);
+            
+            // Check if current user is a member of this group
+            const isUserMember = currentUserId && group.housing_group_members
+              .some(member => member.user_id === currentUserId && member.status === 'approved');
             
             if (memberIds.length > 0) {
               // Fetch user profiles for these members
@@ -86,11 +134,15 @@ const HousingDetailScreen = ({ route }) => {
               
               return {
                 ...group,
-                housing_group_members: enhancedMembers
+                housing_group_members: enhancedMembers,
+                isUserMember // Add flag indicating if current user is a member
               };
             }
             
-            return group;
+            return {
+              ...group,
+              isUserMember // Add flag indicating if current user is a member
+            };
           }));
           
           setHousingGroups(enhancedGroups);
@@ -105,7 +157,7 @@ const HousingDetailScreen = ({ route }) => {
     };
     
     fetchHousingGroups();
-  }, [housingData.id]);
+  }, [housingData.id, refreshKey]); // Add refreshKey to dependency array to trigger refresh
   
   // Format price
   const formatPrice = (price) => {
@@ -117,22 +169,62 @@ const HousingDetailScreen = ({ route }) => {
     return features && Array.isArray(features) ? features.join(', ') : 'None listed';
   };
   
-  // Share listing
-  const handleShare = async () => {
-    try {
-      await Share.share({
-        message: `Check out this housing listing: ${housingData.title}`,
-        url: `https://rollodex.app/housing/${housingData.id}`,
-      });
-    } catch (error) {
-      console.error('Error sharing:', error);
-    }
+  // Toggle share modal to share with friends
+  const handleShare = () => {
+    setShareModalVisible(true);
   };
   
-  // Save listing
-  const handleSave = () => {
-    setSaved(!saved);
-    // In a real app, save to database
+  // Toggle share modal close
+  const handleCloseShareModal = () => {
+    setShareModalVisible(false);
+  };
+  
+  // Save listing to favorites
+  const handleSave = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        // Notify user they need to log in
+        alert('Please log in to save favorites');
+        return;
+      }
+      
+      if (saved) {
+        // Remove from favorites
+        const { error } = await supabase
+          .from('favorites')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('item_id', housingData.id)
+          .eq('item_type', 'housing_listing');
+          
+        if (error) {
+          console.error('Error removing from favorites:', error);
+          return;
+        }
+        
+        setSaved(false);
+      } else {
+        // Add to favorites
+        const { error } = await supabase
+          .from('favorites')
+          .insert({
+            user_id: user.id,
+            item_id: housingData.id,
+            item_type: 'housing_listing',
+            created_at: new Date()
+          });
+          
+        if (error) {
+          console.error('Error adding to favorites:', error);
+          return;
+        }
+        
+        setSaved(true);
+      }
+    } catch (error) {
+      console.error('Error updating favorites:', error);
+    }
   };
   
   // Apply for housing
@@ -147,10 +239,38 @@ const HousingDetailScreen = ({ route }) => {
     navigation.navigate('ChatScreen', { recipientId: housingData.provider_id });
   };
   
-  // Join housing group
-  const handleJoinGroup = (groupId) => {
-    // Navigate to group detail screen
-    navigation.navigate('GroupDetailScreen', { groupId });
+  // Join housing group and automatically favorite it
+  const handleJoinGroup = async (groupId) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        // Notify user they need to log in
+        alert('Please log in to join a housing group');
+        return;
+      }
+      
+      // Add to favorites table
+      const { error: favoriteError } = await supabase
+        .from('favorites')
+        .insert({
+          user_id: user.id,
+          item_id: groupId,
+          item_type: 'housing_group',
+          created_at: new Date()
+        });
+        
+      if (favoriteError) {
+        console.error('Error favoriting housing group:', favoriteError);
+        // Continue with navigation even if favoriting fails
+      } else {
+        console.log('Housing group automatically favorited');
+      }
+      
+      // Navigate to housing group detail screen
+      navigation.navigate('HousingGroupDetailScreen', { groupId });
+    } catch (error) {
+      console.error('Error joining housing group:', error);
+    }
   };
   
   // Create new housing group
@@ -222,7 +342,11 @@ const HousingDetailScreen = ({ route }) => {
         
         {/* Save button */}
         <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-          <Feather name="heart" size={24} color={saved ? "#FF385C" : "white"} />
+          {saved ? (
+            <Ionicons name="heart" size={24} color="#FF385C" />
+          ) : (
+            <Feather name="heart" size={24} color="white" />
+          )}
         </TouchableOpacity>
         
         {/* Image count */}
@@ -417,9 +541,17 @@ const HousingDetailScreen = ({ route }) => {
                   <View style={[CardStyles.listCardContainer, styles.prominentGroupCard]}>
                     <View style={CardStyles.listCardInner}>
                       <View style={styles.groupAvatarContainer}>
-                        <View style={styles.groupAvatarCircle}>
-                          <Feather name="users" size={22} color={COLORS.primary} />
-                        </View>
+                        {item.avatar_url ? (
+                          <Image 
+                            source={{ uri: item.avatar_url }} 
+                            style={styles.groupAvatarImage} 
+                            resizeMode="cover"
+                          />
+                        ) : (
+                          <View style={styles.groupAvatarCircle}>
+                            <Feather name="users" size={22} color={COLORS.primary} />
+                          </View>
+                        )}
                       </View>
                       
                       <View style={CardStyles.listContentContainer}>
@@ -492,10 +624,20 @@ const HousingDetailScreen = ({ route }) => {
                         
                         <TouchableOpacity 
                           style={styles.joinGroupButton}
-                          onPress={() => navigation.navigate('GroupDetail', { groupId: item.id })}
+                          onPress={() => item.isUserMember ? 
+                            navigation.navigate('HousingGroupDetailScreen', { groupId: item.id }) : 
+                            handleJoinGroup(item.id)
+                          }
                         >
-                          <Feather name="users" size={16} color="white" style={styles.buttonIcon} />
-                          <Text style={styles.joinGroupText}>Join Group</Text>
+                          <Feather 
+                            name={item.isUserMember ? "eye" : "users"} 
+                            size={16} 
+                            color="white" 
+                            style={styles.buttonIcon} 
+                          />
+                          <Text style={styles.joinGroupText}>
+                            {item.isUserMember ? "View" : "Join Group"}
+                          </Text>
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -522,21 +664,12 @@ const HousingDetailScreen = ({ route }) => {
   
   return (
     <View style={styles.screenContainer}>
-      {/* Animated header */}
-      <Animated.View style={[styles.animatedHeader, { opacity: headerOpacity }]}>
-        <AppHeader
-          title={housingData.title}
-          navigation={navigation}
-          canGoBack={true}
-        />
-      </Animated.View>
-      
-      {/* Regular header with back button */}
-      <View style={styles.transparentHeader}>
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-          <Feather name="chevron-left" size={28} color="white" />
-        </TouchableOpacity>
-      </View>
+      {/* Standard AppHeader with fixed title */}
+      <AppHeader
+        title="Listing Details"
+        navigation={navigation}
+        canGoBack={true}
+      />
       
       <Animated.ScrollView 
         style={styles.container}
@@ -585,6 +718,18 @@ const HousingDetailScreen = ({ route }) => {
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Share Tray Modal */}
+      <ShareTrayModal
+        visible={shareModalVisible}
+        onClose={handleCloseShareModal}
+        itemToShare={{
+          item_id: housingData.id,
+          item_type: 'housing_listing',
+          item_title: housingData.title
+        }}
+        highlightSharedUsers={true}
+      />
     </View>
   );
 };
@@ -607,34 +752,6 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-  },
-  animatedHeader: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 10,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-  transparentHeader: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 10,
-    flexDirection: 'row',
-    padding: 16,
-    paddingTop: 50,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   heroContainer: {
     width: '100%',
@@ -762,6 +879,11 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary + '20',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  groupAvatarImage: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
   },
   membersContainerProminent: {
     flexDirection: 'row',

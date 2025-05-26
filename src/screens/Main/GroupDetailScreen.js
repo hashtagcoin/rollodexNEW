@@ -45,7 +45,7 @@ const GroupDetailScreen = () => {
   const [membersLoading, setMembersLoading] = useState(true);
   const [membersError, setMembersError] = useState(null);
 
-  // Fetch group data
+  // Fetch group data - supports both regular groups and housing groups
   const fetchGroupData = useCallback(async () => {
     if (!groupId) return;
     
@@ -53,16 +53,52 @@ const GroupDetailScreen = () => {
       setLoading(true);
       setError(null);
       
-      const { data, error } = await supabase
-        .from('groups')
-        .select(`
-          *,
-          group_members(count)
-        `)
-        .eq('id', groupId)
-        .single();
+      // Get the group type from route params or default to 'group'
+      const groupType = route.params?.groupType || 'group';
+      
+      // Determine which table to query based on group type
+      let data, error;
+      
+      if (groupType === 'housing_group') {
+        // Query housing_groups table for housing groups
+        const result = await supabase
+          .from('housing_groups')
+          .select(`
+            *,
+            housing_group_members(count)
+          `)
+          .eq('id', groupId)
+          .maybeSingle();
+          
+        data = result.data;
+        error = result.error;
+        
+        // If data exists, transform it to match the expected structure
+        if (data) {
+          data.group_members = data.housing_group_members;
+          data.type = 'housing_group';
+        }
+      } else {
+        // Query regular groups table
+        const result = await supabase
+          .from('groups')
+          .select(`
+            *,
+            group_members(count)
+          `)
+          .eq('id', groupId)
+          .maybeSingle();
+          
+        data = result.data;
+        error = result.error;
+        data.type = 'group';
+      }
       
       if (error) throw error;
+      
+      if (!data) {
+        throw new Error('Group not found');
+      }
       
       // Only update state if component is still mounted
       if (isMounted.current && data) {
@@ -89,15 +125,39 @@ const GroupDetailScreen = () => {
       setPostsLoading(true);
       setPostsError(null);
       
-      // Fetch posts with author info
-      const { data, error } = await supabase
-        .from('group_posts')
-        .select(`
-          *,
-          author:user_profiles(id, username, full_name, avatar_url)
-        `)
-        .eq('group_id', groupId)
-        .order('created_at', { ascending: false });
+      // Get the group type from route params or default to 'group'
+      const groupType = route.params?.groupType || 'group';
+      
+      let data, error;
+      
+      // Fetch posts with author info based on group type
+      if (groupType === 'housing_group') {
+        // For housing groups, fetch from group_posts table with housing_group_id
+        const result = await supabase
+          .from('group_posts')
+          .select(`
+            *,
+            author:user_profiles(id, username, full_name, avatar_url)
+          `)
+          .eq('housing_group_id', groupId)
+          .order('created_at', { ascending: false });
+          
+        data = result.data;
+        error = result.error;
+      } else {
+        // For regular groups, fetch from group_posts table with group_id
+        const result = await supabase
+          .from('group_posts')
+          .select(`
+            *,
+            author:user_profiles(id, username, full_name, avatar_url)
+          `)
+          .eq('group_id', groupId)
+          .order('created_at', { ascending: false });
+          
+        data = result.data;
+        error = result.error;
+      }
       
       if (error) throw error;
       
@@ -146,13 +206,36 @@ const GroupDetailScreen = () => {
       setMembersLoading(true);
       setMembersError(null);
       
-      const { data, error } = await supabase
-        .from('group_members')
-        .select(`
-          *,
-          user_profiles(id, username, full_name, avatar_url, bio)
-        `)
-        .eq('group_id', groupId);
+      // Get the group type from route params or default to 'group'
+      const groupType = route.params?.groupType || 'group';
+      
+      let data, error;
+      
+      if (groupType === 'housing_group') {
+        // For housing groups, fetch from housing_group_members table
+        const result = await supabase
+          .from('housing_group_members')
+          .select(`
+            *,
+            user_profiles(id, username, full_name, avatar_url, bio)
+          `)
+          .eq('group_id', groupId);
+          
+        data = result.data;
+        error = result.error;
+      } else {
+        // For regular groups, fetch from group_members table
+        const result = await supabase
+          .from('group_members')
+          .select(`
+            *,
+            user_profiles(id, username, full_name, avatar_url, bio)
+          `)
+          .eq('group_id', groupId);
+          
+        data = result.data;
+        error = result.error;
+      }
       
       if (error) throw error;
       

@@ -8,8 +8,10 @@ import {
   TextInput,
   FlatList,
   ActivityIndicator,
-  Image
+  Image,
+  Platform
 } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SIZES, FONTS } from '../../constants/theme';
 import { supabase } from '../../lib/supabaseClient';
@@ -116,9 +118,83 @@ const ShareTrayModal = ({ visible, onClose, itemToShare, highlightSharedUsers = 
     try {
       const currentUser = (await supabase.auth.getUser()).data.user;
       
-      // Create a notification for the shared item
-      const notificationType = itemToShare.item_type === 'housing_group' ? 'group' : itemToShare.item_type;
+      // Create a notification for the shared item with a valid notification type
+      let notificationType;
       
+      // Map item types to valid notification types from the constraint
+      switch (itemToShare.item_type) {
+        case 'housing_group':
+          notificationType = 'group';
+          break;
+        case 'housing_listing':
+          notificationType = 'post_share'; // Use post_share for housing listings
+          break;
+        case 'post':
+          notificationType = 'post_share';
+          break;
+        case 'event':
+          notificationType = 'post_share';
+          break;
+        default:
+          notificationType = 'system'; // Default fallback for unknown types
+      }
+      
+      // Track the share in the proper table based on type
+      if (itemToShare.item_type === 'housing_group' && itemToShare.item_id && itemToShare.item_id !== 'temp_id') {
+        // First check if the housing group exists
+        const { data: groupExists, error: checkError } = await supabase
+          .from('housing_groups')
+          .select('id')
+          .eq('id', itemToShare.item_id)
+          .limit(1);
+          
+        if (checkError) {
+          console.error('Error checking if housing group exists:', checkError);
+        } else if (groupExists && groupExists.length > 0) {
+          // Only insert into housing_group_shares if the group exists
+          const { error: shareError } = await supabase
+            .from('housing_group_shares')
+            .insert([
+              {
+                group_id: itemToShare.item_id,
+                sender_id: currentUser.id,
+                recipient_id: userToShareWith.id,
+                status: 'sent',
+                message: `Check out this housing group: ${itemToShare.item_title}`
+              }
+            ]);
+          
+          if (shareError) {
+            console.error('Error recording housing group share:', shareError);
+          }
+        } else {
+          console.log('Skipping housing_group_shares record - group does not exist yet');
+        }
+      } else if (itemToShare.item_type === 'housing_listing' && itemToShare.item_id) {
+        // For housing listings, record in the shared_items table
+        try {
+          const { error: shareError } = await supabase
+            .from('shared_items')
+            .insert([
+              {
+                sender_id: currentUser.id,
+                recipient_id: userToShareWith.id,
+                item_type: 'housing_listing',
+                item_id: itemToShare.item_id,
+                is_favourited: false,
+                dismissed: false
+              }
+            ]);
+            
+          if (shareError) {
+            console.error('Error recording housing listing share:', shareError);
+          }
+        } catch (error) {
+          console.error('Error sharing housing listing:', error);
+        }
+      }
+      
+      // Create a notification
       const { error } = await supabase
         .from('notifications')
         .insert([
@@ -134,13 +210,15 @@ const ShareTrayModal = ({ visible, onClose, itemToShare, highlightSharedUsers = 
       
       if (error) throw error;
       
+      console.log(`Sharing item: ${itemToShare.item_title} with user: ${userToShareWith.username}`);
+      
       // Add the shared user to local state for UI update
       setSelectedUsers(prev => [...prev, userToShareWith.id]);
       setSharedWithIds(prev => [...prev, userToShareWith.id]);
       
-      // Set flash effect
+      // Trigger quick flash animation
       setFlashUser(userToShareWith.id);
-      setTimeout(() => setFlashUser(null), 1000); // Flash for 1 second
+      setTimeout(() => setFlashUser(null), 250); // Flash for just 1/4 second
       
     } catch (err) {
       console.error('Error sharing item:', err);
@@ -152,41 +230,44 @@ const ShareTrayModal = ({ visible, onClose, itemToShare, highlightSharedUsers = 
     const isFlashing = flashUser === item.id;
     
     return (
-      <TouchableOpacity 
-        style={[
-          styles.userItemContainer,
-          isShared && styles.sharedUserItemContainer,
-          isFlashing && styles.flashEffect
-        ]}
-        onPress={() => handleShare(item)}
-        disabled={isShared}
-      >
-        <Image 
-          source={{ uri: item.avatar_url || 'https://via.placeholder.com/40' }}
-          style={styles.userAvatar}
-        />
-        <View style={styles.userInfoContainer}>
-          <Text style={[styles.userName, isShared && styles.sharedUserText]}>
-            {item.full_name || item.username}
-          </Text>
-          {item.username && (
-            <Text style={[styles.userUsername, isShared && styles.sharedUserText]}>
-              @{item.username}
-            </Text>
-          )}
-        </View>
-        {isShared ? (
-          <View style={styles.sentLabel}>
-            <Text style={styles.sentLabelText}>Sent</Text>
-          </View>
-        ) : (
-          <Ionicons 
-            name="paper-plane-outline" 
-            size={24} 
-            color={COLORS.primary} 
+      <View style={styles.userItemWrapper}>
+        <TouchableOpacity 
+          style={[
+            styles.userItemContainer,
+            isShared && styles.sharedUserItemContainer,
+            isFlashing && styles.flashEffect
+          ]}
+          onPress={() => handleShare(item)}
+          disabled={isShared}
+          activeOpacity={0.7}
+        >
+          <Image 
+            source={{ uri: item.avatar_url || 'https://via.placeholder.com/40' }}
+            style={styles.userAvatar}
           />
-        )}
-      </TouchableOpacity>
+          <View style={styles.userInfoContainer}>
+            <Text style={[styles.userName, isShared && styles.sharedUserText]}>
+              {item.full_name || item.username}
+            </Text>
+            {item.username && (
+              <Text style={[styles.userUsername, isShared && styles.sharedUserText]}>
+                @{item.username}
+              </Text>
+            )}
+          </View>
+          {isShared ? (
+            <View style={styles.sentLabel}>
+              <Text style={styles.sentLabelText}>Sent</Text>
+            </View>
+          ) : (
+            <Ionicons 
+              name="paper-plane-outline" 
+              size={24} 
+              color={COLORS.primary} 
+            />
+          )}
+        </TouchableOpacity>
+      </View>
     );
   };
 
@@ -245,7 +326,8 @@ const ShareTrayModal = ({ visible, onClose, itemToShare, highlightSharedUsers = 
             renderItem={renderUserItem}
             keyExtractor={(item) => item.id.toString()}
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={{ paddingBottom: 20 }}
+            contentContainerStyle={{ paddingBottom: 20, paddingHorizontal: 0 }}
+            ItemSeparatorComponent={() => <View style={{ height: 4 }} />}
           />
         )}
       </View>
@@ -258,21 +340,31 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
   },
+  userItemWrapper: {
+    marginVertical: 4,
+    marginHorizontal: 0, // Remove margin to match search bar width exactly
+    borderRadius: 30, // Significantly increased radius for pill-like rounded corners
+    overflow: 'hidden',
+  },
   sharedUserItemContainer: {
     backgroundColor: COLORS.primary,
-    borderRadius: 0,
-    marginHorizontal: -SIZES.padding,
-    paddingHorizontal: SIZES.padding,
+    borderRadius: 0, // No need for border radius on inner container
+    marginHorizontal: 0, // No need for negative margin anymore
+    // Keep padding identical to non-highlighted state to prevent movement
+    paddingHorizontal: SIZES.padding * 0.7,
+    paddingVertical: SIZES.padding * 0.25,
   },
   flashEffect: {
     backgroundColor: COLORS.primary + '80',
+    borderRadius: 30, // Match the wrapper border radius
   },
   sentLabel: {
     borderWidth: 1,
     borderColor: 'white',
     borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    marginRight: 8, // Add right margin to prevent crowding at edge
     backgroundColor: 'transparent',
   },
   sentLabelText: {
@@ -331,17 +423,17 @@ const styles = StyleSheet.create({
   userItemContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: SIZES.padding / 2,
-    paddingHorizontal: SIZES.padding,
-    marginHorizontal: -SIZES.padding,
+    paddingVertical: SIZES.padding * 0.25, // Reduced vertical padding
+    paddingHorizontal: SIZES.padding * 0.7, // Reduced horizontal padding
     borderBottomWidth: 1,
     borderBottomColor: COLORS.lightGray,
+    marginVertical: 2, // Add a small gap between rows
   },
   userAvatar: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    marginRight: SIZES.padding / 2,
+    marginRight: SIZES.padding * 0.8, // Increased spacing between avatar and text
   },
   userInfoContainer: {
     flex: 1,
