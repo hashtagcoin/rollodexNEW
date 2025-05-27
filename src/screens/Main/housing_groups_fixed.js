@@ -11,9 +11,6 @@ import {
   Animated,
   ScrollView
 } from 'react-native';
-
-// Create an animated version of FlatList
-const AnimatedFlatList = Animated.createAnimatedComponent(FlatList);
 import { useFocusEffect } from '@react-navigation/native';
 import AppHeader from '../../components/layout/AppHeader';
 import { Ionicons } from '@expo/vector-icons';
@@ -273,7 +270,7 @@ const HousingGroupsScreen = ({ navigation }) => {
     <View style={viewMode === 'Grid' ? styles.gridCardWrapper : styles.listCardWrapper}>
       <HousingGroupCard 
         item={item}
-        onPress={() => navigation.navigate('HousingGroupDetailScreen', { groupId: item.id })}
+        onPress={() => navigation.navigate('HousingGroupDetail', { groupId: item.id })}
         onActionPress={() => handleCardAction(item)}
         gridMode={viewMode === 'Grid'}
       />
@@ -368,7 +365,7 @@ const HousingGroupsScreen = ({ navigation }) => {
       </Text>
       
       {/* Housing groups list */}
-      <AnimatedFlatList
+      <FlatList
         data={filteredGroups}
         keyExtractor={(item) => item.id}
         renderItem={renderHousingGroup}

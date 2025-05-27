@@ -5,6 +5,7 @@ import HousingGroupsScreen from '../screens/Main/HousingGroupsScreen';
 import EventsListScreen from '../screens/Main/EventsListScreen';
 import UserPostsFeedScreen from '../screens/Social/UserPostsFeedScreen';
 import PostDetailScreen from '../screens/Social/PostDetailScreen';
+import HousingGroupDetailScreen from '../screens/Details/HousingGroupDetailScreen';
 
 const Stack = createStackNavigator();
 
@@ -16,6 +17,7 @@ const SocialStackNavigator = () => {
       <Stack.Screen name="EventsListScreen" component={EventsListScreen} />
       <Stack.Screen name="UserPostsFeedScreen" component={UserPostsFeedScreen} />
       <Stack.Screen name="PostDetailScreen" component={PostDetailScreen} />
+      <Stack.Screen name="HousingGroupDetailScreen" component={HousingGroupDetailScreen} />
     </Stack.Navigator>
   );
 };

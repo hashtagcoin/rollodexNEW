@@ -339,7 +339,8 @@ export const UserProvider = ({ children }) => {
       
       // Create a unique filename
       const fileExt = uri.split('.').pop() || 'jpg';
-      const fileName = `avatar_${user.id}_${Date.now()}.${fileExt}`;
+      // Use a standardized path format to prevent double slashes
+      const fileName = `avatar/${user.id}_${Date.now()}.${fileExt}`;
       
       // Determine content type based on extension
       let contentType = 'image/jpeg';
@@ -374,8 +375,13 @@ export const UserProvider = ({ children }) => {
         throw new Error('Could not get public URL for avatar');
       }
       
-      // Add cache busting parameter
-      const avatarUrl = `${publicUrlData.publicUrl}?t=${Date.now()}`;
+      // Clean the URL to ensure no double slashes and add cache busting
+      let publicUrl = publicUrlData.publicUrl;
+      // Replace any double slashes after the protocol
+      publicUrl = publicUrl.replace(/(https?:\/\/)([^\/]*)\/\/+/g, '$1$2/');
+      const avatarUrl = `${publicUrl}?t=${Date.now()}`;
+      
+      console.log('Final avatar URL:', avatarUrl);
       
       // Update user_profiles table
       const { error: updateError } = await supabase

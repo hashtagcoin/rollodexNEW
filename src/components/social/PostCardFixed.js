@@ -105,6 +105,33 @@ const PostCard = ({ post, onPress, showActions = true }) => {
     checkLikeStatus();
   }, [post]);
   
+  // Normalize avatar URL to handle possible double slashes
+  const normalizeAvatarUrl = (url) => {
+    if (!url) return null;
+    
+    // Replace any double slashes after the protocol with single slashes
+    return url.replace(/(https?:\/\/)([^\/]*)\/\/+/g, '$1$2/');
+  };
+
+  // Fetch user details with URL normalization
+  const fetchUserDetails = async () => {
+    try {
+      if (post && post.user_id) {
+        // Get user details using the service function
+        const userData = await getUserDetails(post.user_id);
+        
+        if (userData && userData.avatar_url) {
+          // Normalize the avatar URL to prevent issues with double slashes
+          userData.avatar_url = normalizeAvatarUrl(userData.avatar_url);
+        }
+        
+        setUser(userData);
+      }
+    } catch (error) {
+      console.error('Error fetching user details:', error);
+    }
+  };
+  
   // Check bookmarked status when component mounts
   useEffect(() => {
     if (post && post.post_id) {
@@ -147,17 +174,6 @@ const PostCard = ({ post, onPress, showActions = true }) => {
       alert('Failed to save to collection. Please try again.');
     } finally {
       setSavingToCollection(false);
-    }
-  };
-
-  const fetchUserDetails = async () => {
-    try {
-      if (post && post.user_id) {
-        const userData = await getUserDetails(post.user_id);
-        setUser(userData);
-      }
-    } catch (error) {
-      console.error('Error fetching user details:', error);
     }
   };
 
@@ -341,9 +357,8 @@ const PostCard = ({ post, onPress, showActions = true }) => {
         }}
       >
         <FallbackImage 
-          source={{ uri: user?.avatar_url || 'https://via.placeholder.com/40' }} 
+          source={user?.avatar_url} 
           style={styles.avatar}
-          fallbackSource={'https://via.placeholder.com/40'}
         />
         <View>
           <Text style={styles.username}>{user?.username || 'User'}</Text>

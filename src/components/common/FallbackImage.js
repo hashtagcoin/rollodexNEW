@@ -15,7 +15,7 @@ import { COLORS } from '../../constants/theme';
  */
 const FallbackImage = ({ 
   source, 
-  fallbackSource = 'https://via.placeholder.com/300',
+  fallbackSource = require('../../assets/placeholder.png'),
   style, 
   imageProps = {},
   onLoad,
@@ -26,22 +26,32 @@ const FallbackImage = ({
   
   // Process the source to ensure it's in the correct format for Image component
   const processSource = (src) => {
+    console.log('[FALLBACK IMAGE DEBUG] Processing source:', src);
+    
     if (typeof src === 'string') {
+      console.log('[FALLBACK IMAGE DEBUG] Source is string, returning uri object');
       return { uri: src };
     } else if (src && src.uri) {
       // Already a proper source object with URI
+      console.log('[FALLBACK IMAGE DEBUG] Source already has uri property:', src.uri);
       return src;
     }
-    // Default fallback
-    return { uri: fallbackSource };
+    // Default fallback - return the fallbackSource directly since it's a require() call
+    console.log('[FALLBACK IMAGE DEBUG] Using fallback source:', fallbackSource);
+    return fallbackSource;
   };
   
   const handleLoad = () => {
+    console.log('[FALLBACK IMAGE DEBUG] Image loaded successfully:', source);
     setIsLoading(false);
     if (onLoad) onLoad();
   };
   
   const handleError = () => {
+    console.log('[FALLBACK IMAGE DEBUG] Image loading error for source:', source);
+    if (typeof source === 'object' && source.uri) {
+      console.log('[FALLBACK IMAGE DEBUG] URI that failed:', source.uri);
+    }
     setIsLoading(false);
     setHasError(true);
     if (onError) onError();
@@ -59,7 +69,7 @@ const FallbackImage = ({
         />
       ) : (
         <Image
-          source={processSource(fallbackSource)}
+          source={fallbackSource}
           style={[styles.image, style]}
           onLoad={() => setIsLoading(false)}
           {...imageProps}

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, FlatList, Alert, Picker } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, FlatList, Alert } from 'react-native';
+import { Picker } from '@react-native-picker/picker';
 import AppHeader from '../../components/layout/AppHeader';
 import { Ionicons, Feather } from '@expo/vector-icons';
 

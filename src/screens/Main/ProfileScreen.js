@@ -297,13 +297,17 @@ const ProfileScreen = () => {
               scrollEnabled={false}
               contentContainerStyle={styles.cardList}
               renderItem={({ item }) => (
-                <View style={styles.airbnbCard}>
+                <TouchableOpacity 
+                  style={styles.airbnbCard}
+                  onPress={() => navigation.navigate('BookingDetail', { bookingId: item.id })}
+                  activeOpacity={0.7}
+                >
                   <Image source={{ uri: item.image }} style={styles.cardImage} />
                   <View style={styles.cardContent}>
                     <Text style={styles.cardTitle}>{item.title}</Text>
                     <Text style={styles.cardDesc}>{item.location} • {item.date}</Text>
                   </View>
-                </View>
+                </TouchableOpacity>
               )}
             />
           </View>
