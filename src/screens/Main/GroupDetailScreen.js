@@ -91,13 +91,20 @@ const GroupDetailScreen = () => {
           
         data = result.data;
         error = result.error;
-        data.type = 'group';
+        
+        // Add null check before setting type
+        if (data) {
+          data.type = 'group';
+        }
       }
       
       if (error) throw error;
       
       if (!data) {
-        throw new Error('Group not found');
+        // Instead of throwing an error, set a user-friendly error state
+        setError('Group not found or no longer available');
+        setLoading(false);
+        return; // Exit early
       }
       
       // Only update state if component is still mounted
@@ -196,7 +203,7 @@ const GroupDetailScreen = () => {
         setPostsLoading(false);
       }
     }
-  }, [groupId, user]);
+  }, [groupId]); // Remove user from dependencies to prevent re-fetching when user changes
 
   // Fetch group members
   const fetchGroupMembers = useCallback(async () => {
@@ -384,7 +391,7 @@ const GroupDetailScreen = () => {
     return () => {
       isMounted.current = false;
     };
-  }, [fetchGroupData, fetchGroupPosts, fetchGroupMembers, checkMembership, checkFavorite, groupId]);
+  }, [groupId]); // Only depend on groupId to prevent infinite rerenders
 
   // Handle joining or leaving a group
   const joinGroup = useCallback(async (autoJoin = false) => {
@@ -452,7 +459,7 @@ const GroupDetailScreen = () => {
             group_id: groupId,
             user_id: user.id,
             role: 'member',
-            created_at: new Date().toISOString()
+            joined_at: new Date().toISOString()
           });
           
         if (joinError) throw joinError;
@@ -488,14 +495,15 @@ const GroupDetailScreen = () => {
     }
   }, [group, user, joinGroup]);
   
-  // Handle tab changes
+  // Handle tab changes - only fetch initial data when tab is selected
   useEffect(() => {
+    // Only fetch data if we've switched to this tab AND data isn't already loading
     if (selectedTab === 'Posts' && posts.length === 0 && !postsLoading) {
       fetchGroupPosts();
     } else if (selectedTab === 'Members' && members.length === 0 && !membersLoading) {
       fetchGroupMembers();
     }
-  }, [selectedTab, fetchGroupPosts, fetchGroupMembers, posts.length, members.length, postsLoading, membersLoading]);
+  }, [selectedTab]); // Only run when tab changes
 
   // Post interactions
   const [likedPosts, setLikedPosts] = useState({});

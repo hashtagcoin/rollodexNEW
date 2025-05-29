@@ -18,7 +18,7 @@ const windowWidth = Dimensions.get('window').width;
 // We'll replace mockPosts with real data from Supabase
 const mockGroups = Array.from({ length: 3 }, (_, i) => ({ id: i + '', name: `Group ${i+1}`, desc: 'Airbnb-style group card', image: `https://picsum.photos/seed/group${i}/400/200` }));
 const mockBookings = Array.from({ length: 2 }, (_, i) => ({ id: i + '', title: `Booking ${i+1}`, location: 'Melbourne', date: '2025-06-0' + (i+1), image: `https://picsum.photos/seed/booking${i}/400/200` }));
-const mockFriends = Array.from({ length: 8 }, (_, i) => ({ id: i + '', name: `Friend ${i+1}`, avatar: `https://randomuser.me/api/portraits/men/${i+10}.jpg` }));
+// We'll fetch real friends data from Supabase instead of using mock data
 
 const ProfileScreen = () => {
   const navigation = useNavigation();
@@ -71,10 +71,11 @@ const ProfileScreen = () => {
   );
   const [friendSearch, setFriendSearch] = useState('');
   const [addFriendSearch, setAddFriendSearch] = useState('');
-  const [friendRequests, setFriendRequests] = useState([
-    { id: '1', name: 'Alex', avatar: 'https://randomuser.me/api/portraits/men/11.jpg' },
-    { id: '2', name: 'Jamie', avatar: 'https://randomuser.me/api/portraits/women/12.jpg' },
-  ]);
+  const [incomingRequests, setIncomingRequests] = useState([]);
+  const [outgoingRequests, setOutgoingRequests] = useState([]);
+  const [friendsList, setFriendsList] = useState([]);
+  const [loadingFriends, setLoadingFriends] = useState(false);
+  const [loadingRequests, setLoadingRequests] = useState(false);
   const [selectedFriend, setSelectedFriend] = useState(null);
   const [showAddFriendModal, setShowAddFriendModal] = useState(false);
   const [showGroupChatModal, setShowGroupChatModal] = useState(false);
@@ -82,10 +83,13 @@ const ProfileScreen = () => {
   const [allUsers, setAllUsers] = useState([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [friendships, setFriendships] = useState([]);
-  const [addFriendResults, setAddFriendResults] = useState([
-    { id: '101', name: 'Taylor', avatar: 'https://randomuser.me/api/portraits/men/21.jpg' },
-    { id: '102', name: 'Morgan', avatar: 'https://randomuser.me/api/portraits/women/22.jpg' },
-  ]);
+  const [addFriendResults, setAddFriendResults] = useState([]);
+  
+  // Add state for Groups and Bookings tabs
+  const [favoriteGroups, setFavoriteGroups] = useState([]);
+  const [loadingGroups, setLoadingGroups] = useState(false);
+  const [upcomingBookings, setUpcomingBookings] = useState([]);
+  const [loadingBookings, setLoadingBookings] = useState(false);
   
   // Handle navigation back to dashboard
   const handleBackToDashboard = () => {
@@ -94,23 +98,38 @@ const ProfileScreen = () => {
 
   // Fetch posts using the user from context
   useEffect(() => {
-    const fetchPosts = async () => {
+    const fetchData = async () => {
       try {
         if (user) {
           setCurrentUser(user);
+          
           // Fetch posts for the current user
           setLoadingPosts(true);
-          const userPosts = await getUserPosts(user.id);
-          setPosts(userPosts || []);
-          setLoadingPosts(false);
+          try {
+            const userPosts = await getUserPosts(user.id);
+            setPosts(userPosts || []);
+          } catch (error) {
+            console.error('Error fetching posts:', error);
+          } finally {
+            setLoadingPosts(false);
+          }
+          
+          // Fetch friend requests and friendships
+          fetchFriendRequests();
+          fetchFriendships();
+          
+          // Fetch favorite groups
+          fetchFavoriteGroups();
+          
+          // Fetch upcoming bookings
+          fetchUpcomingBookings();
         }
       } catch (error) {
-        console.error('Error fetching posts:', error);
-        setLoadingPosts(false);
+        console.error('Error fetching profile data:', error);
       }
     };
     
-    fetchPosts();
+    fetchData();
   }, [user]);  // Re-fetch when user changes
 
   // Refresh posts after creating a new one
@@ -133,8 +152,173 @@ const ProfileScreen = () => {
       // We already fetch posts in another useEffect
       fetchAllUsers();
       fetchFriendships();
+      fetchFriendRequests();
     }
   }, [currentUser]);
+  
+  // Fetch favorite groups for the current user
+  const fetchFavoriteGroups = async () => {
+    if (!currentUser) return;
+    
+    setLoadingGroups(true);
+    try {
+      // Get groups that the user has favorited (check for both regular groups and housing groups)
+      const { data: favoriteData, error } = await supabase
+        .from('user_favorites_detailed')
+        .select('*')
+        .eq('user_id', currentUser.id)
+        .or('item_type.eq.group,item_type.eq.housing_group');
+      
+      if (error) throw error;
+      
+      console.log('Favorite groups data:', favoriteData);
+      
+      // Also fetch directly from favorites table as a backup
+      const { data: regularFavorites, error: regularError } = await supabase
+        .from('favorites')
+        .select('*')
+        .eq('user_id', currentUser.id)
+        .eq('item_type', 'group');
+      
+      if (regularError) throw regularError;
+      
+      console.log('Regular favorites data:', regularFavorites);
+      
+      // Combine both results if needed
+      if (regularFavorites && regularFavorites.length > 0) {
+        // We need to fetch the group details for these favorites
+        const groupIds = regularFavorites.map(fav => fav.item_id);
+        
+        const { data: groupDetails, error: groupError } = await supabase
+          .from('groups')
+          .select('*')
+          .in('id', groupIds);
+          
+        if (groupError) throw groupError;
+        
+        console.log('Group details for favorites:', groupDetails);
+        
+        // Format these groups like user_favorites_detailed format
+        const formattedGroups = groupDetails.map(group => {
+          const favorite = regularFavorites.find(fav => fav.item_id === group.id);
+          return {
+            favorite_id: favorite.favorite_id,
+            item_id: group.id,
+            item_title: group.name,
+            item_description: group.description,
+            item_image_url: group.avatar_url || 'https://via.placeholder.com/300x200?text=Group',
+            favorited_at: favorite.created_at
+          };
+        });
+        
+        // Combine with the other favorites
+        setFavoriteGroups([...favoriteData, ...formattedGroups]);
+      } else {
+        setFavoriteGroups(favoriteData || []);
+      }
+    } catch (error) {
+      console.error('Error fetching favorite groups:', error);
+      Alert.alert('Error', 'Failed to load favorite groups');
+    } finally {
+      setLoadingGroups(false);
+    }
+  };
+  
+  // Fetch upcoming bookings for the current user
+  const fetchUpcomingBookings = async () => {
+    if (!currentUser) return;
+    
+    setLoadingBookings(true);
+    try {
+      // Get upcoming bookings (scheduled time is in the future)
+      const { data, error } = await supabase
+        .from('bookings_with_details')
+        .select('*')
+        .eq('user_profile_id', currentUser.id)
+        .gte('scheduled_at', new Date().toISOString())
+        .order('scheduled_at', { ascending: true });
+      
+      if (error) throw error;
+      
+      console.log('Upcoming bookings data:', data);
+      setUpcomingBookings(data || []);
+    } catch (error) {
+      console.error('Error fetching upcoming bookings:', error);
+      Alert.alert('Error', 'Failed to load upcoming bookings');
+    } finally {
+      setLoadingBookings(false);
+    }
+  };
+  
+  // Fetch friend requests (both incoming and outgoing)
+  const fetchFriendRequests = async () => {
+    if (!currentUser) return;
+    
+    setLoadingRequests(true);
+    try {
+      // Log the current user ID for debugging
+      console.log('Fetching friend requests for user ID:', currentUser.id);
+      
+      // 1. Get incoming requests (where current user is the addressee/friend_id)
+      const { data: incomingData, error: incomingError } = await supabase
+        .from('friendships_with_profiles')
+        .select('*')
+        .eq('addressee_id', currentUser.id)
+        .eq('status', 'pending');
+      
+      if (incomingError) {
+        console.error('Error fetching incoming requests:', incomingError);
+        throw incomingError;
+      }
+      
+      console.log('Incoming requests data:', incomingData);
+      
+      // Format incoming requests for display
+      const formattedIncoming = incomingData.map(request => ({
+        id: request.id, // This ID will be used for accept/decline operations
+        userId: request.requester_id,
+        name: request.requester_name || 'User',
+        avatar: request.requester_avatar || 'https://via.placeholder.com/150',
+        timestamp: request.created_at,
+        type: 'incoming'
+      }));
+      
+      // 2. Get outgoing requests (where current user is the requester/user_id)
+      const { data: outgoingData, error: outgoingError } = await supabase
+        .from('friendships_with_profiles')
+        .select('*')
+        .eq('requester_id', currentUser.id)
+        .eq('status', 'pending');
+      
+      if (outgoingError) {
+        console.error('Error fetching outgoing requests:', outgoingError);
+        throw outgoingError;
+      }
+      
+      console.log('Outgoing requests data:', outgoingData);
+      
+      // Format outgoing requests for display
+      const formattedOutgoing = outgoingData.map(request => ({
+        id: request.id, // This ID will be used for cancel operations
+        userId: request.addressee_id,
+        name: request.addressee_name || 'User',
+        avatar: request.addressee_avatar || 'https://via.placeholder.com/150',
+        timestamp: request.created_at,
+        type: 'outgoing'
+      }));
+      
+      setIncomingRequests(formattedIncoming);
+      setOutgoingRequests(formattedOutgoing);
+      
+      console.log('Formatted incoming requests:', formattedIncoming);
+      console.log('Formatted outgoing requests:', formattedOutgoing);
+    } catch (error) {
+      console.error('Error fetching friend requests:', error);
+      Alert.alert('Error', 'Failed to load friend requests');
+    } finally {
+      setLoadingRequests(false);
+    }
+  };
 
   // Fetch all users from user_profiles table
   const fetchAllUsers = async () => {
@@ -158,17 +342,38 @@ const ProfileScreen = () => {
   const fetchFriendships = async () => {
     if (!currentUser) return;
     
+    setLoadingFriends(true);
     try {
+      // Get accepted friendships with profile details
       const { data, error } = await supabase
-        .from('friendships')
+        .from('friendships_with_profiles')
         .select('*')
-        .or(`user_id.eq.${currentUser.id},friend_id.eq.${currentUser.id}`)
+        .or(`requester_id.eq.${currentUser.id},addressee_id.eq.${currentUser.id}`)
         .eq('status', 'accepted');
       
       if (error) throw error;
+      
+      // Format the friends list for display
+      const formattedFriends = data.map(friendship => {
+        // Determine if the current user is the requester or addressee
+        const isRequester = friendship.requester_id === currentUser.id;
+        
+        return {
+          id: friendship.id,
+          userId: isRequester ? friendship.addressee_id : friendship.requester_id,
+          name: isRequester ? (friendship.addressee_name || 'User') : (friendship.requester_name || 'User'),
+          avatar: isRequester ? (friendship.addressee_avatar || 'https://via.placeholder.com/150') : (friendship.requester_avatar || 'https://via.placeholder.com/150'),
+          timestamp: friendship.created_at
+        };
+      });
+      
+      setFriendsList(formattedFriends);
       setFriendships(data || []);
     } catch (error) {
       console.error('Error fetching friendships:', error);
+      Alert.alert('Error', 'Failed to load friends list');
+    } finally {
+      setLoadingFriends(false);
     }
   };
 
@@ -176,9 +381,79 @@ const ProfileScreen = () => {
   const isFriend = (userId) => {
     if (!currentUser) return false;
     return friendships.some(
-      f => (f.user_id === currentUser.id && f.friend_id === userId) || 
-           (f.friend_id === currentUser.id && f.user_id === userId)
+      f => (f.requester_id === currentUser.id && f.addressee_id === userId) || 
+           (f.addressee_id === currentUser.id && f.requester_id === userId)
     );
+  };
+  
+  // Handle accepting a friend request
+  const handleAcceptFriendRequest = async (requestId) => {
+    if (!currentUser) return;
+    
+    try {
+      // Update the relationship status to accepted
+      const { error } = await supabase
+        .from('user_relationships')
+        .update({ status: 'accepted' })
+        .eq('user_relationships_id', requestId);
+      
+      if (error) throw error;
+      
+      // Refresh friend requests and friendships
+      fetchFriendRequests();
+      fetchFriendships();
+      
+      Alert.alert('Success', 'Friend request accepted!');
+    } catch (error) {
+      console.error('Error accepting friend request:', error);
+      Alert.alert('Error', 'Failed to accept friend request. Please try again.');
+    }
+  };
+  
+  // Handle declining an incoming friend request
+  const handleDeclineFriendRequest = async (requestId) => {
+    if (!currentUser) return;
+    
+    try {
+      // Delete the relationship record
+      const { error } = await supabase
+        .from('user_relationships')
+        .delete()
+        .eq('user_relationships_id', requestId);
+      
+      if (error) throw error;
+      
+      // Refresh friend requests
+      fetchFriendRequests();
+      
+      Alert.alert('Success', 'Friend request declined.');
+    } catch (error) {
+      console.error('Error declining friend request:', error);
+      Alert.alert('Error', 'Failed to decline friend request. Please try again.');
+    }
+  };
+  
+  // Handle canceling an outgoing friend request
+  const handleCancelFriendRequest = async (requestId) => {
+    if (!currentUser) return;
+    
+    try {
+      // Delete the relationship record
+      const { error } = await supabase
+        .from('user_relationships')
+        .delete()
+        .eq('user_relationships_id', requestId);
+      
+      if (error) throw error;
+      
+      // Refresh friend requests
+      fetchFriendRequests();
+      
+      Alert.alert('Success', 'Friend request canceled.');
+    } catch (error) {
+      console.error('Error canceling friend request:', error);
+      Alert.alert('Error', 'Failed to cancel friend request. Please try again.');
+    }
   };
 
   // Send friend request
@@ -186,11 +461,35 @@ const ProfileScreen = () => {
     if (!currentUser) return;
     
     try {
+      // First check if there's an existing relationship or request
+      const { data: existingRelationship, error: checkError } = await supabase
+        .from('friendships_with_profiles')
+        .select('*')
+        .or(`and(requester_id.eq.${currentUser.id},addressee_id.eq.${userId}),and(requester_id.eq.${userId},addressee_id.eq.${currentUser.id})`)
+        .single();
+      
+      if (checkError && checkError.code !== 'PGRST116') {
+        // PGRST116 means no row found, which is what we want
+        throw checkError;
+      }
+      
+      if (existingRelationship) {
+        if (existingRelationship.status === 'accepted') {
+          Alert.alert('Already Friends', 'You are already friends with this user.');
+        } else if (existingRelationship.requester_id === currentUser.id) {
+          Alert.alert('Request Pending', 'You have already sent a friend request to this user.');
+        } else {
+          Alert.alert('Request Received', 'This user has already sent you a friend request. Check your friend requests to accept.');
+        }
+        return;
+      }
+      
+      // If no existing relationship, create a new one
       const { error } = await supabase
-        .from('friendships')
+        .from('user_relationships')
         .insert({
-          user_id: currentUser.id,
-          friend_id: userId,
+          requester_id: currentUser.id,
+          addressee_id: userId,
           status: 'pending',
           category: 'friend',
           created_at: new Date().toISOString(),
@@ -199,11 +498,21 @@ const ProfileScreen = () => {
       
       if (error) throw error;
       
+      // Refresh friend requests
+      fetchFriendRequests();
+      fetchAllUsers(); // Refresh users list as well
+      
       Alert.alert('Success', 'Friend request sent successfully!');
       setShowUsersTray(false);
     } catch (error) {
       console.error('Error sending friend request:', error);
-      Alert.alert('Error', 'Failed to send friend request. Please try again.');
+      
+      // Show a more helpful error message
+      if (error.code === '23505') {
+        Alert.alert('Already Requested', 'You already have a pending friend request with this user.');
+      } else {
+        Alert.alert('Error', 'Failed to send friend request. Please try again.');
+      }
     }
   };
   
@@ -266,175 +575,263 @@ const ProfileScreen = () => {
       case 'Groups':
         return (
           <View style={{ flex: 1 }}>
-            
-            <FlatList
-              key="groups-list" /* Adding key to fix numColumns change error */
-              data={mockGroups}
-              keyExtractor={item => item.id}
-              scrollEnabled={false}
-              contentContainerStyle={styles.cardList}
-              renderItem={({ item }) => (
-                <View style={styles.airbnbCard}>
-                  <Image source={{ uri: item.image }} style={styles.cardImage} />
-                  <View style={styles.cardContent}>
-                    <Text style={styles.cardTitle}>{item.name}</Text>
-                    <Text style={styles.cardDesc}>{item.desc}</Text>
-                  </View>
-                </View>
-              )}
-            />
+            {loadingGroups ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={COLORS.primary} />
+                <Text style={styles.loadingText}>Loading favorite groups...</Text>
+              </View>
+            ) : favoriteGroups.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyText}>No favorite groups yet</Text>
+                <Text style={styles.emptySubText}>Browse groups and mark your favorites</Text>
+              </View>
+            ) : (
+              <FlatList
+                key="groups-list"
+                data={favoriteGroups}
+                keyExtractor={(item, index) => item.favorite_id ? `${item.favorite_id}-${index}` : `group-${index}`}
+                scrollEnabled={false} /* Disable scrolling to prevent nested scrolling issues */
+                contentContainerStyle={styles.cardList}
+                renderItem={({ item }) => (
+                  <TouchableOpacity 
+                    style={styles.airbnbCard}
+                    onPress={() => {
+                      // Determine where to navigate based on item_type
+                      if (item.item_type === 'housing_group') {
+                        navigation.navigate('HousingGroupDetailScreen', { groupId: item.item_id });
+                      } else {
+                        navigation.navigate('GroupDetail', { 
+                          groupId: item.item_id,
+                          groupType: item.item_type || 'group'
+                        });
+                      }
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Image 
+                      source={{ uri: item.item_image_url || 'https://via.placeholder.com/300x200?text=Group' }} 
+                      style={styles.cardImage} 
+                    />
+                    <View style={styles.cardContent}>
+                      <Text style={styles.cardTitle}>{item.item_title || 'Group'}</Text>
+                      <Text style={styles.cardDesc} numberOfLines={2}>
+                        {item.item_description || 'No description available'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                )}
+              />
+            )}
           </View>
         );
         
       case 'Bookings':
         return (
           <View style={{ flex: 1 }}>
-            
-            <FlatList
-              key="bookings-list" /* Adding key to fix numColumns change error */
-              data={mockBookings}
-              keyExtractor={item => item.id}
-              scrollEnabled={false}
-              contentContainerStyle={styles.cardList}
-              renderItem={({ item }) => (
-                <TouchableOpacity 
-                  style={styles.airbnbCard}
-                  onPress={() => navigation.navigate('BookingDetail', { bookingId: item.id })}
-                  activeOpacity={0.7}
-                >
-                  <Image source={{ uri: item.image }} style={styles.cardImage} />
-                  <View style={styles.cardContent}>
-                    <Text style={styles.cardTitle}>{item.title}</Text>
-                    <Text style={styles.cardDesc}>{item.location} • {item.date}</Text>
-                  </View>
-                </TouchableOpacity>
-              )}
-            />
+            {loadingBookings ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={COLORS.primary} />
+                <Text style={styles.loadingText}>Loading upcoming bookings...</Text>
+              </View>
+            ) : upcomingBookings.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyText}>No upcoming bookings</Text>
+                <Text style={styles.emptySubText}>Book services to see them here</Text>
+              </View>
+            ) : (
+              <FlatList
+                key="bookings-list"
+                data={upcomingBookings}
+                keyExtractor={item => item.booking_id}
+                scrollEnabled={false} /* Disable scrolling to prevent nested scrolling issues */
+                contentContainerStyle={styles.cardList}
+                renderItem={({ item }) => {
+                  // Format the date for display
+                  const bookingDate = new Date(item.scheduled_at);
+                  const formattedDate = bookingDate.toLocaleDateString('en-US', {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  });
+                  
+                  return (
+                    <TouchableOpacity 
+                      style={styles.airbnbCard}
+                      onPress={() => navigation.navigate('BookingDetail', { bookingId: item.booking_id })}
+                      activeOpacity={0.7}
+                    >
+                      <Image 
+                        source={{ 
+                          uri: item.service_media_urls && item.service_media_urls.length > 0
+                            ? item.service_media_urls[0]
+                            : 'https://via.placeholder.com/300x200?text=Service'
+                        }} 
+                        style={styles.cardImage} 
+                      />
+                      <View style={styles.cardContent}>
+                        <Text style={styles.cardTitle}>{item.service_title || 'Booking'}</Text>
+                        <Text style={styles.cardDesc}>
+                          {item.service_category || 'Service'} • {formattedDate}
+                        </Text>
+                        <View style={styles.bookingStatusContainer}>
+                          <Text style={[styles.bookingStatus, { backgroundColor: item.booking_status === 'confirmed' ? '#4CAF50' : '#FFC107' }]}>
+                            {item.booking_status ? item.booking_status.charAt(0).toUpperCase() + item.booking_status.slice(1) : 'Pending'}
+                          </Text>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                }}
+              />
+            )}
           </View>
         );
         
       case 'Friends':
         // Filter friends based on search
-        const filteredFriends = mockFriends.filter(f =>
+        const filteredFriends = friendsList.filter(f =>
           f.name.toLowerCase().includes(friendSearch.toLowerCase())
         );
 
-        // Create sections for the flat list
-        const sections = [];
-
-        // 1. Add search header
-        sections.push({
-          type: 'header',
-          content: (
+        return (
+          <View style={{flex: 1}}>
+            {/* Search Header */}
             <View style={styles.friendSearchRow}>
-              <TextInput
-                style={styles.friendSearchInput}
-                placeholder="Search friends..."
-                value={friendSearch}
-                onChangeText={setFriendSearch}
-              />
+              <View style={styles.searchInputContainer}>
+                <Ionicons name="search" size={18} color="#777" style={styles.searchIcon} />
+                <TextInput
+                  style={styles.friendSearchInput}
+                  placeholder="Search friends..."
+                  value={friendSearch}
+                  onChangeText={setFriendSearch}
+                  placeholderTextColor="#888"
+                />
+              </View>
               <TouchableOpacity 
                 style={styles.addFriendBtn} 
-                onPress={() => setShowAddFriendModal(true)}
+                onPress={() => setShowUsersTray(true)}
               >
                 <Text style={styles.addFriendBtnText}>Add</Text>
               </TouchableOpacity>
             </View>
-          )
-        });
-
-        // 2. Add friend requests section if any
-        if (friendRequests.length > 0) {
-          sections.push({
-            type: 'requestsHeader',
-            content: <Text style={styles.sectionHeader}>Friend Requests</Text>
-          });
-          sections.push({
-            type: 'requests',
-            content: friendRequests
-          });
-        }
-
-        // 3. Add friends section
-        sections.push({
-          type: 'friendsHeader',
-          content: <Text style={styles.sectionHeader}>Your Friends</Text>
-        });
-        sections.push({
-          type: 'friends',
-          content: filteredFriends
-        });
-
-        // Render the Friends tab with a single top-level FlatList
-        const renderFriendsSection = () => (
-          <View style={{flex: 1}}>
-            <FlatList
-              key="friends-sections" /* Adding key to fix numColumns change error */
-              data={sections}
-              keyExtractor={(item, index) => item.type + index}
-              scrollEnabled={false}
-              renderItem={({ item }) => {
-                switch (item.type) {
-                  case 'header':
-                    return item.content;
-                    
-                  case 'requestsHeader':
-                  case 'friendsHeader':
-                    return <View style={styles.sectionHeaderContainer}>{item.content}</View>;
-                    
-                  case 'requests':
-                    return (
-                      <View 
-                        style={[styles.requestsContainer, styles.requestsContentContainer]}
-                      >
-                        {item.content.map(request => (
-                          <View key={request.id} style={styles.friendRequestCard}>
-                            <Image source={{ uri: request.avatar }} style={styles.friendAvatarSmall} />
-                            <Text style={styles.friendNameSmall}>{request.name}</Text>
-                            <View style={styles.friendRequestActions}>
-                              <TouchableOpacity style={styles.acceptBtn}>
-                                <Text style={styles.acceptBtnText}>Accept</Text>
-                              </TouchableOpacity>
-                              <TouchableOpacity style={styles.declineBtn}>
-                                <Text style={styles.declineBtnText}>Decline</Text>
-                              </TouchableOpacity>
-                            </View>
-                          </View>
-                        ))}
-                      </View>
-                    );
-                    
-                  case 'friends':
-                    return (
-                      <View style={styles.friendsGridContainer}>
-                        {item.content.map((friend, index) => (
-                          <TouchableOpacity 
-                            key={friend.id}
-                            style={styles.friendGridItem} 
-                            onPress={() => handleOpenFriendModal(friend)}
-                          >
-                            <Image 
-                              source={{ uri: friend.avatar }} 
-                              style={styles.friendGridAvatar} 
-                            />
-                            <Text style={styles.friendGridName} numberOfLines={1}>{friend.name}</Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    );
-                  default:
-                    return null;
-                }
-              }}
-              showsVerticalScrollIndicator={false}
-            />
-          </View>
-        );
-        
-        return (
-          <View style={{flex: 1}}>
             
-            {renderFriendsSection()}
+            {/* Friend Requests Section */}
+            {loadingRequests ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="small" color={COLORS.primary} />
+                <Text style={styles.loadingText}>Loading requests...</Text>
+              </View>
+            ) : (
+              <>
+                {/* Incoming Friend Requests */}
+                {incomingRequests.length > 0 && (
+                  <View>
+                    <Text style={styles.sectionHeader}>Incoming Requests</Text>
+                    <ScrollView 
+                      horizontal 
+                      showsHorizontalScrollIndicator={false}
+                      style={styles.requestsScrollView}
+                      contentContainerStyle={styles.requestsContentContainer}
+                    >
+                      {incomingRequests.map(request => (
+                        <View key={request.id} style={styles.friendRequestCard}>
+                          <Image 
+                            source={{ uri: request.avatar }} 
+                            style={styles.friendAvatarSmall} 
+                          />
+                          <Text style={styles.friendNameSmall}>{request.name}</Text>
+                          <View style={styles.friendRequestActions}>
+                            <TouchableOpacity 
+                              style={styles.acceptBtn}
+                              onPress={() => handleAcceptFriendRequest(request.id)}
+                            >
+                              <Text style={styles.acceptBtnText}>Accept</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity 
+                              style={styles.declineBtn}
+                              onPress={() => handleDeclineFriendRequest(request.id)}
+                            >
+                              <Text style={styles.declineBtnText}>Decline</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
+                
+                {/* Outgoing Friend Requests */}
+                {outgoingRequests.length > 0 && (
+                  <View>
+                    <Text style={styles.sectionHeader}>Pending Requests</Text>
+                    <ScrollView 
+                      horizontal 
+                      showsHorizontalScrollIndicator={false}
+                      style={styles.requestsScrollView}
+                      contentContainerStyle={styles.requestsContentContainer}
+                    >
+                      {outgoingRequests.map(request => (
+                        <View key={request.id} style={styles.friendRequestCard}>
+                          <Image 
+                            source={{ uri: request.avatar }} 
+                            style={styles.friendAvatarSmall} 
+                          />
+                          <Text style={styles.friendNameSmall}>{request.name}</Text>
+                          <View style={styles.pendingRequestStatus}>
+                            <Text style={styles.pendingStatusText}>Pending</Text>
+                            <TouchableOpacity 
+                              style={styles.cancelRequestBtn}
+                              onPress={() => handleCancelFriendRequest(request.id)}
+                            >
+                              <Text style={styles.cancelRequestBtnText}>Cancel</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
+                
+                {/* No Requests Message */}
+                {incomingRequests.length === 0 && outgoingRequests.length === 0 && (
+                  <View style={styles.emptyRequestsContainer}>
+                    <Text style={styles.emptyRequestsText}>No friend requests</Text>
+                  </View>
+                )}
+              </>
+            )}
+            
+            {/* Friends Section */}
+            <Text style={styles.sectionHeader}>Your Friends</Text>
+            {loadingFriends ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="small" color={COLORS.primary} />
+                <Text style={styles.loadingText}>Loading friends...</Text>
+              </View>
+            ) : filteredFriends.length > 0 ? (
+              <View style={styles.friendsGridContainer}>
+                {filteredFriends.map((friend) => (
+                  <TouchableOpacity 
+                    key={friend.id}
+                    style={styles.friendGridItem} 
+                    onPress={() => handleOpenFriendModal(friend)}
+                  >
+                    <Image 
+                      source={{ uri: friend.avatar }} 
+                      style={styles.friendGridAvatar} 
+                    />
+                    <Text style={styles.friendGridName} numberOfLines={1}>{friend.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ) : (
+              <View style={styles.emptyFriendsContainer}>
+                <Text style={styles.emptyFriendsText}>You don't have any friends yet</Text>
+                <Text style={styles.emptyFriendsSubText}>Tap the Add button to find friends</Text>
+              </View>
+            )}
             
             {/* Friend Details Modal */}
             <Modal
@@ -998,6 +1395,41 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 14,
   },
+  pendingRequestStatus: {
+    marginTop: 8,
+    alignItems: 'center',
+  },
+  pendingStatusText: {
+    fontSize: 13,
+    color: '#777',
+    marginBottom: 6,
+  },
+  cancelRequestBtn: {
+    backgroundColor: '#f0f0f0',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  cancelRequestBtnText: {
+    color: '#ff3b30',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  emptyRequestsContainer: {
+    padding: 16,
+    backgroundColor: '#fff',
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  emptyRequestsText: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+  },
   friendsGridContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1207,33 +1639,48 @@ const styles = StyleSheet.create({
     backgroundColor: '#eee',
   },
   airbnbCard: {
+    width: '100%',
     backgroundColor: '#fff',
-    borderRadius: 18,
-    marginVertical: 6,
-    marginHorizontal: 8,
-    shadowColor: '#222',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 1,
+    borderRadius: 12,
+    marginBottom: 16,
     overflow: 'hidden',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
   cardImage: {
     width: '100%',
-    height: 120,
+    height: 180,
+    resizeMode: 'cover',
   },
   cardContent: {
     padding: 12,
   },
   cardTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#222',
+    fontSize: 18,
+    fontWeight: 'bold',
     marginBottom: 4,
+    color: '#333',
   },
   cardDesc: {
-    fontSize: 13,
-    color: '#888',
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 8,
+  },
+  bookingStatusContainer: {
+    flexDirection: 'row',
+    marginTop: 4,
+  },
+  bookingStatus: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: 'white',
+    overflow: 'hidden',
   },
   friendsList: {
     alignItems: 'center',
@@ -1265,22 +1712,34 @@ const styles = StyleSheet.create({
   },
   friendSearchRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
+    marginBottom: 16,
     paddingHorizontal: 16,
     backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#ddd',
+    borderRadius: 12,
+    padding: 10,
+    marginTop: 10,
+  },
+  searchInputContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 40,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    marginRight: 10,
+    backgroundColor: '#f5f5f5',
+  },
+  searchIcon: {
+    marginRight: 8,
   },
   friendSearchInput: {
     flex: 1,
     height: 40,
-    fontSize: 16,
-    padding: 10,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 20,
-    marginRight: 12,
+    fontSize: 14,
+    color: '#333',
   },
   addFriendBtn: {
     backgroundColor: '#f3b15a',
@@ -1319,28 +1778,115 @@ const styles = StyleSheet.create({
     color: '#222',
     marginBottom: 8,
   },
+  requestsScrollView: {
+    marginBottom: 16,
+  },
+  requestsContentContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
   friendRequestCard: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    marginRight: 12,
+    width: 120,
+    alignItems: 'center',
     backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 12,
+    marginRight: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.07,
     shadowRadius: 4,
-    elevation: 1,
+    elevation: 2,
   },
   friendAvatarSmall: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    marginBottom: 4,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    marginBottom: 8,
+    backgroundColor: '#f3f3f3',
   },
   friendNameSmall: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
     color: '#222',
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 8,
+  },
+  emptyFriendsContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    margin: 16,
+  },
+  emptyFriendsText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+  emptyFriendsSubText: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+  },
+  sectionHeader: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#333',
+    marginVertical: 12,
+    marginHorizontal: 16,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    width: '100%',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    paddingTop: 16,
+    paddingBottom: 30,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#333',
+    marginBottom: 8,
+  },
+  modalSubTitle: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 16,
+  },
+  closeModalBtn: {
+    backgroundColor: '#f0f0f0',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    marginTop: 16,
+    alignSelf: 'center',
+  },
+  closeModalBtnText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
   },
   friendRequestActions: {
     flexDirection: 'row',

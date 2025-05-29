@@ -34,12 +34,20 @@ const GroupsListScreen = () => {
     const fetchCurrentUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
+        console.log('User authenticated:', user.id); // Debug log
         setUserId(user.id);
+      } else {
+        console.log('No authenticated user found');
       }
     };
     
     fetchCurrentUser();
   }, []);
+  
+  // Add this useEffect to monitor userId changes
+  useEffect(() => {
+    console.log('Current userId state:', userId);
+  }, [userId]);
 
   const fetchGroups = async () => {
     setLoading(true);
@@ -191,12 +199,101 @@ const GroupsListScreen = () => {
       : groupsData.filter(g => !g.is_housing_group && g.category === filter);
 
   const GroupCard = React.memo(({ item, navigation }) => {
-    const [isFavorited, setIsFavorited] = useState(false); 
+    const [isFavorited, setIsFavorited] = useState(false);
+    const [favoriteLoading, setFavoriteLoading] = useState(false);
+    
+    // Check if this group is already favorited when component mounts
+    useEffect(() => {
+      const checkIfFavorited = async () => {
+        if (!userId) return;
+        
+        try {
+          const { data, error } = await supabase
+            .from('favorites')
+            .select('favorite_id')
+            .eq('user_id', userId)
+            .eq('item_id', item.id)
+            .eq('item_type', 'group')
+            .single();
+          
+          if (error && error.code !== 'PGRST116') {
+            console.error('Error checking favorite status:', error);
+            return;
+          }
+          
+          setIsFavorited(!!data);
+        } catch (error) {
+          console.error('Error in favorite check:', error);
+        }
+      };
+      
+      checkIfFavorited();
+    }, [userId, item.id]);
 
-    const toggleFavorite = useCallback(() => {
-      setIsFavorited(prev => !prev);
-      alert(`Group ${item.name} ${!isFavorited ? 'added to' : 'removed from'} favorites (UI only)`);
-    }, [isFavorited, item.name]);
+    const toggleFavorite = useCallback(async () => {
+      // Get the current user directly from Supabase instead of relying on state
+      const { data: { user } } = await supabase.auth.getUser();
+      const currentUserId = user?.id;
+      
+      console.log('Toggle favorite - Current user from auth:', currentUserId);
+      console.log('Toggle favorite - State userId:', userId);
+      
+      if (!currentUserId) {
+        Alert.alert('Sign in required', 'Please sign in to favorite groups');
+        return;
+      }
+      
+      setFavoriteLoading(true);
+      try {
+        if (isFavorited) {
+          // Remove from favorites
+          console.log('Removing favorite for group:', item.id);
+          const { error } = await supabase
+            .from('favorites')
+            .delete()
+            .eq('user_id', currentUserId)
+            .eq('item_id', item.id)
+            .eq('item_type', 'group');
+          
+          if (error) {
+            console.error('Error removing favorite:', error);
+            throw error;
+          }
+          
+          setIsFavorited(false);
+          Alert.alert('Success', `${item.name} removed from favorites`);
+        } else {
+          // Add to favorites
+          console.log('Adding favorite for group:', item.id);
+          const favoriteData = {
+            user_id: currentUserId,
+            item_id: item.id,
+            item_type: 'group',
+            created_at: new Date().toISOString()
+          };
+          
+          console.log('Inserting favorite with data:', favoriteData);
+          const { data, error } = await supabase
+            .from('favorites')
+            .insert(favoriteData)
+            .select();
+          
+          if (error) {
+            console.error('Error adding favorite:', error);
+            throw error;
+          }
+          
+          console.log('Favorite added successfully:', data);
+          setIsFavorited(true);
+          Alert.alert('Success', `${item.name} added to favorites`);
+        }
+      } catch (error) {
+        console.error('Error toggling favorite:', error);
+        Alert.alert('Error', 'Failed to update favorites. Please try again.');
+      } finally {
+        setFavoriteLoading(false);
+      }
+    }, [isFavorited, item.id, item.name, userId]);
     
     // Get membership button text and style based on status
     const getMembershipButtonInfo = () => {
@@ -334,12 +431,16 @@ const GroupsListScreen = () => {
         <View style={styles.cardContent}>
           <View style={styles.cardHeader}>
             <Text style={styles.cardTitle} numberOfLines={1}>{item.name}</Text>
-            <TouchableOpacity onPress={toggleFavorite} style={styles.favoriteIconContainer}>
-              <Ionicons 
-                name={isFavorited ? 'heart' : 'heart-outline'} 
-                size={24} 
-                color={isFavorited ? 'red' : '#888'} 
-              />
+            <TouchableOpacity onPress={toggleFavorite} style={styles.favoriteIconContainer} disabled={favoriteLoading}>
+              {favoriteLoading ? (
+                <ActivityIndicator size="small" color="#007AFF" />
+              ) : (
+                <Ionicons 
+                  name={isFavorited ? 'heart' : 'heart-outline'} 
+                  size={24} 
+                  color={isFavorited ? 'red' : '#888'} 
+                />
+              )}
             </TouchableOpacity>
           </View>
           <Text style={styles.cardDesc} numberOfLines={2}>{item.desc}</Text>
