@@ -3,6 +3,8 @@ import { createStackNavigator } from '@react-navigation/stack';
 import WalletScreen from '../screens/Main/WalletScreen';
 import SubmitClaimScreen from '../screens/Claims/SubmitClaimScreen';
 import ViewClaimsScreen from '../screens/Claims/ViewClaimsScreen';
+import BookingsScreen from '../screens/Main/BookingsScreen';
+import BookingDetailScreen from '../screens/Main/BookingDetailScreen';
 import AppHeader from '../components/layout/AppHeader'; // Optional: if you want consistent headers
 
 const Stack = createStackNavigator();
@@ -45,6 +47,30 @@ const WalletStackNavigator = () => {
             />
           ),
         })}
+      />
+      <Stack.Screen
+        name="BookingsScreen"
+        component={BookingsScreen}
+        options={{ headerShown: false }} // BookingsScreen already has AppHeader
+      />
+      <Stack.Screen
+        name="BookingDetailScreen"
+        component={BookingDetailScreen}
+        options={({ navigation }) => ({
+          header: () => (
+            <AppHeader
+              title="Booking Details"
+              navigation={navigation}
+              canGoBack={true}
+            />
+          ),
+        })}
+      />
+      <Stack.Screen
+        name="BookingHistoryScreen"
+        component={BookingsScreen}
+        initialParams={{ initialTab: 'past' }}
+        options={{ headerShown: false }} // BookingsScreen already has AppHeader
       />
     </Stack.Navigator>
   );

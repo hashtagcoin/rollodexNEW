@@ -1,6 +1,6 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, FlatList } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, FlatList, ActivityIndicator } from 'react-native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import Feather from 'react-native-vector-icons/Feather'; 
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons'; 
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -8,35 +8,23 @@ import { AntDesign } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, FONTS } from '../../constants/theme';
 import { useUser } from '../../context/UserContext';
-
-
-// Placeholder data - this would come from API/state
-const userData = {
-  name: 'James',
-  walletBalance: '8,200',
-  categories: [
-    { name: 'Therapy', amount: '2,500.00' },
-    { name: 'Support', amount: '2,800.50' }, 
-    { name: 'Transport', amount: '1,400.00' },
-    { name: 'Tech', amount: '1,500.00' },
-  ],
-  serviceFeed: {
-    imageUri: null, 
-    title: 'In-Home Care Assistance',
-    fundingInfo: 'Funding available • ★ 4.7',
-  }
-};
-
-const dummyAppointments = [
-  { id: '1', service: 'Physio Therapy', date: 'May 24', time: '10:00 AM', provider: 'MoveWell Clinic', note: 'Bring referral form.' },
-  { id: '2', service: 'Speech Pathology', date: 'May 25', time: '2:00 PM', provider: 'TalkRight', note: 'Session 3 of 6.' },
-  { id: '3', service: 'Support Worker', date: 'May 27', time: '9:00 AM', provider: 'CareCo', note: 'Meet at home.' },
-  { id: '4', service: 'OT Assessment', date: 'May 29', time: '1:30 PM', provider: 'Active OT', note: 'Initial consult.' },
-];
+import { supabase } from '../../lib/supabaseClient';
+import { formatDistanceToNow, format, parseISO } from 'date-fns';
 
 const DashboardScreen = () => {
   const { profile } = useUser();
+  const navigation = useNavigation();
   const scrollViewRef = useRef(null);
+  
+  const [wallet, setWallet] = useState(null);
+  const [upcomingBookings, setUpcomingBookings] = useState([]);
+  const [recommendations, setRecommendations] = useState([]);
+  const [loading, setLoading] = useState({
+    wallet: true,
+    bookings: true,
+    recommendations: true
+  });
+  const [error, setError] = useState(null);
   
   // Use useFocusEffect to scroll to top when screen comes into focus
   useFocusEffect(
@@ -48,6 +36,153 @@ const DashboardScreen = () => {
       return () => {};
     }, [])
   );
+  
+  // Fetch wallet data
+  const fetchWalletData = useCallback(async () => {
+    if (!profile?.id) return;
+    
+    setLoading(prevState => ({ ...prevState, wallet: true }));
+    try {
+      // Fetch wallet
+      let { data: walletData, error: walletError } = await supabase
+        .from('wallets')
+        .select('total_balance, category_breakdown')
+        .eq('user_id', profile.id)
+        .maybeSingle();
+        
+      // If wallet doesn't exist, create one with defaults
+      if (!walletData) {
+        const defaultWalletData = {
+          user_id: profile.id,
+          total_balance: 15000,
+          category_breakdown: {
+            core_support: 8000,
+            capacity_building: 5000,
+            capital_support: 2000,
+          },
+        };
+        
+        const { data: newWallet, error: createError } = await supabase
+          .from('wallets')
+          .insert(defaultWalletData)
+          .select('total_balance, category_breakdown')
+          .maybeSingle();
+          
+        if (createError) throw createError;
+        walletData = newWallet;
+      }
+      
+      setWallet(walletData);
+    } catch (err) {
+      console.error('Error fetching wallet data:', err);
+      setError('Failed to load wallet information');
+    } finally {
+      setLoading(prevState => ({ ...prevState, wallet: false }));
+    }
+  }, [profile]);
+  
+  // Fetch upcoming bookings
+  const fetchUpcomingBookings = useCallback(async () => {
+    if (!profile?.id) return;
+    
+    setLoading(prevState => ({ ...prevState, bookings: true }));
+    try {
+      const today = new Date().toISOString();
+      
+      // Get upcoming bookings using the bookings_with_details view
+      const { data, error } = await supabase
+        .from('bookings_with_details')
+        .select('*')
+        .eq('user_profile_id', profile.id)
+        .gte('scheduled_at', today)
+        .order('scheduled_at', { ascending: true })
+        .limit(5);
+        
+      if (error) throw error;
+      
+      setUpcomingBookings(data || []);
+    } catch (err) {
+      console.error('Error fetching upcoming bookings:', err);
+      setError('Failed to load upcoming bookings');
+    } finally {
+      setLoading(prevState => ({ ...prevState, bookings: false }));
+    }
+  }, [profile]);
+  
+  // Fetch recommendations based on user's bookings and interests
+  const fetchRecommendations = useCallback(async () => {
+    if (!profile?.id) return;
+    
+    setLoading(prevState => ({ ...prevState, recommendations: true }));
+    try {
+      // First, get the categories of services the user has booked
+      const { data: userBookings, error: bookingError } = await supabase
+        .from('bookings_with_details')
+        .select('service_category')
+        .eq('user_profile_id', profile.id)
+        .limit(10);
+        
+      if (bookingError) throw bookingError;
+      
+      // Extract unique categories
+      const bookedCategories = userBookings ? 
+        [...new Set(userBookings.map(booking => booking.service_category))] : 
+        [];
+        
+      // If user has no bookings, get some popular services
+      if (bookedCategories.length === 0) {
+        const { data: popularServices, error: servicesError } = await supabase
+          .from('services')
+          .select('*, provider:provider_id(id, business_name)')
+          .eq('available', true)
+          .order('created_at', { ascending: false })
+          .limit(3);
+          
+        if (servicesError) throw servicesError;
+        setRecommendations(popularServices || []);
+      } else {
+        // Get services in the same categories the user has booked before
+        const { data: similarServices, error: servicesError } = await supabase
+          .from('services')
+          .select('*, provider:provider_id(id, business_name)')
+          .in('category', bookedCategories)
+          .eq('available', true)
+          .order('created_at', { ascending: false })
+          .limit(3);
+          
+        if (servicesError) throw servicesError;
+        setRecommendations(similarServices || []);
+      }
+    } catch (err) {
+      console.error('Error fetching recommendations:', err);
+      setError('Failed to load recommendations');
+    } finally {
+      setLoading(prevState => ({ ...prevState, recommendations: false }));
+    }
+  }, [profile]);
+  
+  // Fetch all data when component mounts or profile changes
+  useEffect(() => {
+    if (profile?.id) {
+      fetchWalletData();
+      fetchUpcomingBookings();
+      fetchRecommendations();
+    }
+  }, [profile, fetchWalletData, fetchUpcomingBookings, fetchRecommendations]);
+  
+  // Helper function to format dates for upcoming bookings
+  const formatBookingDate = (dateString) => {
+    try {
+      const date = parseISO(dateString);
+      return {
+        date: format(date, 'MMM d'),
+        time: format(date, 'h:mm a')
+      };
+    } catch (err) {
+      console.error('Error formatting date:', err);
+      return { date: 'Unknown', time: 'Unknown' };
+    }
+  };
   return (
     <ScrollView 
       ref={scrollViewRef}
@@ -89,103 +224,210 @@ const DashboardScreen = () => {
         {/* Financial Information Group */}
         <View style={styles.financialGroup}>
           {/* Wallet Card */}
-          <LinearGradient
-            colors={['#3A76F0', '#1E90FF']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.walletCard}
-          >
-            <View style={styles.walletCardContent}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
-                <Ionicons name="wallet-outline" size={22} color="rgba(255,255,255,0.9)" style={{ marginRight: 8 }} />
-                <Text style={styles.walletCardTitle}>Wallet Balance</Text>
-              </View>
-              <Text style={styles.walletCardBalance}>${parseInt(userData.walletBalance.replace(/[^\d]/g, ''), 10).toLocaleString()}</Text>
-              <View style={styles.balanceCardChip}>
-                <Ionicons name="calendar-outline" size={14} color={COLORS.white} />
-                <Text style={styles.balanceCardChipText}>Updated Today</Text>
-              </View>
+          {loading.wallet ? (
+            <View style={[styles.walletCard, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#f0f0f0' }]}>
+              <ActivityIndicator size="large" color="#3A76F0" />
             </View>
-            <View style={styles.walletCardIllustration}>
-              <Ionicons name="wallet" size={36} color="rgba(255,255,255,0.2)" />
+          ) : wallet ? (
+            <TouchableOpacity 
+              onPress={() => navigation.navigate('Wallet')}
+              activeOpacity={0.8}
+            >
+              <LinearGradient
+                colors={['#3A76F0', '#1E90FF']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.walletCard}
+              >
+                <View style={styles.walletCardContent}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                    <Ionicons name="wallet-outline" size={22} color="rgba(255,255,255,0.9)" style={{ marginRight: 8 }} />
+                    <Text style={styles.walletCardTitle}>Wallet Balance</Text>
+                  </View>
+                  <Text style={styles.walletCardBalance}>${Math.floor(wallet.total_balance).toLocaleString()}</Text>
+                  <View style={styles.balanceCardChip}>
+                    <Ionicons name="calendar-outline" size={14} color={COLORS.white} />
+                    <Text style={styles.balanceCardChipText}>Updated Today</Text>
+                  </View>
+                </View>
+                <View style={styles.walletCardIllustration}>
+                  <Ionicons name="wallet" size={36} color="rgba(255,255,255,0.2)" />
+                </View>
+              </LinearGradient>
+            </TouchableOpacity>
+          ) : (
+            <View style={[styles.walletCard, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#f0f0f0' }]}>
+              <Text style={{ color: '#666' }}>Error loading wallet data</Text>
             </View>
-          </LinearGradient>
+          )}
           
           {/* Category Pills */}
           <View style={styles.categoryCard}>
-            <FlatList
-              data={userData.categories}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              keyExtractor={item => item.name}
-              contentContainerStyle={styles.categoryList}
-              renderItem={({ item, index }) => {
-                // Alternating colors for categories
-                const colorMap = ['#007AFF', '#34C759', '#FF9500', '#5856D6'];
-                const color = colorMap[index % colorMap.length];
-                
-                return (
-                  <View style={[styles.categoryPill, { borderColor: color + '30' }]}>
-                    <Text style={[styles.categoryPillName, { color }]}>{item.name}</Text>
-                    <Text style={styles.categoryPillAmount}>${Math.floor(Number(item.amount.replace(/,/g, ''))).toLocaleString()}</Text>
-                  </View>
-                );
-              }}
-            />
+            {loading.wallet ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="small" color="#3A76F0" />
+              </View>
+            ) : wallet?.category_breakdown ? (
+              <FlatList
+                data={Object.entries(wallet.category_breakdown).map(([name, amount]) => ({ 
+                  name: name.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' '), 
+                  amount: amount.toString() 
+                }))}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                keyExtractor={item => item.name}
+                contentContainerStyle={styles.categoryList}
+                renderItem={({ item, index }) => {
+                  // Alternating colors for categories
+                  const colorMap = ['#007AFF', '#34C759', '#FF9500', '#5856D6'];
+                  const color = colorMap[index % colorMap.length];
+                  
+                  return (
+                    <View style={[styles.categoryPill, { borderColor: color + '30' }]}>
+                      <Text style={[styles.categoryPillName, { color }]}>{item.name}</Text>
+                      <Text style={styles.categoryPillAmount}>${Math.floor(Number(item.amount)).toLocaleString()}</Text>
+                    </View>
+                  );
+                }}
+              />
+            ) : (
+              <Text style={styles.errorText}>No category data available</Text>
+            )}
           </View>
 
           {/* Funding Expiry Notification */}
-          <View style={styles.expiryNotification}>
+          <TouchableOpacity 
+            style={styles.expiryNotification}
+            onPress={() => navigation.navigate('Wallet')}
+          >
             <Feather name="alert-triangle" size={18} color="#FFA500" style={{ marginRight: 8 }} />
             <Text style={styles.expiryNotificationText}>
               Some of your funding categories are expiring soon. <Text style={{fontWeight:'bold'}}>Check details</Text>
             </Text>
-          </View>
+          </TouchableOpacity>
         </View>
         
         {/* Upcoming Appointments Carousel */}
-        <Text style={styles.carouselTitle}>Upcoming Appointments</Text>
-        <FlatList
-          data={dummyAppointments}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          keyExtractor={item => item.id}
-          contentContainerStyle={styles.carouselList}
-          renderItem={({ item }) => (
-            <View style={styles.appointmentCard}>
-              <Text style={styles.appointmentService}>{item.service}</Text>
-              <Text style={styles.appointmentDate}>{item.date} • {item.time}</Text>
-              <Text style={styles.appointmentProvider}>{item.provider}</Text>
-              <Text style={styles.appointmentNote}>{item.note}</Text>
-            </View>
-          )}
-        />
-
-        {/* Bookings/Events Card */}
-        <View style={styles.bookingsCard}>
-          <Image
-            source={{ uri: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=400&q=80' }}
-            style={styles.bookingsImage}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.carouselTitle}>Upcoming Appointments</Text>
+          <TouchableOpacity onPress={() => navigation.navigate('Wallet', { screen: 'BookingsScreen' })}>
+            <Text style={styles.viewAllText}>View All</Text>
+          </TouchableOpacity>
+        </View>
+        
+        {loading.bookings ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="small" color="#3A76F0" />
+          </View>
+        ) : upcomingBookings.length > 0 ? (
+          <FlatList
+            data={upcomingBookings}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyExtractor={item => item.booking_id}
+            contentContainerStyle={styles.carouselList}
+            renderItem={({ item }) => {
+              const formattedDate = formatBookingDate(item.scheduled_at);
+              return (
+                <TouchableOpacity 
+                  style={styles.appointmentCard}
+                  onPress={() => navigation.navigate('Wallet', { screen: 'BookingDetailScreen', params: { bookingId: item.booking_id } })}
+                >
+                  <Text style={styles.appointmentService}>{item.service_title}</Text>
+                  <Text style={styles.appointmentDate}>{formattedDate.date} • {formattedDate.time}</Text>
+                  <Text style={styles.appointmentProvider}>{item.service_provider || 'Provider'}</Text>
+                  <Text style={styles.appointmentNote}>{item.booking_notes || 'No additional notes'}</Text>
+                </TouchableOpacity>
+              );
+            }}
           />
-          <View style={styles.bookingsContent}>
-            <Text style={styles.bookingsTitle}>{userData.serviceFeed.title}</Text>
-            <Text style={styles.bookingsFunding}>{userData.serviceFeed.fundingInfo}</Text>
-            <TouchableOpacity style={styles.bookingsBtn}>
-              <Text style={styles.bookingsBtnText}>View Details</Text>
-              <Feather name="chevron-right" size={18} color="#fff" />
+        ) : (
+          <View style={styles.emptyStateContainer}>
+            <Text style={styles.emptyStateText}>No upcoming appointments</Text>
+            <TouchableOpacity 
+              style={styles.emptyStateButton}
+              onPress={() => navigation.navigate('Explore', { screen: 'ProviderDiscovery' })}
+            >
+              <Text style={styles.emptyStateButtonText}>Book a Service</Text>
             </TouchableOpacity>
           </View>
+        )}
+
+        {/* Recommended Services */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.carouselTitle}>Recommended for You</Text>
+          <TouchableOpacity onPress={() => navigation.navigate('Explore', { screen: 'ProviderDiscovery' })}>
+            <Text style={styles.viewAllText}>See More</Text>
+          </TouchableOpacity>
         </View>
+        
+        {loading.recommendations ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="small" color="#3A76F0" />
+          </View>
+        ) : recommendations.length > 0 ? (
+          <FlatList
+            data={recommendations}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyExtractor={item => item.id}
+            contentContainerStyle={styles.recommendationsList}
+            renderItem={({ item }) => (
+              <TouchableOpacity 
+                style={styles.bookingsCard}
+                onPress={() => navigation.navigate('Explore', { screen: 'ServiceDetail', params: { serviceId: item.id } })}
+              >
+                <Image
+                  source={{ 
+                    uri: item.media_urls && item.media_urls.length > 0 
+                      ? item.media_urls[0] 
+                      : 'https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/providerimages/default-service.png'
+                  }}
+                  style={styles.bookingsImage}
+                />
+                <View style={styles.bookingsContent}>
+                  <Text style={styles.bookingsTitle}>{item.title || 'Service Title'}</Text>
+                  <Text style={styles.bookingsFunding}>
+                    {item.ndis_approved ? 'NDIS Approved' : 'Service Available'}
+                  </Text>
+                  <TouchableOpacity 
+                    style={styles.bookingsBtn}
+                    onPress={() => navigation.navigate('Explore', { screen: 'ServiceDetail', params: { serviceId: item.id } })}
+                  >
+                    <Text style={styles.bookingsBtnText}>View Details</Text>
+                    <Feather name="chevron-right" size={18} color="#fff" />
+                  </TouchableOpacity>
+                </View>
+              </TouchableOpacity>
+            )}
+          />
+        ) : (
+          <View style={styles.emptyStateContainer}>
+            <Text style={styles.emptyStateText}>No recommendations available</Text>
+            <TouchableOpacity 
+              style={styles.emptyStateButton}
+              onPress={() => navigation.navigate('Explore', { screen: 'ProviderDiscovery' })}
+            >
+              <Text style={styles.emptyStateButtonText}>Browse Services</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Action Buttons Row */}
         <View style={styles.actionRow}>
-          <TouchableOpacity style={styles.actionCard}>
+          <TouchableOpacity 
+            style={styles.actionCard}
+            onPress={() => navigation.navigate('Wallet', { screen: 'BookingHistoryScreen' })}
+          >
             <AntDesign name="clockcircleo" size={22} color={'#007AFF'} style={styles.actionCardIcon} />
-            <Text style={styles.actionCardText}>Reorder last service</Text>
+            <Text style={styles.actionCardText}>Booking History</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionCard}>
-            <MaterialIcons name="people-outline" size={24} color={'#007AFF'} style={styles.actionCardIcon} />
-            <Text style={styles.actionCardText}>Your Matches</Text>
+          <TouchableOpacity 
+            style={styles.actionCard}
+            onPress={() => navigation.navigate('Explore', { screen: 'ProviderDiscovery' })}
+          >
+            <MaterialIcons name="search" size={24} color={'#007AFF'} style={styles.actionCardIcon} />
+            <Text style={styles.actionCardText}>Explore Services</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -199,6 +441,55 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#222',
     marginTop: 18,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 18,
+    marginBottom: 8,
+  },
+  viewAllText: {
+    color: COLORS.primary,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  loadingContainer: {
+    height: 120,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyStateContainer: {
+    height: 120,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f8f8f8',
+    borderRadius: 10,
+    marginHorizontal: 16,
+    marginBottom: 16,
+  },
+  emptyStateText: {
+    color: '#666',
+    marginBottom: 8,
+  },
+  emptyStateButton: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  emptyStateButtonText: {
+    color: 'white',
+    fontWeight: '500',
+  },
+  recommendationsList: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+  },
+  errorText: {
+    color: '#666',
+    textAlign: 'center',
+    marginVertical: 10,
     marginBottom: 8,
     marginLeft: 4,
   },

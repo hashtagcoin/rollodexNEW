@@ -188,29 +188,47 @@ const HousingGroupDetailScreen = ({ route }) => {
     try {
       if (isFavorited) {
         // Remove from favorites
-        await supabase
+        const { error: deleteError } = await supabase
           .from('user_favorites')
           .delete()
           .eq('user_id', userId)
           .eq('item_id', groupId)
           .eq('item_type', 'housing_group');
           
+        if (deleteError) throw deleteError;
         setIsFavorited(false);
       } else {
-        // Add to favorites
-        await supabase
+        // Check if the favorite already exists
+        const { data: existingFavorite } = await supabase
           .from('user_favorites')
-          .insert({
+          .select('id')
+          .eq('user_id', userId)
+          .eq('item_id', groupId)
+          .eq('item_type', 'housing_group')
+          .single();
+          
+        if (existingFavorite) {
+          // If it exists (but somehow UI shows not favorited), just update the state
+          console.log('Favorite already exists, updating UI state');
+          setIsFavorited(true);
+          return;
+        }
+        
+        // Add to favorites using upsert to avoid constraint violations
+        const { error: insertError } = await supabase
+          .from('user_favorites')
+          .upsert({
             user_id: userId,
             item_id: groupId,
             item_type: 'housing_group',
             created_at: new Date().toISOString()
-          });
+          }, { onConflict: 'user_id,item_id,item_type' });
           
+        if (insertError) throw insertError;
         setIsFavorited(true);
       }
     } catch (error) {
-      console.error('Error toggling favorite:', error);
+      console.error('Error favoriting housing group:', error);
       Alert.alert('Error', 'Unable to update favorites');
     }
   };

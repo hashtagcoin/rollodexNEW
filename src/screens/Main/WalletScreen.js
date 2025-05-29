@@ -118,42 +118,60 @@ const WalletScreen = () => {
         canGoBack={true}
         onBackPressOverride={handleBackToDashboard}
       />
-      {/* Wallet Tabs */}
+      {/* Tab Selector */}
       <View style={styles.tabContainer}>
         <TouchableOpacity 
-          style={[styles.tabButton, activeTab === 'overview' && styles.activeTabButton]}
+          style={[styles.tab, activeTab === 'overview' && styles.activeTab]}
           onPress={() => setActiveTab('overview')}
         >
           <Ionicons 
             name="wallet-outline" 
             size={18} 
             color={activeTab === 'overview' ? COLORS.primary : '#8E8E93'} 
+            style={styles.tabIcon}
           />
-          <Text style={[styles.tabText, activeTab === 'overview' && styles.activeTabText]}>Overview</Text>
+          <Text style={[
+            styles.tabText, 
+            activeTab === 'overview' && styles.activeTabText
+          ]}>
+            Overview
+          </Text>
         </TouchableOpacity>
         
         <TouchableOpacity 
-          style={[styles.tabButton, activeTab === 'claims' && styles.activeTabButton]}
+          style={[styles.tab, activeTab === 'claims' && styles.activeTab]}
           onPress={() => setActiveTab('claims')}
         >
           <Ionicons 
             name="document-text-outline" 
             size={18} 
             color={activeTab === 'claims' ? COLORS.primary : '#8E8E93'} 
+            style={styles.tabIcon}
           />
-          <Text style={[styles.tabText, activeTab === 'claims' && styles.activeTabText]}>Claims</Text>
+          <Text style={[
+            styles.tabText, 
+            activeTab === 'claims' && styles.activeTabText
+          ]}>
+            Claims
+          </Text>
         </TouchableOpacity>
         
         <TouchableOpacity 
-          style={[styles.tabButton, activeTab === 'payment' && styles.activeTabButton]}
+          style={[styles.tab, activeTab === 'payment' && styles.activeTab]}
           onPress={() => setActiveTab('payment')}
         >
           <Ionicons 
             name="card-outline" 
             size={18} 
             color={activeTab === 'payment' ? COLORS.primary : '#8E8E93'} 
+            style={styles.tabIcon}
           />
-          <Text style={[styles.tabText, activeTab === 'payment' && styles.activeTabText]}>Payment</Text>
+          <Text style={[
+            styles.tabText, 
+            activeTab === 'payment' && styles.activeTabText
+          ]}>
+            Payment
+          </Text>
         </TouchableOpacity>
       </View>
       <ScrollView
@@ -229,117 +247,163 @@ const WalletScreen = () => {
                   </TouchableOpacity>
                 </View>
 
-            {/* Category Breakdown with Modern Horizontal Bar Graph */}
-            <View style={styles.cardContainer}>
-              <View style={styles.cardHeader}>
-                <Text style={styles.cardTitle}>Category Breakdown</Text>
-                <TouchableOpacity style={styles.cardAction}>
-                  <Text style={styles.cardActionText}>Details</Text>
-                  <Ionicons name="chevron-forward" size={16} color={COLORS.primary} />
-                </TouchableOpacity>
-              </View>
-              
-              <View style={styles.barGraphContainer}>
-                {(() => {
-                  const breakdown = wallet.category_breakdown || {};
-                  const total = Object.values(breakdown).reduce((sum, v) => sum + (typeof v === 'number' ? v : 0), 0) || 1;
-                  const colorMap = ['#007AFF', '#34C759', '#FF9500'];
-                  const iconMap = ['briefcase-outline', 'school-outline', 'medical-outline'];
+                {/* Category Breakdown with Modern Cards */}
+                <View style={styles.sectionContainer}>
+                  <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionTitle}>Category Breakdown</Text>
+                    <TouchableOpacity style={styles.sectionAction}>
+                      <Text style={styles.sectionActionText}>Details</Text>
+                      <Ionicons name="chevron-forward" size={16} color={COLORS.primary} />
+                    </TouchableOpacity>
+                  </View>
                   
-                  return Object.entries(breakdown).map(([key, value], idx) => {
-                    const percent = Math.round(((typeof value === 'number' ? value : 0) / total) * 100);
-                    return (
-                      <View key={key} style={styles.barGraphRow}>
-                        {/* Category Label */}
-                        <Text style={styles.barLabel}>{CATEGORY_LABELS[key] || key}</Text>
-                        
-                        {/* Simplified Bar Graph */}
-                        <View style={styles.barGraphDetails}>
-                          <View style={styles.lineTrack}>
-                            <View 
-                              style={[styles.lineFill, { 
-                                width: `${percent}%`, 
-                                backgroundColor: colorMap[idx % colorMap.length],
-                              }]} 
-                            />
+                  <View style={styles.categoryList}>
+                    {wallet.category_breakdown && Object.entries(wallet.category_breakdown).map(([key, value]) => (
+                      <View key={key} style={styles.categoryCard}>
+                        <View style={[styles.categoryIndicator, { backgroundColor: key === 'core_support' ? '#4CAF50' : key === 'capacity_building' ? '#2196F3' : '#FF9800' }]} />
+                        <View style={styles.categoryContent}>
+                          <Text style={styles.categoryLabel}>{CATEGORY_LABELS[key]}</Text>
+                          <View style={styles.categoryValueRow}>
+                            <Text style={styles.categoryAmount}>${value?.toLocaleString() || '0'}</Text>
+                            <Text style={styles.categoryPercentage}>
+                              {Math.round((value / wallet.total_balance) * 100)}%
+                            </Text>
                           </View>
-                          
-                          {/* Dollar Amount */}
-                          <Text style={styles.barValue}>${value?.toLocaleString() || '0.00'}</Text>
                         </View>
-                        
-                        {/* Percentage Indicator */}
-                        <Text style={styles.barPercent}>{percent}% of total</Text>
+                        <View style={styles.progressContainer}>
+                          <View 
+                            style={[
+                              styles.progressBar, 
+                              { width: `${Math.min(100, Math.round((value / wallet.total_balance) * 100))}%`, backgroundColor: key === 'core_support' ? '#4CAF50' : key === 'capacity_building' ? '#2196F3' : '#FF9800' }
+                            ]} 
+                          />
+                        </View>
                       </View>
-                    );
-                  });
-                })()}
-              </View>
-            </View>
-            </>)}
+                    ))}
+                  </View>
+                </View>
+              </>)}
             
             {activeTab === 'claims' && (
               <>
                 {/* My Claims */}
-                <View style={styles.claimsCard}>
-                  <Text style={styles.sectionTitle}>My Claims</Text>
-              {allUserClaims.length === 0 ? (
-                <Text style={styles.emptyText}>You haven't submitted any claims yet.</Text>
-              ) : (
-                allUserClaims.map((claim) => (
-                  <View key={claim.id} style={styles.claimItemCard}> 
-                    <View style={styles.claimItemHeader}>
-                        <Text style={styles.claimTitle}>{claim.claim_title || 'Claim'}</Text>
-                        <Text style={[styles.claimStatusBadge, styles[claim.status?.toLowerCase()]]}>
-                            {claim.status?.replace('_', ' ') || 'Unknown'}
-                        </Text>
-                    </View>
-                    <View style={styles.claimItemRow}>
-                        <Feather name="dollar-sign" size={16} color={COLORS.darkgray} />
-                        <Text style={styles.claimDetailText}>Amount: ${claim.amount?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}</Text>
-                    </View>
-                    <View style={styles.claimItemRow}>
-                        <Feather name="calendar" size={16} color={COLORS.darkgray} />
-                        <Text style={styles.claimDetailText}>Service Date: {claim.service_date ? new Date(claim.service_date).toLocaleDateString() : 'N/A'}</Text>
-                    </View>
-                    {claim.ndis_category && (
-                        <View style={styles.claimItemRow}>
-                            <Feather name="tag" size={16} color={COLORS.darkgray} />
-                            <Text style={styles.claimDetailText}>Category: {claim.ndis_category}</Text>
-                        </View>
-                    )}
-                    <View style={styles.claimItemRow}>
-                        <Feather name="clock" size={16} color={COLORS.darkgray} />
-                        <Text style={styles.claimDetailText}>Submitted: {claim.created_at ? new Date(claim.created_at).toLocaleDateString() : 'N/A'}</Text>
-                    </View>
-                    {claim.document_url && (
-                         <TouchableOpacity onPress={() => Alert.alert('Open Document', `Would open: ${claim.document_url}`)} style={styles.documentLink}>
-                            <Feather name="file-text" size={16} color={COLORS.primary} />
-                            <Text style={styles.documentLinkText}>View Document</Text>
-                        </TouchableOpacity>
-                    )}
+                <View style={styles.sectionContainer}>
+                  <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionTitle}>My Claims</Text>
+                    <TouchableOpacity style={styles.sectionAction}>
+                      <Text style={styles.sectionActionText}>View All</Text>
+                      <Ionicons name="chevron-forward" size={16} color={COLORS.primary} />
+                    </TouchableOpacity>
                   </View>
-                ))
-              )}
-              </View>
+                  
+                  {allUserClaims.length === 0 ? (
+                    <View style={styles.emptyContainer}>
+                      <Ionicons name="document-text-outline" size={60} color="#DADADA" />
+                      <Text style={styles.emptyTitle}>No claims found</Text>
+                      <Text style={styles.emptySubtitle}>You haven't submitted any claims yet</Text>
+                      <TouchableOpacity 
+                        style={styles.emptyButton}
+                        onPress={handleNavigateToSubmitClaim}
+                      >
+                        <Text style={styles.emptyButtonText}>Submit a Claim</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <View>
+                      {allUserClaims.map((claim) => {
+                        const statusColor = claim.status === 'approved' ? '#34C759' : 
+                                           claim.status === 'pending' ? '#FF9500' : 
+                                           claim.status === 'rejected' ? '#FF3B30' : '#8E8E93';
+                        
+                        return (
+                          <TouchableOpacity 
+                            key={claim.id} 
+                            style={styles.claimCard}
+                            onPress={() => Alert.alert('View Claim', `Details for claim: ${claim.claim_title || 'Claim'}`)} 
+                            activeOpacity={0.8}
+                          > 
+                            <View style={styles.claimDateColumn}>
+                              <Text style={styles.claimDate}>
+                                {claim.service_date ? new Date(claim.service_date).toLocaleDateString('en-US', {day: '2-digit', month: 'short'}) : 'N/A'}
+                              </Text>
+                              <Text style={styles.claimAmount}>${claim.amount?.toFixed(2) || '0.00'}</Text>
+                              <View style={[styles.statusChip, { backgroundColor: `${statusColor}20` }]}>
+                                <Text style={[styles.statusText, { color: statusColor }]}>
+                                  {claim.status?.charAt(0).toUpperCase() + claim.status?.slice(1) || 'Unknown'}
+                                </Text>
+                              </View>
+                            </View>
+                            
+                            <View style={styles.claimContentColumn}>
+                              <Text style={styles.claimTitle} numberOfLines={1}>{claim.claim_title || 'Claim'}</Text>
+                              {claim.ndis_category && (
+                                <Text style={styles.claimCategory} numberOfLines={1}>Category: {claim.ndis_category}</Text>
+                              )}
+                              
+                              <View style={styles.claimDetails}>
+                                <View style={styles.claimDetailItem}>
+                                  <Ionicons name="time-outline" size={14} color="#666" style={styles.detailIcon} />
+                                  <Text style={styles.detailText}>
+                                    {claim.created_at ? new Date(claim.created_at).toLocaleDateString() : 'N/A'}
+                                  </Text>
+                                </View>
+                                {claim.document_url && (
+                                  <View style={styles.claimDetailItem}>
+                                    <Ionicons name="document-outline" size={14} color="#666" style={styles.detailIcon} />
+                                    <Text style={styles.detailText}>Receipt attached</Text>
+                                  </View>
+                                )}
+                              </View>
+                            </View>
+                            
+                            <Ionicons name="chevron-forward" size={18} color="#999" style={styles.chevron} />
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  )}
+                </View>
             </>
             )}
             {activeTab === 'payment' && (
               <>
                 {/* Payment Methods */}
-                <View style={styles.paymentMethodsCard}>
-                  <Text style={styles.sectionTitle}>Payment Methods</Text>
-              {paymentMethods.map((method, idx) => (
-                <View key={idx} style={styles.paymentMethodRow}>
-                  <Feather name={method.icon} size={22} color={method.iconColor} style={styles.paymentMethodIcon} />
-                  <View style={styles.paymentMethodTextContainer}>
-                    <Text style={styles.paymentMethodTextPrimary}>{method.textPrimary}</Text>
-                    {method.textSecondary ? (
-                      <Text style={styles.paymentMethodTextSecondary}>→ {method.textSecondary}</Text>
-                    ) : null}
+                <View style={styles.sectionContainer}>
+                  <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionTitle}>Payment Methods</Text>
+                    <TouchableOpacity style={styles.sectionAction}>
+                      <Text style={styles.sectionActionText}>Manage</Text>
+                      <Ionicons name="chevron-forward" size={16} color={COLORS.primary} />
+                    </TouchableOpacity>
                   </View>
-                </View>
-              ))}
+                  
+                  <View style={styles.paymentMethodsList}>
+                    {paymentMethods.map((method, idx) => (
+                      <TouchableOpacity 
+                        key={idx} 
+                        style={styles.paymentMethodCard}
+                        activeOpacity={0.8}
+                      >
+                        <View style={[styles.paymentIconContainer, { backgroundColor: `${method.iconColor}15` }]}>
+                          <Feather name={method.icon} size={22} color={method.iconColor} />
+                        </View>
+                        <View style={styles.paymentContentColumn}>
+                          <Text style={styles.paymentMethodTitle}>{method.textPrimary}</Text>
+                          {method.textSecondary ? (
+                            <Text style={styles.paymentMethodSubtitle}>{method.textSecondary}</Text>
+                          ) : null}
+                        </View>
+                        <Ionicons name="chevron-forward" size={18} color="#999" style={styles.chevron} />
+                      </TouchableOpacity>
+                    ))}
+                    
+                    <TouchableOpacity style={styles.addPaymentButton}>
+                      <View style={styles.addIconContainer}>
+                        <Ionicons name="add" size={22} color={COLORS.primary} />
+                      </View>
+                      <Text style={styles.addPaymentText}>Add payment method</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </>
             )}
@@ -359,32 +423,29 @@ const styles = StyleSheet.create({
   tabContainer: {
     flexDirection: 'row',
     backgroundColor: '#FFFFFF',
-    marginHorizontal: 16,
-    marginTop: 16,
-    marginBottom: 8,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
-    elevation: 1,
-    padding: 4,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EAEAEA',
   },
-  tabButton: {
+  tab: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
-    borderRadius: 10,
+    paddingVertical: 8,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
   },
-  activeTabButton: {
-    backgroundColor: `${COLORS.primary}10`,
+  activeTab: {
+    borderBottomColor: COLORS.primary,
+  },
+  tabIcon: {
+    marginRight: 6,
   },
   tabText: {
-    ...FONTS.body4,
-    marginLeft: 4,
-    color: '#8E8E93',
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#666',
   },
   activeTabText: {
     color: COLORS.primary,
@@ -554,12 +615,104 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     marginRight: 4,
   },
-  claimsCard: {
+  // Section Container Styles
+  sectionContainer: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 12,
     marginHorizontal: 16,
     marginTop: 16,
+    marginBottom: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  sectionTitle: {
+    ...FONTS.h4,
+    fontWeight: '600',
+    color: '#333',
+  },
+  sectionAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  sectionActionText: {
+    ...FONTS.body4,
+    color: COLORS.primary,
+    marginRight: 4,
+  },
+  
+  // Category Card Styles
+  categoryList: {
+    padding: 16,
+  },
+  categoryCard: {
+    marginBottom: 14,
+    backgroundColor: '#F8F9FA',
+    borderRadius: 8,
+    padding: 16,
+  },
+  categoryIndicator: {
+    width: 4,
+    height: 16,
+    borderRadius: 2,
+    position: 'absolute',
+    left: 0,
+    top: 16,
+  },
+  categoryContent: {
+    marginLeft: 10,
+    marginBottom: 10,
+  },
+  categoryLabel: {
+    ...FONTS.body3,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  categoryValueRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  categoryAmount: {
+    ...FONTS.h4,
+    color: COLORS.primary,
+    fontWeight: '600',
+  },
+  categoryPercentage: {
+    ...FONTS.body4,
+    color: '#666',
+  },
+  progressContainer: {
+    height: 6,
+    width: '100%',
+    backgroundColor: '#EEEEEE',
+    borderRadius: 3,
+  },
+  progressBar: {
+    height: 6,
+    borderRadius: 3,
+  },
+  
+  // Claims Card Styles
+  claimCard: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginHorizontal: 16,
+    marginBottom: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
@@ -701,53 +854,82 @@ const styles = StyleSheet.create({
     marginLeft: SIZES.base / 2,
     textDecorationLine: 'underline',
   },
+  
+  // Payment Methods
+  paymentMethodsList: {
+    padding: 16,
+  },
+  paymentMethodCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  paymentIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  paymentContentColumn: {
+    flex: 1,
+  },
+  paymentMethodTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  paymentMethodSubtitle: {
+    fontSize: 14,
+    color: '#666',
+  },
+  addPaymentButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#EEEEEE',
+    borderStyle: 'dashed',
+  },
+  addIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: `${COLORS.primary}15`,
+    marginRight: 16,
+  },
+  addPaymentText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: COLORS.primary,
+  },
   emptyText: {
     ...FONTS.body3,
     color: COLORS.darkgray,
     textAlign: 'center',
     paddingVertical: SIZES.padding,
   },
-  paymentMethodsCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
-    marginHorizontal: 16,
-    marginTop: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  paymentMethodRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F2F2F7',
-    marginBottom: 4,
-  },
-  paymentMethodIcon: {
-    marginRight: 10,
-  },
-  paymentMethodTextContainer: {
-    flex: 1,
-  },
-  paymentMethodTextPrimary: {
-    ...FONTS.body4,
-    color: COLORS.black,
-    fontWeight: '600',
-  },
-  paymentMethodTextSecondary: {
-    ...FONTS.body5,
-    color: COLORS.gray,
-  },
   errorText: {
     ...FONTS.body3,
     color: COLORS.RED,
     textAlign: 'center',
     marginVertical: 20,
-  },
+  }
 });
 
 export default WalletScreen;
