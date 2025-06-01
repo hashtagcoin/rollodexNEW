@@ -9,6 +9,7 @@ export const UserProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isProviderMode, setIsProviderMode] = useState(false);
   
   // Function to fetch user profile from Supabase
   const fetchUserProfile = async (userId) => {
@@ -29,7 +30,6 @@ export const UserProvider = ({ children }) => {
       if (error) throw error;
       
       if (data) {
-        console.log('User profile fetched successfully');
         // Cache the profile data
         await AsyncStorage.setItem('user_profile', JSON.stringify(data));
         setProfile(data);
@@ -38,12 +38,28 @@ export const UserProvider = ({ children }) => {
       
       return null;
     } catch (error) {
-      console.error('Error in fetchUserProfile:', error);
+      // Silent error handling
       return null;
     }
   };
   
   // Initialize user data from Supabase and AsyncStorage
+  // Load provider mode preference from storage
+  useEffect(() => {
+    const loadProviderModePreference = async () => {
+      try {
+        const providerModeValue = await AsyncStorage.getItem('provider_mode');
+        if (providerModeValue !== null) {
+          setIsProviderMode(JSON.parse(providerModeValue));
+        }
+      } catch (error) {
+        // Silent error handling
+      }
+    };
+    
+    loadProviderModePreference();
+  }, []);
+  
   useEffect(() => {
     const loadUserData = async () => {
       setLoading(true);
@@ -59,7 +75,7 @@ export const UserProvider = ({ children }) => {
         const { data: { user: authUser }, error } = await supabase.auth.getUser();
         
         if (error) {
-          console.error('Error getting auth user:', error);
+          // Silent error handling
           setLoading(false);
           return;
         }
@@ -70,7 +86,7 @@ export const UserProvider = ({ children }) => {
           await fetchUserProfile(authUser.id);
         }
       } catch (error) {
-        console.error('Error loading user data:', error);
+        // Silent error handling
       } finally {
         setLoading(false);
       }
@@ -407,12 +423,26 @@ export const UserProvider = ({ children }) => {
     }
   };
   
+  // Function to toggle provider mode
+  const toggleProviderMode = async () => {
+    try {
+      const newValue = !isProviderMode;
+      setIsProviderMode(newValue);
+      await AsyncStorage.setItem('provider_mode', JSON.stringify(newValue));
+    } catch (error) {
+      console.error('Error saving provider mode preference:', error);
+      Alert.alert('Error', 'Could not switch dashboard mode');
+    }
+  };
+  
   return (
     <UserContext.Provider
       value={{
         user,
         profile,
         loading,
+        isProviderMode,
+        toggleProviderMode,
         updateAvatar,
         updateProfile,
         uploadAvatarDirectly,

@@ -1,9 +1,11 @@
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
-import { AppStateProvider } from '../context/AppStateContext'; 
+import { AppStateProvider } from '../context/AppStateContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import MainTabs from './MainTabs';
+import ProviderStackNavigator from './ProviderStackNavigator';
 import AuthStack from './AuthStack';
 
 // Import Detail Screens
@@ -19,38 +21,77 @@ import { supabase } from '../lib/supabaseClient'; // Import Supabase client
 const RootStack = createStackNavigator();
 const AuthFlowStack = createStackNavigator();
 
-// Placeholder for authentication logic
+// Authentication logic with user role handling
 const useAuth = () => {
-  // In a real app, this would come from context or a service
-  // For now, let's assume the user is always authenticated after initial load
-  // You might want to integrate this with Supabase auth state listener
   const [isLoading, setIsLoading] = React.useState(true);
   const [isAuthenticated, setIsAuthenticated] = React.useState(false);
-  const [sessionChecked, setSessionChecked] = React.useState(false); // To ensure initial session check completes
+  const [userRole, setUserRole] = React.useState('participant');
+
+  // Function to check user profile and determine role
+  const checkUserRole = async (userId) => {
+    try {
+      // First check AsyncStorage for cached provider mode
+      const cachedProviderMode = await AsyncStorage.getItem('provider_mode');
+      if (cachedProviderMode !== null) {
+        const isProvider = JSON.parse(cachedProviderMode);
+        setUserRole(isProvider ? 'provider' : 'participant');
+        return;
+      }
+      
+      // If not in AsyncStorage, fetch from database
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('role')
+        .eq('id', userId)
+        .single();
+      
+      if (error) throw error;
+      
+      if (data && data.role) {
+        setUserRole(data.role);
+        // Cache the provider mode
+        const isProvider = data.role === 'provider';
+        await AsyncStorage.setItem('provider_mode', JSON.stringify(isProvider));
+      }
+    } catch (error) {
+      // Silent error handling - no console logs
+      // Default to participant if there's an error
+      setUserRole('participant');
+    }
+  };
 
   React.useEffect(() => {
-    // Check initial session state
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setIsAuthenticated(!!session);
-      setSessionChecked(true); // Mark initial session check as complete
-      // setIsLoading(false); // We'll let onAuthStateChange handle final isLoading
-    }).catch(() => {
-      setIsAuthenticated(false);
-      setSessionChecked(true);
-      // setIsLoading(false);
-    });
-
-    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log('Auth event:', event, 'Session:', session);
-      setIsAuthenticated(!!session);
-      if (sessionChecked) { // Only set isLoading to false after initial check AND first auth event
-        setIsLoading(false);
+    // Clear any existing session on app start to force explicit login
+    const clearExistingSession = async () => {
+      try {
+        // Sign out any existing user
+        await supabase.auth.signOut();
+        // Clear stored provider mode
+        await AsyncStorage.removeItem('provider_mode');
+        // Silent operation - no console logs
+      } catch (error) {
+        // Silent error handling
       }
-      // If it's the initial SIGNED_IN or INITIAL_SESSION event and session is present, ensure loading is false
-      if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN') && session && !isLoading) {
-        // This case might be redundant if sessionChecked logic is robust
-      } else if (event === 'SIGNED_OUT' || (event === 'INITIAL_SESSION' && !session)){
-        setIsLoading(false); // Ensure loading stops if signed out or no initial session
+      
+      // Set loading to false as initialization is complete
+      setIsLoading(false);
+      setIsAuthenticated(false);
+    };
+    
+    clearExistingSession();
+
+    // Only listen for auth state changes after initial clear
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      // Silent authentication - no console logs
+      
+      // Only set authenticated if there's an explicit SIGNED_IN event (not INITIAL_SESSION)
+      if (event === 'SIGNED_IN' && session) {
+        setIsAuthenticated(true);
+        if (session.user) {
+          await checkUserRole(session.user.id);
+        }
+      } else if (event === 'SIGNED_OUT') {
+        setIsAuthenticated(false);
       }
     });
 
@@ -59,13 +100,13 @@ const useAuth = () => {
         authListener.subscription.unsubscribe();
       }
     };
-  }, [sessionChecked]); // Rerun if sessionChecked changes, though it should only change once
+  }, []); // No dependencies as we want this to run only once on mount
 
-  return { isAuthenticated, isLoading }; 
+  return { isAuthenticated, isLoading, userRole }; 
 };
 
 function AppNavigator() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, userRole } = useAuth();
 
   if (isLoading) {
     // Optionally, return a loading spinner/splash screen
@@ -73,12 +114,27 @@ function AppNavigator() {
     return null; 
   }
 
+  // Customize initial route based on user role
+  const getInitialRoute = () => {
+    if (userRole === 'provider') {
+      // For providers, start with ProviderStack
+      return 'ProviderStack';
+    } else {
+      // For participants, start with MainApp (MainTabs)
+      return 'MainApp';
+    }
+  };
+
   return (
     <AppStateProvider>
       <NavigationContainer>
         {isAuthenticated ? (
-          <RootStack.Navigator screenOptions={{ headerShown: false }}>
+          <RootStack.Navigator 
+            initialRouteName={getInitialRoute()}
+            screenOptions={{ headerShown: false }}
+          >
             <RootStack.Screen name="MainApp" component={MainTabs} />
+            <RootStack.Screen name="ProviderStack" component={ProviderStackNavigator} />
             {/* Define detail screens here */}
             <RootStack.Screen name="ServiceDetail" component={ServiceDetailScreen} />
             <RootStack.Screen name="HousingDetail" component={HousingDetailScreen} />

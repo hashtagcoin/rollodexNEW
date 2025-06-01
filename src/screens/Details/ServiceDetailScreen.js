@@ -6,6 +6,7 @@ import AppHeader from '../../components/layout/AppHeader';
 import { Feather, MaterialIcons, Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/theme';
 import { supabase } from '../../lib/supabaseClient';
+import CheckAvailabilityButton from '../../components/calendar/CheckAvailabilityButton';
 
 const ServiceDetailScreen = ({ route }) => {
   const { serviceId } = route.params;
@@ -112,6 +113,7 @@ const ServiceDetailScreen = ({ route }) => {
             <View style={styles.infoSection}>
               <Text style={styles.sectionTitle}>Availability</Text>
               <Text style={styles.infoText}>{serviceData.availability}</Text>
+              <CheckAvailabilityButton serviceId={serviceData.id} serviceData={serviceData} />
             </View>
             
             <View style={styles.infoSection}>
@@ -277,7 +279,14 @@ const ServiceDetailScreen = ({ route }) => {
         <TouchableOpacity 
           style={[styles.primaryButton, !serviceData.available && styles.disabledButton]}
           disabled={!serviceData.available}
-          onPress={() => navigation.navigate('CreateBooking', { serviceId: serviceData.id, serviceData: serviceData })}
+          onPress={() => navigation.navigate('BookingsScreen', { 
+            screen: 'BookingsMain',
+            params: { 
+              serviceId: serviceData.id, 
+              serviceData: serviceData,
+              isBooking: true // Flag to indicate we're in booking flow 
+            }
+          })}
         >
           <Text style={styles.primaryButtonText}>
             {serviceData.available ? 'Book Now' : 'Currently Unavailable'}

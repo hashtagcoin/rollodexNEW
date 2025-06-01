@@ -3,9 +3,11 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { Feather, Entypo, AntDesign, Octicons } from '@expo/vector-icons';
 import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
+import { useUser } from '../context/UserContext';
 
 // Import screens
 import DashboardScreen from '../screens/Main/DashboardScreen';
+import ProviderDashboardScreen from '../screens/Provider/ProviderDashboardScreen';
 import ExploreStackNavigator from './ExploreStackNavigator';
 import WalletStackNavigator from './WalletStackNavigator';
 import SocialStackNavigator from './SocialStackNavigator';
@@ -14,11 +16,15 @@ import ProfileStackNavigator from './ProfileStackNavigator';
 import GroupsListScreen from '../screens/Main/GroupsListScreen';
 import GroupDetailScreen from '../screens/Main/GroupDetailScreen';
 import CreateGroupPostScreen from '../screens/Main/CreateGroupPostScreen';
+import BookingConfirmationScreen from '../screens/Main/BookingConfirmationScreen';
+import BookingsScreen from '../screens/Main/BookingsScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
 const TabNavigator = () => {
+  const { isProviderMode } = useUser();
+  
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -36,7 +42,10 @@ const TabNavigator = () => {
         headerShown: false,
       })}
     >
-      <Tab.Screen name="Home" component={DashboardScreen} />
+      <Tab.Screen 
+        name="Home" 
+        component={isProviderMode ? ProviderDashboardScreen : DashboardScreen} 
+      />
       <Tab.Screen 
         name="Explore" 
         component={ExploreStackNavigator} 
@@ -80,6 +89,16 @@ const MainTabs = () => (
       name="CreateGroupPostScreen" 
       component={CreateGroupPostScreen}
       options={{ presentation: 'modal' }}
+    />
+    <Stack.Screen 
+      name="BookingConfirmationScreen" 
+      component={BookingConfirmationScreen} 
+      options={{ headerShown: false }}
+    />
+    <Stack.Screen 
+      name="BookingsScreen" 
+      component={BookingsScreen} 
+      options={{ headerShown: false }}
     />
   </Stack.Navigator>
 );

@@ -15,13 +15,36 @@ import {
 import { Feather, MaterialIcons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabaseClient';
 import AppHeader from '../../components/layout/AppHeader';
+import { format, isValid, parseISO } from 'date-fns';
+
+// Safe date parser to handle potentially invalid date strings
+const safelyCreateDate = (dateInput) => {
+  try {
+    // If it's already a Date object
+    if (dateInput instanceof Date) {
+      return isValid(dateInput) ? dateInput : new Date();
+    }
+    
+    // If it's a string
+    if (typeof dateInput === 'string') {
+      const parsedDate = parseISO(dateInput);
+      return isValid(parsedDate) ? parsedDate : new Date();
+    }
+    
+    // Default to current date
+    return new Date();
+  } catch (error) {
+    console.error('Error creating date:', error);
+    return new Date(); // Fallback to current date
+  }
+};
 
 const CreateBookingScreen = ({ route, navigation }) => {
   const { serviceId, serviceData } = route.params;
   const [loading, setLoading] = useState(true);
   const [service, setService] = useState(null);
   const [provider, setProvider] = useState(null);
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState(safelyCreateDate(new Date()));
   const [selectedTime, setSelectedTime] = useState('9:00 AM');
   const [isDateModalVisible, setDateModalVisible] = useState(false);
   const [isTimeModalVisible, setTimeModalVisible] = useState(false);
@@ -137,9 +160,30 @@ const CreateBookingScreen = ({ route, navigation }) => {
   
   // Simple functions to handle date changes with predefined options
   const handleSelectDate = (daysToAdd = 0) => {
-    const date = new Date();
-    date.setDate(date.getDate() + daysToAdd);
-    setSelectedDate(date);
+    try {
+      // Create a new safe date
+      const date = new Date();
+      
+      // Validate date before manipulating
+      if (isValid(date)) {
+        date.setDate(date.getDate() + daysToAdd);
+        
+        // Make sure the resulting date is valid
+        if (isValid(date)) {
+          setSelectedDate(date);
+        } else {
+          console.error('Invalid date after adding days');
+          setSelectedDate(new Date()); // Fallback to current date
+        }
+      } else {
+        console.error('Invalid initial date');
+        setSelectedDate(new Date()); // Fallback to current date
+      }
+    } catch (error) {
+      console.error('Error in handleSelectDate:', error);
+      setSelectedDate(new Date()); // Fallback to current date
+    }
+    
     setDateModalVisible(false);
   };
   
@@ -154,14 +198,22 @@ const CreateBookingScreen = ({ route, navigation }) => {
   };
   
   const formatDate = (date) => {
-    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    
-    const dayName = days[date.getDay()];
-    const monthName = months[date.getMonth()];
-    const day = date.getDate();
-    
-    return `${dayName}, ${monthName} ${day}`;
+    try {
+      // Make sure we have a valid date
+      const safeDate = safelyCreateDate(date);
+      
+      const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      
+      const dayName = days[safeDate.getDay()];
+      const monthName = months[safeDate.getMonth()];
+      const day = safeDate.getDate();
+      
+      return `${dayName}, ${monthName} ${day}`;
+    } catch (error) {
+      console.error('Error formatting date:', error);
+      return 'Unknown date';
+    }
   };
   
   const handlePaymentMethodSelect = (method) => {
@@ -205,7 +257,7 @@ const CreateBookingScreen = ({ route, navigation }) => {
       // Prepare booking details with serialized date
       const bookingDetails = {
         serviceId: serviceId,
-        date: selectedDate ? selectedDate.toISOString() : new Date().toISOString(),
+        date: selectedDate && isValid(selectedDate) ? selectedDate.toISOString() : new Date().toISOString(),
         time: selectedTime || '12:00',
         duration: selectedDuration || 60,
         format: isOnline ? 'Online' : 'In-Person',

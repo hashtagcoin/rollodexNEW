@@ -12,7 +12,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { formatDistanceToNow, format, parseISO } from 'date-fns';
 
 const DashboardScreen = () => {
-  const { profile } = useUser();
+  const { profile, isProviderMode, toggleProviderMode } = useUser();
   const navigation = useNavigation();
   const scrollViewRef = useRef(null);
   
@@ -161,14 +161,23 @@ const DashboardScreen = () => {
     }
   }, [profile]);
   
+  // Effect to navigate to provider dashboard when isProviderMode changes
+  useEffect(() => {
+    if (isProviderMode) {
+      // Note: We'll let the MainTabs navigator handle the actual rendering
+      // This is just a fallback in case direct access to this component occurs
+      navigation.navigate('ProviderStack', { screen: 'ProviderDashboard' });
+    }
+  }, [isProviderMode, navigation]);
+
   // Fetch all data when component mounts or profile changes
   useEffect(() => {
-    if (profile?.id) {
+    if (profile?.id && !isProviderMode) {
       fetchWalletData();
       fetchUpcomingBookings();
       fetchRecommendations();
     }
-  }, [profile, fetchWalletData, fetchUpcomingBookings, fetchRecommendations]);
+  }, [profile, isProviderMode, fetchWalletData, fetchUpcomingBookings, fetchRecommendations]);
   
   // Helper function to format dates for upcoming bookings
   const formatBookingDate = (dateString) => {
@@ -218,7 +227,7 @@ const DashboardScreen = () => {
         {/* Welcome Header */}
         <View style={styles.welcomeContainer}>
           <Text style={styles.welcomeTitleText}>Welcome back,</Text>
-          <Text style={styles.userNameText}>{profile?.full_name || profile?.username || userData.name}</Text>
+          <Text style={styles.userNameText}>{profile?.full_name || profile?.username || 'User'}</Text>
         </View>
 
         {/* Financial Information Group */}
@@ -430,12 +439,52 @@ const DashboardScreen = () => {
             <Text style={styles.actionCardText}>Explore Services</Text>
           </TouchableOpacity>
         </View>
+        
+        {/* Provider Dashboard Switch Button */}
+        <TouchableOpacity 
+          style={styles.switchButton}
+          onPress={toggleProviderMode}
+        >
+          <View style={styles.switchButtonContent}>
+            <MaterialIcons name="swap-horiz" size={24} color="#FFFFFF" style={styles.switchButtonIcon} />
+            <Text style={styles.switchButtonText}>
+              {isProviderMode ? 'Switch to Participant Dashboard' : 'Switch to Provider Dashboard'}
+            </Text>
+          </View>
+        </TouchableOpacity>
       </View>
     </ScrollView>
   );
 };
 
 const styles = StyleSheet.create({
+  switchButton: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 30,
+    padding: 12,
+    marginTop: 25,
+    marginBottom: 10,
+    alignSelf: 'center',
+    width: '90%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  switchButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  switchButtonIcon: {
+    marginRight: 8,
+  },
+  switchButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
   carouselTitle: {
     fontSize: 18,
     fontWeight: '700',

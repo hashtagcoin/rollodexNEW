@@ -7,22 +7,34 @@ import {
   TouchableOpacity, 
   Image, 
   ActivityIndicator,
-  RefreshControl
+  RefreshControl,
+  Alert,
+  Modal
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, isAfter } from 'date-fns';
 import { supabase } from '../../lib/supabaseClient';
 import { useUser } from '../../context/UserContext';
 import AppHeader from '../../components/layout/AppHeader';
 import { COLORS, FONTS } from '../../constants/theme';
 
-const BookingsScreen = ({ navigation }) => {
+const BookingsScreen = ({ navigation, route }) => {
+  // Handle incoming navigation params for service booking flow
+  const { params } = route?.params || {};
+  const incomingServiceId = params?.serviceId;
+  const incomingServiceData = params?.serviceData;
+  const isBookingFlow = params?.isBooking || false;
   const { profile } = useUser();
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState('upcoming'); // 'upcoming' or 'past'
+  const [selectedService, setSelectedService] = useState(null);
+  const [availableTimeSlots, setAvailableTimeSlots] = useState([]);
+  const [isTimeSlotModalVisible, setIsTimeSlotModalVisible] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedBooking, setSelectedBooking] = useState(null);
 
   // Fetch bookings data from Supabase
   const fetchBookings = useCallback(async () => {
@@ -59,11 +71,20 @@ const BookingsScreen = ({ navigation }) => {
     }
   }, [profile, activeTab]);
 
-  // Refresh on screen focus
+  // Refresh on screen focus and handle booking flow if needed
   useFocusEffect(
     useCallback(() => {
       fetchBookings();
-    }, [fetchBookings])
+      
+      // If we're in booking flow, show time slot modal
+      if (isBookingFlow && incomingServiceId && incomingServiceData) {
+        setSelectedService(incomingServiceData);
+        const today = new Date().toISOString().split('T')[0];
+        setSelectedDate(today);
+        fetchAvailableTimeSlots(incomingServiceId, today)
+          .then(() => setIsTimeSlotModalVisible(true));
+      }
+    }, [fetchBookings, isBookingFlow, incomingServiceId, incomingServiceData])
   );
 
   // Handle pull-to-refresh
@@ -125,6 +146,242 @@ const BookingsScreen = ({ navigation }) => {
     </View>
   );
 
+  // Change date for time slot selection
+  const handleDateChange = async (newDate) => {
+    if (!selectedService?.id) return;
+    
+    setSelectedDate(newDate);
+    await fetchAvailableTimeSlots(selectedService.id, newDate);
+  };
+  
+  // Fetch available time slots for a service on a specific date
+  const fetchAvailableTimeSlots = async (serviceId, date) => {
+    if (!serviceId || !date) return [];
+    
+    setLoading(true);
+    try {
+      // First get the provider_id for this service
+      const { data: serviceData, error: serviceError } = await supabase
+        .from('services')
+        .select('provider_id')
+        .eq('id', serviceId)
+        .single();
+        
+      if (serviceError) throw serviceError;
+      
+      if (!serviceData?.provider_id) {
+        throw new Error('Provider information not found');
+      }
+      
+      // Now fetch availability for this provider and service
+      const { data: availabilityData, error: availabilityError } = await supabase
+        .from('provider_availability')
+        .select('*')
+        .eq('provider_id', serviceData.provider_id)
+        .eq('service_id', serviceId)
+        .eq('date', date)
+        .eq('available', true);
+        
+      if (availabilityError) throw availabilityError;
+      
+      // Format the time slots for display
+      const timeSlots = (availabilityData || []).map(slot => ({
+        id: slot.id,
+        timeValue: slot.time_slot,
+        displayTime: formatTimeSlot(slot.time_slot),
+        isAvailable: true
+      }));
+      
+      // Sort by time
+      timeSlots.sort((a, b) => {
+        return a.timeValue.localeCompare(b.timeValue);
+      });
+      
+      // Check for existing bookings at these times
+      const { data: existingBookings, error: bookingsError } = await supabase
+        .from('service_bookings')
+        .select('scheduled_at')
+        .eq('service_id', serviceId)
+        .eq('status', 'confirmed');
+        
+      if (bookingsError) throw bookingsError;
+      
+      // Filter out any times that already have bookings
+      const filteredTimeSlots = timeSlots.filter(slot => {
+        const slotDateTime = `${date}T${slot.timeValue}`;
+        
+        return !(existingBookings || []).some(booking => {
+          const bookingTime = new Date(booking.scheduled_at);
+          const slotTime = new Date(slotDateTime);
+          
+          // Compare if they're the same time (within a few minutes)
+          return Math.abs(bookingTime - slotTime) < 5 * 60 * 1000; // 5 minutes tolerance
+        });
+      });
+      
+      // Also filter out time slots in the past
+      const now = new Date();
+      const filteredCurrentTimeSlots = filteredTimeSlots.filter(slot => {
+        const slotDateTime = new Date(`${date}T${slot.timeValue}`);
+        return isAfter(slotDateTime, now);
+      });
+      
+      setAvailableTimeSlots(filteredCurrentTimeSlots);
+      return filteredCurrentTimeSlots;
+    } catch (err) {
+      console.error('Error fetching available time slots:', err);
+      Alert.alert('Error', 'Failed to load available time slots');
+      return [];
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  // Format time slot for display (convert from HH:MM:SS to h:MM AM/PM)
+  const formatTimeSlot = (timeString) => {
+    try {
+      const [hours, minutes] = timeString.split(':');
+      const h = parseInt(hours, 10);
+      const period = h >= 12 ? 'PM' : 'AM';
+      const hour = h > 12 ? h - 12 : (h === 0 ? 12 : h);
+      
+      return `${hour}:${minutes} ${period}`;
+    } catch (err) {
+      return timeString;
+    }
+  };
+  
+  // Handle booking a service
+  const handleBookService = async (service) => {
+    setSelectedService(service);
+    
+    // Use today's date as default
+    const today = new Date().toISOString().split('T')[0];
+    setSelectedDate(today);
+    
+    // Fetch available time slots
+    const availableSlots = await fetchAvailableTimeSlots(service.id, today);
+    
+    if (availableSlots.length === 0) {
+      Alert.alert(
+        'No Available Times', 
+        'There are no available time slots for this service today. Would you like to try another day?',
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel'
+          },
+          {
+            text: 'Check Availability',
+            onPress: () => navigation.navigate('ServiceDetailScreen', { serviceId: service.id })
+          }
+        ]
+      );
+      return;
+    }
+    
+    // Show time slot selection modal
+    setIsTimeSlotModalVisible(true);
+  };
+  
+  // Handle time slot selection
+  const handleTimeSlotSelected = (timeSlot) => {
+    if (!selectedService || !timeSlot || !profile?.id) {
+      Alert.alert('Error', 'Please select a service and time slot');
+      return;
+    }
+    
+    // Close the modal
+    setIsTimeSlotModalVisible(false);
+    
+    // Navigate to booking confirmation screen
+    navigation.navigate('BookingConfirmationScreen', {
+      serviceData: selectedService,
+      selectedTimeSlot: timeSlot,
+      selectedDate: selectedDate
+    });
+  };
+  
+  // Render time slot selection modal
+  const renderTimeSlotModal = () => (
+    <Modal
+      visible={isTimeSlotModalVisible}
+      animationType="slide"
+      transparent={true}
+      onRequestClose={() => setIsTimeSlotModalVisible(false)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Select a Time</Text>
+            <TouchableOpacity onPress={() => setIsTimeSlotModalVisible(false)}>
+              <Ionicons name="close" size={24} color={COLORS.primary} />
+            </TouchableOpacity>
+          </View>
+          
+          {/* Date Selector */}
+          <View style={styles.dateSelector}>
+            <Text style={styles.dateSelectorLabel}>Select Date:</Text>
+            <View style={styles.dateSelectorButtons}>
+              {[0, 1, 2, 3, 4, 5, 6].map(dayOffset => {
+                const date = new Date();
+                date.setDate(date.getDate() + dayOffset);
+                const dateString = date.toISOString().split('T')[0];
+                const isSelected = dateString === selectedDate;
+                
+                return (
+                  <TouchableOpacity 
+                    key={dateString}
+                    style={[styles.dateButton, isSelected && styles.selectedDateButton]}
+                    onPress={() => handleDateChange(dateString)}
+                  >
+                    <Text style={[styles.dateButtonDay, isSelected && styles.selectedDateButtonText]}>
+                      {format(date, 'E')}
+                    </Text>
+                    <Text style={[styles.dateButtonDate, isSelected && styles.selectedDateButtonText]}>
+                      {format(date, 'd')}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+          
+          {/* Available Time Slots */}
+          <Text style={styles.availabilityTitle}>
+            {selectedService?.title ? `${selectedService.title} - ` : ''}
+            Available Times for {format(new Date(selectedDate), 'PPP')}
+          </Text>
+          
+          {loading ? (
+            <ActivityIndicator size="large" color={COLORS.primary} style={styles.modalLoading} />
+          ) : availableTimeSlots.length === 0 ? (
+            <View style={styles.noTimeSlotsContainer}>
+              <Ionicons name="time-outline" size={50} color="#DADADA" />
+              <Text style={styles.noTimeSlotsText}>No available time slots</Text>
+              <Text style={styles.noTimeSlotsSubText}>Try selecting another date</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={availableTimeSlots}
+              keyExtractor={(item) => item.id.toString()}
+              renderItem={({ item }) => (
+                <TouchableOpacity 
+                  style={styles.timeSlotItem}
+                  onPress={() => handleTimeSlotSelected(item)}
+                >
+                  <Ionicons name="time-outline" size={20} color={COLORS.primary} style={styles.timeSlotIcon} />
+                  <Text style={styles.timeSlotText}>{item.displayTime}</Text>
+                </TouchableOpacity>
+              )}
+              contentContainerStyle={styles.timeSlotsList}
+            />
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
+
   // Render booking card
   const renderBookingItem = ({ item }) => {
     const dateInfo = formatDate(item.scheduled_at);
@@ -178,6 +435,9 @@ const BookingsScreen = ({ navigation }) => {
   return (
     <View style={styles.container}>
       <AppHeader title="My Bookings" navigation={navigation} canGoBack={true} />
+      
+      {/* Time Slot Selection Modal */}
+      {renderTimeSlotModal()}
       
       {/* Tab Selector */}
       <View style={styles.tabContainer}>
@@ -236,6 +496,116 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F8F8F8',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 30,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  dateSelector: {
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  dateSelectorLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 10,
+    color: '#333',
+  },
+  dateSelectorButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  dateButton: {
+    width: 40,
+    height: 65,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 8,
+    backgroundColor: '#f8f8f8',
+  },
+  selectedDateButton: {
+    backgroundColor: COLORS.primary,
+  },
+  dateButtonDay: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#666',
+  },
+  dateButtonDate: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginTop: 4,
+    color: '#333',
+  },
+  selectedDateButtonText: {
+    color: '#ffffff',
+  },
+  availabilityTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    padding: 15,
+    paddingBottom: 5,
+    color: '#333',
+  },
+  timeSlotsList: {
+    paddingHorizontal: 20,
+    paddingTop: 10,
+  },
+  timeSlotItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  timeSlotIcon: {
+    marginRight: 15,
+  },
+  timeSlotText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  modalLoading: {
+    padding: 30,
+  },
+  noTimeSlotsContainer: {
+    padding: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  noTimeSlotsText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginTop: 15,
+    color: '#333',
+  },
+  noTimeSlotsSubText: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 5,
   },
   tabContainer: {
     flexDirection: 'row',

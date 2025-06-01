@@ -50,11 +50,9 @@ export const uploadPostImage = async (imageData) => {
     // Check if we're authenticated
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
-      // Log in with default test user if not authenticated
-      await supabase.auth.signInWithPassword({
-        email: 'sarahconor@gmail.com',
-        password: '123456'
-      });
+      // No longer auto-logging in with default credentials
+      // User must be logged in to use this functionality
+      throw new Error('Authentication required to perform this action');
     }
 
     // Generate a unique filename using user ID (if available) for organization

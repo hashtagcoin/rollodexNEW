@@ -1,24 +1,14 @@
-// This module ensures the app is always authenticated as the default user (sarahconor@gmail.com)
+// This module previously provided auto-login functionality
+// Now it's disabled to require explicit login
 import { useEffect } from 'react';
 import { supabase } from './supabaseClient';
 
-const DEFAULT_EMAIL = 'sarahconor@gmail.com';
-const DEFAULT_PASSWORD = '123456';
+// Default user credentials have been moved to config/defaultUser.js
 
 export function useAutoSupabaseLogin() {
+  // Auto login is now disabled - explicit login is required
   useEffect(() => {
-    let isMounted = true;
-    async function ensureLoggedIn() {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        // Not logged in, sign in
-        await supabase.auth.signInWithPassword({
-          email: DEFAULT_EMAIL,
-          password: DEFAULT_PASSWORD,
-        });
-      }
-    }
-    ensureLoggedIn();
-    return () => { isMounted = false; };
+    // No auto-login functionality here anymore
+    return () => {};
   }, []);
 }

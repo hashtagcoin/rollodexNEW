@@ -20,14 +20,41 @@ import AppHeader from '../../components/layout/AppHeader';
 import { supabase } from '../../lib/supabaseClient';
 import { Feather } from '@expo/vector-icons';
 import * as Print from 'expo-print';
+import { isValid, parseISO, format } from 'date-fns';
 
-// Helper function to safely parse date strings
+// Enhanced helper function to safely parse date strings with validation
 const parseDate = (dateString) => {
   try {
-    return dateString ? new Date(dateString) : new Date();
+    if (!dateString) return new Date();
+    
+    // Try to parse ISO date string first
+    if (typeof dateString === 'string') {
+      const parsedDate = parseISO(dateString);
+      if (isValid(parsedDate)) return parsedDate;
+    }
+    
+    // Fallback to regular Date constructor
+    const date = new Date(dateString);
+    
+    // Validate the date is actually valid
+    if (isValid(date)) return date;
+    
+    console.warn('Invalid date string:', dateString);
+    return new Date(); // Return current date as fallback
   } catch (e) {
-    console.warn('Error parsing date:', e);
-    return new Date();
+    console.error('Error parsing date:', e);
+    return new Date(); // Return current date as fallback
+  }
+};
+
+// Format dates safely
+const formatDate = (date, formatStr = 'PPP') => {
+  try {
+    const safeDate = parseDate(date);
+    return format(safeDate, formatStr);
+  } catch (error) {
+    console.error('Error formatting date:', error);
+    return 'Invalid date';
   }
 };
 
@@ -136,10 +163,19 @@ const ServiceAgreementScreen = ({ route, navigation }) => {
       }
       
       // 2. Fetch current user profile (using the test user from memory)
+      // Get the current authenticated user instead of using hardcoded credentials
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError) throw authError;
+      
+      if (!user) {
+        throw new Error('Authentication required to view service agreements');
+      }
+      
       const { data: userData, error: userError } = await supabase
         .from('user_profiles')
         .select('*')
-        .eq('email', 'sarahconor@gmail.com')
+        .eq('id', user.id)
         .single();
         
       if (userError) throw userError;
