@@ -7,6 +7,7 @@ import * as FileSystem from 'expo-file-system';
 import { COLORS } from '../../constants/theme';
 import { useUser } from '../../context/UserContext';
 import { supabase } from '../../lib/supabaseClient';
+import AppHeader from '../../components/layout/AppHeader';
 
 const ServiceAgreementsScreen = ({ navigation }) => {
   const { profile } = useUser();
@@ -226,17 +227,11 @@ const ServiceAgreementsScreen = ({ navigation }) => {
   
   return (
     <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Ionicons name="chevron-back" size={24} color={COLORS.primary} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Service Agreements</Text>
-        <View style={{ width: 24 }} />
-      </View>
+      <AppHeader
+        title="Service Agreements"
+        navigation={navigation}
+        showBackButton={true}
+      />
       
       {/* Search bar */}
       <View style={styles.searchContainer}>

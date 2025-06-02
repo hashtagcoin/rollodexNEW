@@ -6,6 +6,7 @@ import { COLORS } from '../../constants/theme';
 import { useUser } from '../../context/UserContext';
 import { supabase } from '../../lib/supabaseClient';
 import { format, parseISO, isToday, isPast, isFuture } from 'date-fns';
+import AppHeader from '../../components/layout/AppHeader';
 
 const ProviderAppointmentsScreen = ({ navigation }) => {
   const { profile } = useUser();
@@ -171,17 +172,11 @@ const ProviderAppointmentsScreen = ({ navigation }) => {
   
   return (
     <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Ionicons name="chevron-back" size={24} color={COLORS.primary} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>My Appointments</Text>
-        <View style={{ width: 24 }} />
-      </View>
+      <AppHeader
+        title="My Appointments"
+        navigation={navigation}
+        showBackButton={true}
+      />
       
       {/* Tab buttons */}
       <View style={styles.tabContainer}>

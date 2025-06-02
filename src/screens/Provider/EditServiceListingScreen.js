@@ -308,8 +308,8 @@ const EditServiceListingScreen = ({ route, navigation }) => {
     <View style={styles.container}>
       <AppHeader
         title="Edit Service Listing"
-        showBack
-        onBack={() => navigation.goBack()}
+        navigation={navigation}
+        showBackButton={true}
       />
 
       <ScrollView style={styles.scrollContainer}>

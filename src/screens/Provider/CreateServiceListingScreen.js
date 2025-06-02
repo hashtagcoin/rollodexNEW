@@ -543,8 +543,8 @@ const CreateServiceListingScreen = ({ navigation }) => {
     <View style={styles.container}>
       <AppHeader
         title="Create Service Listing"
-        showBack
-        onBack={() => navigation.goBack()}
+        navigation={navigation}
+        canGoBack={true}
       />
       
       {/* Instagram-style Availability Calendar Modal */}

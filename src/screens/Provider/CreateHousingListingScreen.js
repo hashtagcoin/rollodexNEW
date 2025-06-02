@@ -1,62 +1,71 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TextInput,
   TouchableOpacity,
-  Alert,
   Image,
-  Platform,
+  ScrollView,
+  Alert,
   Switch,
+  ActivityIndicator,
+  Platform,
+  KeyboardAvoidingView,
+  Keyboard,
+  TouchableWithoutFeedback, // Note: This import is present but not used in the component. Not a syntax error, but linters might flag it.
 } from 'react-native';
 import { Feather, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
-import { Picker } from '@react-native-picker/picker';
+import { Dropdown } from 'react-native-element-dropdown';
 import * as ImagePicker from 'expo-image-picker';
-import { v4 as uuidv4 } from 'uuid';
+
+// Function to generate a random string for filenames
+const generateRandomString = (length) => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let result = '';
+  for (let i = 0; i < length; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+};
+
 import { supabase } from '../../lib/supabaseClient';
 import { useUser } from '../../context/UserContext';
 import AppHeader from '../../components/layout/AppHeader';
 import Button from '../../components/common/Button';
-import Card from '../../components/common/Card';
+import Card from '../../components/common/Card'; // Card component is imported
 import { COLORS, FONTS } from '../../constants/theme';
+import { HOUSING_TYPES, SDA_CATEGORIES, ACCESSIBILITY_FEATURES, PROPERTY_FEATURES } from '../../constants/formOptions';
 
-const HOUSING_TYPES = [
-  'Apartment',
-  'House',
-  'Unit',
-  'Townhouse',
-  'Villa',
-  'Shared Accommodation',
-  'Supported Living',
-  'SDA',
-  'Other',
-];
+// const HOUSING_TYPES = [ /* Content moved to formOptions.js */ ]; // Moved to formOptions.js
 
-const ACCESSIBILITY_FEATURES = [
-  'Wheelchair Accessible',
-  'Step-free Access',
-  'Accessible Bathroom',
-  'Accessible Kitchen',
-  'Hoists Available',
-  'Visual Aids',
-  'Auditory Aids',
-  'Sensory Room',
-  'Quiet Space',
-];
+// SDA categories
+// const SDA_CATEGORIES = [ /* Content moved to formOptions.js */ ]; // Moved to formOptions.js
 
-const PROPERTY_FEATURES = [
-  'Furnished',
-  'Air Conditioning',
-  'Heating',
-  'Parking',
-  'Laundry',
-  'Internet',
-  'Pets Allowed',
-  'Outdoor Area',
-  'Public Transport',
+// Date dropdown options
+const DAYS = Array.from({ length: 31 }, (_, i) => ({ label: String(i + 1).padStart(2, '0'), value: String(i + 1).padStart(2, '0') }));
+const MONTHS = [
+  { label: 'January', value: '01' },
+  { label: 'February', value: '02' },
+  { label: 'March', value: '03' },
+  { label: 'April', value: '04' },
+  { label: 'May', value: '05' },
+  { label: 'June', value: '06' },
+  { label: 'July', value: '07' },
+  { label: 'August', value: '08' },
+  { label: 'September', value: '09' },
+  { label: 'October', value: '10' },
+  { label: 'November', value: '11' },
+  { label: 'December', value: '12' },
 ];
+const YEARS = Array.from({ length: 6 }, (_, i) => {
+  const year = new Date().getFullYear() + i;
+  return { label: String(year), value: String(year) };
+});
+
+// const ACCESSIBILITY_FEATURES = [ /* Content moved to formOptions.js */ ]; // Moved to formOptions.js
+
+// const PROPERTY_FEATURES = [ /* Content moved to formOptions.js */ ]; // Moved to formOptions.js
 
 const CreateHousingListingScreen = ({ navigation }) => {
   const { profile } = useUser();
@@ -82,10 +91,30 @@ const CreateHousingListingScreen = ({ navigation }) => {
     addressState: '',
     addressPostcode: '',
     available: true,
-    availableFrom: '',
+    availableDay: new Date().getDate().toString().padStart(2, '0'),
+    availableMonth: (new Date().getMonth() + 1).toString().padStart(2, '0'),
+    availableYear: new Date().getFullYear().toString(),
     accessibilityFeatures: [],
     propertyFeatures: [],
   });
+
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const keyboardDidShowListener = Keyboard.addListener(
+      'keyboardDidShow',
+      () => setKeyboardVisible(true)
+    );
+    const keyboardDidHideListener = Keyboard.addListener(
+      'keyboardDidHide',
+      () => setKeyboardVisible(false)
+    );
+
+    return () => {
+      keyboardDidShowListener.remove();
+      keyboardDidHideListener.remove();
+    };
+  }, []);
 
   const handleChange = (field, value) => {
     setFormData(prevData => ({
@@ -121,21 +150,13 @@ const CreateHousingListingScreen = ({ navigation }) => {
       return false;
     }
     
-    if (!formData.price.trim() || isNaN(parseFloat(formData.price))) {
-      Alert.alert('Error', 'Valid price is required');
+    if (!formData.price) {
+      Alert.alert('Error', 'Weekly rent is required');
       return false;
     }
     
-    if (!formData.addressStreet.trim() || 
-        !formData.addressSuburb.trim() || 
-        !formData.addressState.trim() || 
-        !formData.addressPostcode.trim()) {
-      Alert.alert('Error', 'Address is required');
-      return false;
-    }
-
-    if (formData.sdaApproved && !formData.sdaCategory.trim()) {
-      Alert.alert('Error', 'SDA Category is required for SDA approved properties');
+    if (isNaN(parseFloat(formData.price))) {
+      Alert.alert('Error', 'Weekly rent must be a valid number');
       return false;
     }
     
@@ -149,12 +170,36 @@ const CreateHousingListingScreen = ({ navigation }) => {
       return false;
     }
     
+    if (formData.bondAmount && isNaN(parseFloat(formData.bondAmount))) {
+      Alert.alert('Error', 'Bond amount must be a valid number');
+      return false;
+    }
+    
+    if (formData.sdaApproved && !formData.sdaCategory) {
+      Alert.alert('Error', 'SDA Category is required when SDA Approved is enabled');
+      return false;
+    }
+    
+    if (!formData.addressStreet.trim() || !formData.addressSuburb.trim() || !formData.addressState.trim() || !formData.addressPostcode.trim()) {
+      Alert.alert('Error', 'Complete address is required');
+      return false;
+    }
+    
+    // Validate date format if provided (Note: formData.availableFrom is not directly in state, but constructed later. This check might be for an older version or a field not present in the current formData structure.)
+    // If you have a specific 'availableFrom' text input, this validation is relevant. Currently, date is handled by dropdowns.
+    // if (formData.availableFrom && formData.availableFrom.trim()) {
+    //   const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    //   if (!dateRegex.test(formData.availableFrom.trim())) {
+    //     Alert.alert('Error', 'Available From date must be in YYYY-MM-DD format');
+    //     return false;
+    //   }
+    // }
+    
     return true;
   };
 
   const pickImage = async () => {
     try {
-      // Request permissions
       if (Platform.OS !== 'web') {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (status !== 'granted') {
@@ -170,9 +215,25 @@ const CreateHousingListingScreen = ({ navigation }) => {
         quality: 0.7,
       });
       
-      if (!result.canceled) {
-        // Add the new image to the list of images
-        setImages([...images, result.assets[0]]);
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const selectedAsset = result.assets[0];
+        let mimeType = selectedAsset.mimeType;
+        if (!mimeType && selectedAsset.uri) {
+          const uriParts = selectedAsset.uri.split('.');
+          const extension = uriParts.pop().toLowerCase();
+          if (extension === 'jpg' || extension === 'jpeg') mimeType = 'image/jpeg';
+          else if (extension === 'png') mimeType = 'image/png';
+          else if (extension === 'gif') mimeType = 'image/gif';
+          else if (extension === 'webp') mimeType = 'image/webp';
+          else mimeType = 'application/octet-stream'; // Fallback
+        }
+        if (!mimeType) mimeType = 'application/octet-stream'; // Ensure it's set
+
+        setImages(prevImages => [...prevImages, { 
+          uri: selectedAsset.uri, 
+          mimeType: mimeType,
+          fileName: selectedAsset.fileName || `image.${mimeType.split('/')[1] || 'jpg'}` // Store original filename or a generated one
+        }]);
       }
     } catch (error) {
       console.error('Error picking image:', error);
@@ -191,31 +252,38 @@ const CreateHousingListingScreen = ({ navigation }) => {
       setUploadingImages(true);
       const uploadedUrls = [];
       
-      for (const image of images) {
-        // Create a file name with uuid to avoid conflicts
-        const fileExt = image.uri.split('.').pop();
-        const fileName = `${uuidv4()}.${fileExt}`;
-        const filePath = `housing-images/${fileName}`;
+      for (const imageAsset of images) { // imageAsset is now { uri, mimeType, fileName }
+        const contentType = imageAsset.mimeType || 'application/octet-stream';
+
+        // Use a unique name for storage, can use original extension from mimeType or fileName
+        const fileExt = imageAsset.fileName ? imageAsset.fileName.split('.').pop() : contentType.split('/')[1] || 'jpg';
+        const randomString = generateRandomString(32);
+        const storageFileName = `${randomString}.${fileExt}`;
+        const filePath = `housing-images/${storageFileName}`;
         
-        // Convert the image to blob
-        const response = await fetch(image.uri);
+        const response = await fetch(imageAsset.uri);
         const blob = await response.blob();
+
+        if (blob.size === 0) {
+          console.warn(`Skipping 0-byte blob for image: ${imageAsset.uri}`);
+          Alert.alert('Upload Warning', `An image (${imageAsset.fileName || 'selected image'}) appears to be empty and was not uploaded.`);
+          continue; // Skip this image
+        }
         
-        // Upload to Supabase Storage
         const { data, error } = await supabase.storage
-          .from('media')
+          .from('housing')
           .upload(filePath, blob, {
-            contentType: `image/${fileExt}`,
+            contentType: contentType,
             cacheControl: '3600',
           });
         
         if (error) {
+          console.error('Supabase upload error for:', imageAsset.uri, error);
           throw error;
         }
         
-        // Get the public URL
         const { data: { publicUrl } } = supabase.storage
-          .from('media')
+          .from('housing')
           .getPublicUrl(filePath);
         
         uploadedUrls.push(publicUrl);
@@ -238,7 +306,12 @@ const CreateHousingListingScreen = ({ navigation }) => {
     try {
       setLoading(true);
       
-      // Get the service provider ID for the current user
+      if (!profile || !profile.id) {
+        Alert.alert('Error', 'User profile not loaded. Please try again.');
+        setLoading(false);
+        return;
+      }
+
       const { data: providerData, error: providerError } = await supabase
         .from('service_providers')
         .select('id')
@@ -246,43 +319,50 @@ const CreateHousingListingScreen = ({ navigation }) => {
         .single();
       
       if (providerError) {
-        throw new Error('Unable to find your service provider account. Please ensure you are registered as a service provider.');
+        console.error('Error fetching provider ID:', providerError);
+        throw new Error('Unable to find your service provider profile. Please ensure you are registered as a service provider.');
+      }
+
+      if (!providerData) {
+        throw new Error('No service provider profile found. Please create a service provider profile first.');
       }
       
       const providerId = providerData.id;
       
-      // Upload images if any
       let mediaUrls = [];
       if (images.length > 0) {
         mediaUrls = await uploadImages();
       }
       
-      // Create the housing listing
+      const currentDate = new Date().toISOString(); // Use ISO string for timestamp fields
+      const availableFromDate = `${formData.availableYear}-${formData.availableMonth}-${formData.availableDay}`;
+
       const { error } = await supabase
         .from('housing_listings')
         .insert({
           provider_id: providerId,
           title: formData.title,
           description: formData.description,
-          housing_type: formData.housingType,
-          bedrooms: formData.bedrooms ? parseInt(formData.bedrooms) : null,
-          bathrooms: formData.bathrooms ? parseInt(formData.bathrooms) : null,
-          price: parseFloat(formData.price),
+          property_type: formData.housingType,
+          bedrooms: formData.bedrooms ? parseInt(formData.bedrooms) : 0,
+          bathrooms: formData.bathrooms ? parseInt(formData.bathrooms) : 0,
+          weekly_rent: parseFloat(formData.price),
           bond_amount: formData.bondAmount ? parseFloat(formData.bondAmount) : null,
-          ndis_eligible: formData.ndisEligible,
-          sda_approved: formData.sdaApproved,
-          sda_category: formData.sdaApproved ? formData.sdaCategory : null,
-          ndis_commission: formData.ndisCommission ? parseFloat(formData.ndisCommission) : null,
-          address_number: formData.addressNumber,
-          address_street: formData.addressStreet,
-          address_suburb: formData.addressSuburb,
-          address_state: formData.addressState,
-          address_postcode: formData.addressPostcode,
-          available: formData.available,
-          available_from: formData.availableFrom ? new Date(formData.availableFrom) : null,
+          ndis_supported: formData.ndisEligible,
+          is_sda_certified: formData.sdaApproved,
+          sda_category: formData.sdaApproved ? formData.sdaCategory : 'not_applicable', // Send 'not_applicable' if not approved
+          address: `${formData.addressNumber} ${formData.addressStreet}`.trim(),
+          suburb: formData.addressSuburb,
+          state: formData.addressState,
+          postcode: formData.addressPostcode,
+          available_from: availableFromDate,
           accessibility_features: formData.accessibilityFeatures,
-          property_features: formData.propertyFeatures,
+          features: formData.propertyFeatures,
           media_urls: mediaUrls,
+          // created_at and updated_at are usually handled by DB triggers (DEFAULT now())
+          // last_updated: currentDate, // If you have this field, ensure it's a timestamp
+          pets_allowed: formData.propertyFeatures.includes('Pets Allowed'),
+          coordinates: null, // This will be set using a geocoding service later
         });
       
       if (error) throw error;
@@ -302,345 +382,398 @@ const CreateHousingListingScreen = ({ navigation }) => {
   };
 
   return (
-    <View style={styles.container}>
-      <AppHeader
+    <KeyboardAvoidingView 
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+    >
+      <AppHeader 
         title="Create Housing Listing"
-        showBack
-        onBack={() => navigation.goBack()}
+        navigation={navigation}
+        canGoBack={true}
       />
-
-      <ScrollView style={styles.scrollContainer}>
-        <Card style={styles.formCard}>
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>Title*</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter housing title"
-              value={formData.title}
-              onChangeText={(text) => handleChange('title', text)}
-              maxLength={80}
-            />
-          </View>
-
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>Description*</Text>
-            <TextInput
-              style={[styles.input, styles.textArea]}
-              placeholder="Describe the property in detail"
-              value={formData.description}
-              onChangeText={(text) => handleChange('description', text)}
-              multiline
-              numberOfLines={4}
-              maxLength={1000}
-            />
-            <Text style={styles.charCount}>
-              {formData.description.length}/1000
-            </Text>
-          </View>
-
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>Housing Type*</Text>
-            <View style={styles.pickerContainer}>
-              <Picker
-                selectedValue={formData.housingType}
-                style={styles.picker}
-                onValueChange={(value) => handleChange('housingType', value)}
-              >
-                {HOUSING_TYPES.map((type) => (
-                  <Picker.Item key={type} label={type} value={type} />
-                ))}
-              </Picker>
-            </View>
-          </View>
-
-          <View style={styles.formRow}>
-            <View style={[styles.formGroup, { flex: 1, marginRight: 8 }]}>
-              <Text style={styles.label}>Bedrooms</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="0"
-                value={formData.bedrooms}
-                onChangeText={(text) => handleChange('bedrooms', text)}
-                keyboardType="numeric"
-              />
-            </View>
-            
-            <View style={[styles.formGroup, { flex: 1, marginLeft: 8 }]}>
-              <Text style={styles.label}>Bathrooms</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="0"
-                value={formData.bathrooms}
-                onChangeText={(text) => handleChange('bathrooms', text)}
-                keyboardType="numeric"
-              />
-            </View>
-          </View>
-
-          <View style={styles.formRow}>
-            <View style={[styles.formGroup, { flex: 1, marginRight: 8 }]}>
-              <Text style={styles.label}>Weekly Rent (AUD)*</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="0.00"
-                value={formData.price}
-                onChangeText={(text) => handleChange('price', text)}
-                keyboardType="numeric"
-              />
-            </View>
-            
-            <View style={[styles.formGroup, { flex: 1, marginLeft: 8 }]}>
-              <Text style={styles.label}>Bond Amount</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="0.00"
-                value={formData.bondAmount}
-                onChangeText={(text) => handleChange('bondAmount', text)}
-                keyboardType="numeric"
-              />
-            </View>
-          </View>
-
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>Available From</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="YYYY-MM-DD"
-              value={formData.availableFrom}
-              onChangeText={(text) => handleChange('availableFrom', text)}
-            />
-          </View>
-
-          <View style={styles.formGroup}>
-            <Text style={styles.sectionTitle}>NDIS Information</Text>
-            
-            <View style={styles.switchRow}>
-              <Text style={styles.switchLabel}>NDIS Eligible</Text>
-              <Switch
-                value={formData.ndisEligible}
-                onValueChange={(value) => handleChange('ndisEligible', value)}
-                trackColor={{ false: '#D1D1D6', true: COLORS.primaryLight }}
-                thumbColor={formData.ndisEligible ? COLORS.primary : '#F4F3F4'}
-              />
-            </View>
-            
-            <View style={styles.switchRow}>
-              <Text style={styles.switchLabel}>SDA Approved</Text>
-              <Switch
-                value={formData.sdaApproved}
-                onValueChange={(value) => handleChange('sdaApproved', value)}
-                trackColor={{ false: '#D1D1D6', true: COLORS.primaryLight }}
-                thumbColor={formData.sdaApproved ? COLORS.primary : '#F4F3F4'}
-              />
-            </View>
-            
-            {formData.sdaApproved && (
+      {/* FIX 3: Removed style={styles.scrollView} as it's not defined */}
+      <ScrollView keyboardShouldPersistTaps="handled">
+        {/* FIX 2: Changed style from styles.content to styles.scrollContent */}
+        <View style={styles.scrollContent}>
+            {/* FIX 1: Added opening Card tag here */}
+            <Card style={styles.card}>
               <View style={styles.formGroup}>
-                <Text style={styles.label}>SDA Category*</Text>
+                <Text style={styles.label}>Listing Title*</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="Enter SDA category"
-                  value={formData.sdaCategory}
-                  onChangeText={(text) => handleChange('sdaCategory', text)}
+                  placeholder="Enter property title"
+                  value={formData.title}
+                  onChangeText={(text) => handleChange('title', text)}
                 />
               </View>
-            )}
-            
-            {formData.ndisEligible && (
+
               <View style={styles.formGroup}>
-                <Text style={styles.label}>NDIS Commission (%)</Text>
+                <Text style={styles.label}>Description*</Text>
                 <TextInput
-                  style={styles.input}
-                  placeholder="e.g. 10"
-                  value={formData.ndisCommission}
-                  onChangeText={(text) => handleChange('ndisCommission', text)}
-                  keyboardType="numeric"
+                  style={[styles.input, styles.textArea]}
+                  placeholder="Describe the property..."
+                  value={formData.description}
+                  onChangeText={(text) => handleChange('description', text)}
+                  multiline
+                  numberOfLines={5}
                 />
               </View>
-            )}
-          </View>
 
-          <View style={styles.addressContainer}>
-            <Text style={styles.sectionTitle}>Property Address*</Text>
-            
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>Street Number</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Street Number"
-                value={formData.addressNumber}
-                onChangeText={(text) => handleChange('addressNumber', text)}
-              />
-            </View>
-            
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>Street*</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Street"
-                value={formData.addressStreet}
-                onChangeText={(text) => handleChange('addressStreet', text)}
-              />
-            </View>
-            
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>Suburb*</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Suburb"
-                value={formData.addressSuburb}
-                onChangeText={(text) => handleChange('addressSuburb', text)}
-              />
-            </View>
-            
-            <View style={styles.formRow}>
-              <View style={[styles.formGroup, { flex: 1, marginRight: 8 }]}>
-                <Text style={styles.label}>State*</Text>
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Housing Type*</Text>
+                <Dropdown
+                  style={[styles.dropdown, { zIndex: 3000 }]}
+                  placeholderStyle={styles.placeholderStyle}
+                  selectedTextStyle={styles.selectedTextStyle}
+                  data={HOUSING_TYPES.map(type => ({ label: type, value: type }))}
+                  maxHeight={300}
+                  labelField="label"
+                  valueField="value"
+                  placeholder="Select housing type"
+                  value={formData.housingType}
+                  onChange={item => handleChange('housingType', item.value)}
+                />
+              </View>
+
+              <View style={styles.formRow}>
+                <View style={[styles.formGroup, { flex: 1, marginRight: 8 }]}>
+                  <Text style={styles.label}>Bedrooms</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="0"
+                    value={formData.bedrooms}
+                    onChangeText={(text) => handleChange('bedrooms', text)}
+                    keyboardType="numeric"
+                  />
+                </View>
+                
+                <View style={[styles.formGroup, { flex: 1, marginLeft: 8 }]}>
+                  <Text style={styles.label}>Bathrooms</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="0"
+                    value={formData.bathrooms}
+                    onChangeText={(text) => handleChange('bathrooms', text)}
+                    keyboardType="numeric"
+                  />
+                </View>
+              </View>
+
+              <View style={styles.formRow}>
+                <View style={[styles.formGroup, { flex: 1, marginRight: 8 }]}>
+                  <Text style={styles.label}>Weekly Rent*</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="$"
+                    value={formData.price}
+                    onChangeText={(text) => handleChange('price', text)}
+                    keyboardType="numeric"
+                  />
+                </View>
+                
+                <View style={[styles.formGroup, { flex: 1, marginLeft: 8 }]}>
+                  <Text style={styles.label}>Bond Amount</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="$"
+                    value={formData.bondAmount}
+                    onChangeText={(text) => handleChange('bondAmount', text)}
+                    keyboardType="numeric"
+                  />
+                </View>
+              </View>
+
+              <View style={styles.formGroup}>
+                <View style={styles.switchRow}>
+                  <Text style={styles.label}>NDIS Eligible</Text>
+                  <Switch
+                    value={formData.ndisEligible}
+                    onValueChange={(value) => handleChange('ndisEligible', value)}
+                    trackColor={{ false: '#D1D1D6', true: COLORS.primaryLight }}
+                    thumbColor={formData.ndisEligible ? COLORS.primary : '#F4F3F4'}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.formGroup}>
+                <View style={styles.switchRow}>
+                  <Text style={styles.label}>SDA Approved</Text>
+                  <Switch
+                    value={formData.sdaApproved}
+                    onValueChange={(value) => handleChange('sdaApproved', value)}
+                    trackColor={{ false: '#D1D1D6', true: COLORS.primaryLight }}
+                    thumbColor={formData.sdaApproved ? COLORS.primary : '#F4F3F4'}
+                  />
+                </View>
+              </View>
+
+              {formData.sdaApproved && (
+                <View style={styles.formGroup}>
+                  <Text style={styles.label}>SDA Category*</Text>
+                  <Dropdown
+                    style={[styles.dropdown, { zIndex: 2000 }]}
+                    placeholderStyle={styles.placeholderStyle}
+                    selectedTextStyle={styles.selectedTextStyle}
+                    data={SDA_CATEGORIES}
+                    maxHeight={300}
+                    labelField="label"
+                    valueField="value"
+                    placeholder="Select SDA category"
+                    value={formData.sdaCategory}
+                    onChange={item => handleChange('sdaCategory', item.value)}
+                  />
+                </View>
+              )}
+
+              {formData.ndisEligible && (
+                <View style={styles.formGroup}>
+                  <Text style={styles.label}>NDIS Commission (%)</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g. 10"
+                    value={formData.ndisCommission}
+                    onChangeText={(text) => handleChange('ndisCommission', text)}
+                    keyboardType="numeric"
+                  />
+                </View>
+              )}
+            </Card> {/* This was the original orphaned closing tag, now correctly paired */}
+
+            <View style={styles.addressContainer}>
+              <Text style={styles.sectionTitle}>Property Address*</Text>
+              
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Street Number</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="State"
-                  value={formData.addressState}
-                  onChangeText={(text) => handleChange('addressState', text)}
+                  placeholder="Street Number"
+                  value={formData.addressNumber}
+                  onChangeText={(text) => handleChange('addressNumber', text)}
                 />
               </View>
               
-              <View style={[styles.formGroup, { flex: 1, marginLeft: 8 }]}>
-                <Text style={styles.label}>Postcode*</Text>
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Street*</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="Postcode"
-                  value={formData.addressPostcode}
-                  onChangeText={(text) => handleChange('addressPostcode', text)}
-                  keyboardType="numeric"
-                  maxLength={4}
+                  placeholder="Street"
+                  value={formData.addressStreet}
+                  onChangeText={(text) => handleChange('addressStreet', text)}
                 />
               </View>
-            </View>
-          </View>
-
-          <View style={styles.formGroup}>
-            <Text style={styles.sectionTitle}>Accessibility Features</Text>
-            <View style={styles.featuresList}>
-              {ACCESSIBILITY_FEATURES.map((feature) => (
-                <TouchableOpacity 
-                  key={feature}
-                  style={[
-                    styles.featureItem,
-                    formData.accessibilityFeatures.includes(feature) && styles.featureSelected
-                  ]}
-                  onPress={() => toggleFeature(feature, 'accessibilityFeatures')}
-                >
-                  <Text 
-                    style={[
-                      styles.featureText,
-                      formData.accessibilityFeatures.includes(feature) && styles.featureTextSelected
-                    ]}
-                  >
-                    {feature}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-
-          <View style={styles.formGroup}>
-            <Text style={styles.sectionTitle}>Property Features</Text>
-            <View style={styles.featuresList}>
-              {PROPERTY_FEATURES.map((feature) => (
-                <TouchableOpacity 
-                  key={feature}
-                  style={[
-                    styles.featureItem,
-                    formData.propertyFeatures.includes(feature) && styles.featureSelected
-                  ]}
-                  onPress={() => toggleFeature(feature, 'propertyFeatures')}
-                >
-                  <Text 
-                    style={[
-                      styles.featureText,
-                      formData.propertyFeatures.includes(feature) && styles.featureTextSelected
-                    ]}
-                  >
-                    {feature}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>Property Images</Text>
-            <Text style={styles.helperText}>Add up to 10 images to showcase the property</Text>
-
-            <View style={styles.imagesContainer}>
-              {images.map((image, index) => (
-                <View key={index} style={styles.imageWrapper}>
-                  <Image source={{ uri: image.uri }} style={styles.imagePreview} />
-                  <TouchableOpacity
-                    style={styles.removeButton}
-                    onPress={() => removeImage(index)}
-                  >
-                    <Feather name="x" size={16} color="white" />
-                  </TouchableOpacity>
+              
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Suburb*</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Suburb"
+                  value={formData.addressSuburb}
+                  onChangeText={(text) => handleChange('addressSuburb', text)}
+                />
+              </View>
+              
+              <View style={styles.formRow}>
+                <View style={[styles.formGroup, { flex: 1, marginRight: 8 }]}>
+                  <Text style={styles.label}>State*</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="State"
+                    value={formData.addressState}
+                    onChangeText={(text) => handleChange('addressState', text)}
+                  />
                 </View>
-              ))}
+                
+                <View style={[styles.formGroup, { flex: 1, marginLeft: 8 }]}>
+                  <Text style={styles.label}>Postcode*</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Postcode"
+                    value={formData.addressPostcode}
+                    onChangeText={(text) => handleChange('addressPostcode', text)}
+                    keyboardType="numeric"
+                    maxLength={4}
+                  />
+                </View>
+              </View>
+            </View>
 
-              {images.length < 10 && (
-                <TouchableOpacity style={styles.addImageButton} onPress={pickImage}>
-                  <Feather name="plus" size={24} color={COLORS.primary} />
+            <View style={styles.formGroup}>
+              <Text style={styles.sectionTitle}>Accessibility Features</Text>
+              <View style={styles.featuresList}>
+                {ACCESSIBILITY_FEATURES.map((feature) => (
+                  <TouchableOpacity 
+                    key={feature}
+                    style={[
+                      styles.featureItem,
+                      formData.accessibilityFeatures.includes(feature) && styles.featureSelected
+                    ]}
+                    onPress={() => toggleFeature(feature, 'accessibilityFeatures')}
+                  >
+                    <Text 
+                      style={[
+                        styles.featureText,
+                        formData.accessibilityFeatures.includes(feature) && styles.featureTextSelected
+                      ]}
+                    >
+                      {feature}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.sectionTitle}>Property Features</Text>
+              <View style={styles.featuresList}>
+                {PROPERTY_FEATURES.map((feature) => (
+                  <TouchableOpacity 
+                    key={feature}
+                    style={[
+                      styles.featureItem,
+                      formData.propertyFeatures.includes(feature) && styles.featureSelected
+                    ]}
+                    onPress={() => toggleFeature(feature, 'propertyFeatures')}
+                  >
+                    <Text 
+                      style={[
+                        styles.featureText,
+                        formData.propertyFeatures.includes(feature) && styles.featureTextSelected
+                      ]}
+                    >
+                      {feature}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>Property Images</Text>
+              <Text style={styles.helperText}>Add up to 10 images to showcase the property</Text>
+
+              <View style={styles.imagesContainer}>
+                {images.map((image, index) => (
+                  <View key={index} style={styles.imageWrapper}>
+                    <Image source={{ uri: image.uri }} style={styles.imagePreview} />
+                    <TouchableOpacity
+                      style={styles.removeButton}
+                      onPress={() => removeImage(index)}
+                    >
+                      <Feather name="x" size={16} color="white" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+
+                {images.length < 10 && (
+                  <TouchableOpacity style={styles.addImageButton} onPress={pickImage}>
+                    <Feather name="plus" size={24} color={COLORS.primary} />
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>Availability</Text>
+              <View style={styles.switchContainer}>
+                <TouchableOpacity
+                  style={[
+                    styles.switchOption,
+                    formData.available ? styles.switchActive : null,
+                  ]}
+                  onPress={() => handleChange('available', true)}
+                >
+                  <Text
+                    style={[
+                      styles.switchText,
+                      formData.available ? styles.switchTextActive : null,
+                    ]}
+                  >
+                    Available
+                  </Text>
                 </TouchableOpacity>
-              )}
-            </View>
-          </View>
 
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>Availability</Text>
-            <View style={styles.switchContainer}>
-              <TouchableOpacity
-                style={[
-                  styles.switchOption,
-                  formData.available ? styles.switchActive : null,
-                ]}
-                onPress={() => handleChange('available', true)}
-              >
-                <Text
+                <TouchableOpacity
                   style={[
-                    styles.switchText,
-                    formData.available ? styles.switchTextActive : null,
+                    styles.switchOption,
+                    !formData.available ? styles.switchActive : null,
                   ]}
+                  onPress={() => handleChange('available', false)}
                 >
-                  Available
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.switchOption,
-                  !formData.available ? styles.switchActive : null,
-                ]}
-                onPress={() => handleChange('available', false)}
-              >
-                <Text
-                  style={[
-                    styles.switchText,
-                    !formData.available ? styles.switchTextActive : null,
-                  ]}
-                >
-                  Not Available
-                </Text>
-              </TouchableOpacity>
+                  <Text
+                    style={[
+                      styles.switchText,
+                      !formData.available ? styles.switchTextActive : null,
+                    ]}
+                  >
+                    Not Available
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
 
-          <Button
-            title="Create Housing Listing"
-            onPress={createHousingListing}
-            loading={loading || uploadingImages}
-            style={styles.submitButton}
-          />
-        </Card>
+            {formData.available && (
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Available From*</Text>
+                <View style={styles.formRow}>
+                  <View style={{flex: 1, marginRight: 4}}>
+                    <Text style={styles.helperText}>Day</Text>
+                    <Dropdown
+                      style={[styles.dropdown, { zIndex: 1500 }]}
+                      placeholderStyle={styles.placeholderStyle}
+                      selectedTextStyle={styles.selectedTextStyle}
+                      data={DAYS}
+                      maxHeight={250}
+                      labelField="label"
+                      valueField="value"
+                      placeholder="Day"
+                      value={formData.availableDay}
+                      onChange={item => handleChange('availableDay', item.value)}
+                    />
+                  </View>
+                  <View style={{flex: 2, marginHorizontal: 4}}>
+                    <Text style={styles.helperText}>Month</Text>
+                    <Dropdown
+                      style={[styles.dropdown, { zIndex: 1500 }]}
+                      placeholderStyle={styles.placeholderStyle}
+                      selectedTextStyle={styles.selectedTextStyle}
+                      data={MONTHS}
+                      maxHeight={250}
+                      labelField="label"
+                      valueField="value"
+                      placeholder="Month"
+                      value={formData.availableMonth}
+                      onChange={item => handleChange('availableMonth', item.value)}
+                    />
+                  </View>
+                  <View style={{flex: 1, marginLeft: 4}}>
+                    <Text style={styles.helperText}>Year</Text>
+                    <Dropdown
+                      style={[styles.dropdown, { zIndex: 1500 }]}
+                      placeholderStyle={styles.placeholderStyle}
+                      selectedTextStyle={styles.selectedTextStyle}
+                      data={YEARS}
+                      maxHeight={200}
+                      labelField="label"
+                      valueField="value"
+                      placeholder="Year"
+                      value={formData.availableYear}
+                      onChange={item => handleChange('availableYear', item.value)}
+                    />
+                  </View>
+                </View>
+              </View>
+            )}
+
+            <Button
+              title="Create Housing Listing"
+              onPress={createHousingListing}
+              loading={loading || uploadingImages}
+              style={styles.submitButton}
+            />
+        </View>
       </ScrollView>
-    </View>
+    </KeyboardAvoidingView>
   );
 };
 
@@ -649,13 +782,21 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F8F8F8',
   },
-  scrollContainer: {
-    flex: 1,
+  scrollContent: { // This style is now correctly referenced
     padding: 16,
+    paddingTop: 8,
+    paddingBottom: 32, // Added more padding at bottom for scrollability
   },
-  formCard: {
+  card: { // This style is used by the <Card> component
+    backgroundColor: 'white', // Assuming Card might not have default background
+    borderRadius: 8, // Assuming Card might need styling
     padding: 16,
     marginBottom: 20,
+    shadowColor: '#000', // Optional: add some shadow for card effect
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1.41,
+    elevation: 2,
   },
   formGroup: {
     marginBottom: 16,
@@ -690,36 +831,85 @@ const styles = StyleSheet.create({
     height: 120,
     textAlignVertical: 'top',
   },
-  charCount: {
+  charCount: { // This style is defined but not used in the JSX. Not a syntax error.
     alignSelf: 'flex-end',
     fontSize: 12,
     color: COLORS.gray,
     marginTop: 4,
   },
-  pickerContainer: {
+  dropdown: {
+    height: 48,
+    borderWidth: 1,
+    borderColor: '#DDD',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    backgroundColor: 'white',
+    // marginBottom: 8, // Can be removed if formGroup handles bottom margin
+    // zIndex: 1000, // zIndex is applied inline in JSX where needed
+  },
+  placeholderStyle: {
+    fontSize: 16,
+    color: '#999',
+  },
+  selectedTextStyle: {
+    fontSize: 16,
+    color: COLORS.text,
+  },
+  datePickerContainer: { // This style is defined but not used directly in the JSX for date pickers (using Dropdown).
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  datePickerItem: { // This style is defined but not used.
+    flex: 1,
+    marginHorizontal: 4,
+  },
+  datePickerLabel: { // This style is defined but not used.
+    fontSize: 12,
+    color: COLORS.text,
+    marginBottom: 4,
+    fontWeight: '500',
+  },
+  inputSearchStyle: { // This style is for Dropdown search input, if enabled.
+    height: 40,
+    fontSize: 16,
+  },
+  iconStyle: { // This style is for Dropdown icon.
+    width: 20,
+    height: 20,
+  },
+  dropdownIcon: { // This style is defined but not explicitly used (Dropdown might use it internally or via props).
+    marginRight: 8,
+  },
+  pickerContainer: { // This style is defined but not used (using Dropdown, not Picker).
     borderWidth: 1,
     borderColor: '#DDD',
     borderRadius: 8,
     backgroundColor: 'white',
   },
-  picker: {
+  picker: { // This style is defined but not used.
     height: 50,
   },
   addressContainer: {
-    marginTop: 8,
+    marginTop: 8, // Or manage via Card's marginBottom
     marginBottom: 8,
+    // If you want address also in a card, wrap it with <Card style={styles.card}>
+    // padding: 16, // Add padding if it's not inside a card
+    // backgroundColor: 'white', // Add background if not inside a card
+    // borderRadius: 8,
+    // ... (similar to card style if desired)
   },
   switchRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    // marginBottom: 12, // Handled by formGroup
     paddingVertical: 4,
   },
-  switchLabel: {
-    fontSize: 16,
-    color: COLORS.text,
-  },
+  // switchLabel: { // This style is defined but seems like styles.label is used instead.
+  //   fontSize: 16,
+  //   color: COLORS.text,
+  // },
   featuresList: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -811,6 +1001,7 @@ const styles = StyleSheet.create({
   },
   submitButton: {
     marginTop: 16,
+    marginBottom: 16, // Added margin at bottom for better spacing when scrolled
   },
 });
 

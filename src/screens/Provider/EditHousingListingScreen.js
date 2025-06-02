@@ -11,62 +11,54 @@ import {
   Image,
   Platform,
   Switch,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { Feather, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
-import { Picker } from '@react-native-picker/picker';
+import { Dropdown } from 'react-native-element-dropdown'; 
 import * as ImagePicker from 'expo-image-picker';
 import { v4 as uuidv4 } from 'uuid';
 import { supabase } from '../../lib/supabaseClient';
 import { useUser } from '../../context/UserContext';
-import AppHeader from '../../components/layout/AppHeader';
+import AppHeader from '../../components/layout/AppHeader'; 
 import Button from '../../components/common/Button';
-import Card from '../../components/common/Card';
-import { COLORS, FONTS } from '../../constants/theme';
+import Card from '../../components/common/Card'; 
+import ModernImagePicker from '../../components/ModernImagePicker'; 
+import { COLORS, FONTS, SIZES } from '../../constants/theme';
+import { HOUSING_TYPES, SDA_CATEGORIES, ACCESSIBILITY_FEATURES, PROPERTY_FEATURES } from '../../constants/formOptions';
 
-const HOUSING_TYPES = [
-  'Apartment',
-  'House',
-  'Unit',
-  'Townhouse',
-  'Villa',
-  'Shared Accommodation',
-  'Supported Living',
-  'SDA',
-  'Other',
+// Date dropdown options
+const DAYS = Array.from({ length: 31 }, (_, i) => ({ label: String(i + 1).padStart(2, '0'), value: String(i + 1).padStart(2, '0') }));
+const MONTHS = [
+  { label: 'January', value: '01' },
+  { label: 'February', value: '02' },
+  { label: 'March', value: '03' },
+  { label: 'April', value: '04' },
+  { label: 'May', value: '05' },
+  { label: 'June', value: '06' },
+  { label: 'July', value: '07' },
+  { label: 'August', value: '08' },
+  { label: 'September', value: '09' },
+  { label: 'October', value: '10' },
+  { label: 'November', value: '11' },
+  { label: 'December', value: '12' },
 ];
-
-const ACCESSIBILITY_FEATURES = [
-  'Wheelchair Accessible',
-  'Step-free Access',
-  'Accessible Bathroom',
-  'Accessible Kitchen',
-  'Hoists Available',
-  'Visual Aids',
-  'Auditory Aids',
-  'Sensory Room',
-  'Quiet Space',
-];
-
-const PROPERTY_FEATURES = [
-  'Furnished',
-  'Air Conditioning',
-  'Heating',
-  'Parking',
-  'Laundry',
-  'Internet',
-  'Pets Allowed',
-  'Outdoor Area',
-  'Public Transport',
-];
+const YEARS = Array.from({ length: 6 }, (_, i) => {
+  const year = new Date().getFullYear() + i;
+  return { label: String(year), value: String(year) };
+});
 
 const EditHousingListingScreen = ({ route, navigation }) => {
   const { housingId } = route.params;
   const { profile } = useUser();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [images, setImages] = useState([]);
-  const [existingImageUrls, setExistingImageUrls] = useState([]);
-  const [uploadingImages, setUploadingImages] = useState(false);
+  const [images, setImages] = useState([]); 
+  const [existingImageUrls, setExistingImageUrls] = useState([]); 
+  const [imagesToDelete, setImagesToDelete] = useState([]); 
+  // const [uploadingImages, setUploadingImages] = useState(false); // Removed uploadingImages state
+  const [availableDay, setAvailableDay] = useState('');
+  const [availableMonth, setAvailableMonth] = useState('');
+  const [availableYear, setAvailableYear] = useState('');
 
   const [formData, setFormData] = useState({
     title: '',
@@ -74,17 +66,16 @@ const EditHousingListingScreen = ({ route, navigation }) => {
     housingType: HOUSING_TYPES[0],
     bedrooms: '',
     bathrooms: '',
-    price: '',
+    price: '', 
     bondAmount: '',
     ndisEligible: false,
     sdaApproved: false,
     sdaCategory: '',
     ndisCommission: '',
-    addressNumber: '',
-    addressStreet: '',
-    addressSuburb: '',
-    addressState: '',
-    addressPostcode: '',
+    address: '', 
+    addressSuburb: '', 
+    addressState: '',  
+    addressPostcode: '', 
     available: true,
     availableFrom: '',
     accessibilityFeatures: [],
@@ -107,7 +98,8 @@ const EditHousingListingScreen = ({ route, navigation }) => {
       
       if (error) throw error;
       
-      // Check if the current user is the provider of this housing listing
+      console.log('Fetched housing data:', JSON.stringify(data));
+      
       const { data: providerData } = await supabase
         .from('service_providers')
         .select('id')
@@ -120,33 +112,40 @@ const EditHousingListingScreen = ({ route, navigation }) => {
         return;
       }
       
-      // Set the form data from the retrieved housing listing
       setFormData({
         title: data.title || '',
         description: data.description || '',
-        housingType: data.housing_type || HOUSING_TYPES[0],
+        housingType: data.property_type || HOUSING_TYPES[0], // Changed from housing_type to property_type to match DB schema
         bedrooms: data.bedrooms ? data.bedrooms.toString() : '',
         bathrooms: data.bathrooms ? data.bathrooms.toString() : '',
-        price: data.price ? data.price.toString() : '',
+        price: data.weekly_rent ? data.weekly_rent.toString() : '', // Changed from price_per_week to weekly_rent to match DB schema
         bondAmount: data.bond_amount ? data.bond_amount.toString() : '',
-        ndisEligible: data.ndis_eligible || false,
-        sdaApproved: data.sda_approved || false,
+        ndisEligible: data.ndis_supported || false,
+        sdaApproved: data.is_sda_certified || false,
         sdaCategory: data.sda_category || '',
         ndisCommission: data.ndis_commission ? data.ndis_commission.toString() : '',
-        addressNumber: data.address_number || '',
-        addressStreet: data.address_street || '',
-        addressSuburb: data.address_suburb || '',
-        addressState: data.address_state || '',
-        addressPostcode: data.address_postcode || '',
-        available: data.available !== undefined ? data.available : true,
-        availableFrom: data.available_from ? new Date(data.available_from).toISOString().split('T')[0] : '',
+        address: data.address || '', 
+        addressSuburb: data.suburb || '', 
+        addressState: data.state || '',  
+        addressPostcode: data.postcode || '', 
+        available: data.available !== undefined ? data.available : true, // Include the available field from database
         accessibilityFeatures: data.accessibility_features || [],
-        propertyFeatures: data.property_features || [],
+        propertyFeatures: data.features || [],
       });
       
-      // Set existing image URLs
+      // Log media URLs for debugging
+      console.log('Media URLs:', data.media_urls);
+      
       if (data.media_urls && Array.isArray(data.media_urls)) {
         setExistingImageUrls(data.media_urls);
+        console.log('Set existing image URLs:', data.media_urls);
+      }
+
+      if (data.available_from) {
+        const [yearPart, monthPart, dayPart] = data.available_from.split('T')[0].split('-');
+        setAvailableYear(yearPart || '');
+        setAvailableMonth(monthPart || '');
+        setAvailableDay(dayPart || '');
       }
     } catch (error) {
       console.error('Error fetching housing details:', error);
@@ -180,11 +179,11 @@ const EditHousingListingScreen = ({ route, navigation }) => {
       return false;
     }
     
-    if (!formData.addressStreet.trim() || 
+    if (!formData.address.trim() || 
         !formData.addressSuburb.trim() || 
         !formData.addressState.trim() || 
         !formData.addressPostcode.trim()) {
-      Alert.alert('Error', 'Address is required');
+      Alert.alert('Error', 'Full address information is required');
       return false;
     }
     
@@ -222,32 +221,15 @@ const EditHousingListingScreen = ({ route, navigation }) => {
     }));
   };
 
-  const pickImage = async () => {
-    try {
-      // Request permissions
-      if (Platform.OS !== 'web') {
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== 'granted') {
-          Alert.alert('Permission needed', 'Please grant permission to access your photo library');
-          return;
-        }
-      }
-      
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.7,
-      });
-      
-      if (!result.canceled) {
-        // Add the new image to the list of images
-        setImages([...images, result.assets[0]]);
-      }
-    } catch (error) {
-      console.error('Error picking image:', error);
-      Alert.alert('Error', 'Failed to select image');
+  const handleImagePicked = (pickedImage) => {
+    if ((images.length + existingImageUrls.length - imagesToDelete.length) >= 5) {
+      Alert.alert('Maximum images reached', 'You can upload a maximum of 5 images (including existing ones).');
+      return;
     }
+    const extension = pickedImage.mimeType ? pickedImage.mimeType.split('/')[1] : 'jpg';
+    const fileName = `img_${Date.now()}.${extension}`;
+    
+    setImages(prevImages => [...prevImages, { ...pickedImage, fileName }]);
   };
 
   const removeImage = (index) => {
@@ -256,118 +238,156 @@ const EditHousingListingScreen = ({ route, navigation }) => {
     setImages(updatedImages);
   };
 
-  const removeExistingImage = (index) => {
-    const updatedUrls = [...existingImageUrls];
-    updatedUrls.splice(index, 1);
-    setExistingImageUrls(updatedUrls);
+  const handleDeleteExistingImage = (url) => {
+    setImagesToDelete(prevUrls => [...prevUrls, url]);
+  };
+
+  const handleDeleteNewImage = (index) => {
+    const updatedImages = [...images];
+    updatedImages.splice(index, 1);
+    setImages(updatedImages);
   };
 
   const uploadImages = async () => {
     try {
-      setUploadingImages(true);
       const uploadedUrls = [];
-      
-      for (const image of images) {
-        // Create a file name with uuid to avoid conflicts
-        const fileExt = image.uri.split('.').pop();
-        const fileName = `${uuidv4()}.${fileExt}`;
-        const filePath = `housing-images/${fileName}`;
+      // Ensure profile.id is available in this scope. If not, fetch or pass it.
+      // For example, if 'profile' state is set from a context or earlier fetch:
+      const profileId = profile?.id; 
+
+      if (!profileId) {
+        console.error('User profile ID not found for image upload path.');
+        Alert.alert('Error', 'Could not upload images: User session error.');
+        return []; 
+      }
+
+      for (const imageAsset of images) { 
+        const contentType = imageAsset.mimeType || 'application/octet-stream';
         
-        // Convert the image to blob
-        const response = await fetch(image.uri);
+        const storageFileName = imageAsset.fileName; 
+        const filePath = `housing-images/${profileId}/${storageFileName}`; 
+
+        const response = await fetch(imageAsset.uri);
         const blob = await response.blob();
-        
-        // Upload to Supabase Storage
-        const { data, error } = await supabase.storage
-          .from('media')
-          .upload(filePath, blob, {
-            contentType: `image/${fileExt}`,
-            cacheControl: '3600',
-          });
-        
-        if (error) {
-          throw error;
+
+        if (blob.size === 0) {
+          console.warn(`Skipping 0-byte blob for image: ${imageAsset.uri} (filename: ${imageAsset.fileName})`);
+          Alert.alert('Upload Warning', `A new image (${imageAsset.fileName || 'selected image'}) appears to be empty and was not uploaded.`);
+          continue; 
         }
         
-        // Get the public URL
-        const { data: { publicUrl } } = supabase.storage
-          .from('media')
+        const { data, error: uploadError } = await supabase.storage
+          .from('housing') 
+          .upload(filePath, blob, {
+            contentType: contentType,
+            cacheControl: '3600',
+            upsert: false 
+          });
+        
+        if (uploadError) {
+          console.error('Supabase upload error for:', imageAsset.uri, uploadError);
+          throw uploadError; 
+        }
+        
+        const { data: urlData } = supabase.storage
+          .from('housing')
           .getPublicUrl(filePath);
         
-        uploadedUrls.push(publicUrl);
+        if (urlData && urlData.publicUrl) {
+           uploadedUrls.push(urlData.publicUrl);
+        } else {
+          console.warn('Failed to get public URL for uploaded image:', filePath);
+          // Decide if this is a critical error or if you can proceed
+        }
       }
-      
       return uploadedUrls;
     } catch (error) {
       console.error('Error uploading images:', error);
-      throw error;
-    } finally {
-      setUploadingImages(false);
+      Alert.alert('Error', 'An error occurred while uploading images. Please try again.');
+      throw error; 
     }
   };
-  
+
+  // Function to update housing listing with changes
   const updateHousingListing = async () => {
-    if (!validateForm()) {
-      return;
-    }
-    
     try {
-      setSaving(true);
-      
-      // Upload new images if any
-      let newMediaUrls = [];
-      if (images.length > 0) {
-        newMediaUrls = await uploadImages();
+      // Field validation
+      if (!formData.title) {
+        Alert.alert('Error', 'Please enter a title for your listing');
+        return;
       }
-      
-      // Combine existing and new media URLs
-      const allMediaUrls = [...existingImageUrls, ...newMediaUrls];
-      
-      // Update the housing listing
+
+      if (!formData.address || !formData.addressSuburb || !formData.addressState || !formData.addressPostcode) {
+        Alert.alert('Error', 'Please complete all address fields');
+        return;
+      }
+
+      setSaving(true);
+
+      // Upload any new images
+      let uploadedUrls = [];
+      if (images.length > 0) {
+        uploadedUrls = await uploadImages();
+      }
+
+      // Get existing image URLs not marked for deletion
+      const remainingImageUrls = existingImageUrls.filter(url => !imagesToDelete.includes(url));
+
+      // Combine with newly uploaded images
+      const finalImageUrls = [...remainingImageUrls, ...uploadedUrls];
+
+      console.log('Final image URLs:', finalImageUrls);
+
+      // Format the availableFrom date if all parts are provided
+      let availableFromDate = null;
+      if (availableYear && availableMonth && availableDay) {
+        availableFromDate = `${availableYear}-${availableMonth}-${availableDay}T00:00:00Z`;
+      }
+
+      // Update the database record with field names matching database schema
       const { error } = await supabase
         .from('housing_listings')
         .update({
           title: formData.title,
           description: formData.description,
-          housing_type: formData.housingType,
+          property_type: formData.housingType, // Changed from housing_type to property_type to match DB schema
           bedrooms: formData.bedrooms ? parseInt(formData.bedrooms) : null,
           bathrooms: formData.bathrooms ? parseInt(formData.bathrooms) : null,
-          price: parseFloat(formData.price),
+          weekly_rent: formData.price ? parseFloat(formData.price) : null, // Changed from price_per_week to weekly_rent to match DB schema
           bond_amount: formData.bondAmount ? parseFloat(formData.bondAmount) : null,
-          ndis_eligible: formData.ndisEligible,
-          sda_approved: formData.sdaApproved,
-          sda_category: formData.sdaApproved ? formData.sdaCategory : null,
+          ndis_supported: formData.ndisEligible,
+          is_sda_certified: formData.sdaApproved,
+          sda_category: formData.sdaCategory || null,
           ndis_commission: formData.ndisCommission ? parseFloat(formData.ndisCommission) : null,
-          address_number: formData.addressNumber,
-          address_street: formData.addressStreet,
-          address_suburb: formData.addressSuburb,
-          address_state: formData.addressState,
-          address_postcode: formData.addressPostcode,
-          available: formData.available,
-          available_from: formData.availableFrom ? new Date(formData.availableFrom) : null,
+          address: formData.address,
+          suburb: formData.addressSuburb,
+          state: formData.addressState,
+          postcode: formData.addressPostcode,
+          available: formData.available, // Include the available field to control visibility in discovery
+          available_from: availableFromDate,
           accessibility_features: formData.accessibilityFeatures,
-          property_features: formData.propertyFeatures,
-          media_urls: allMediaUrls,
-          updated_at: new Date(),
+          features: formData.propertyFeatures,
+          media_urls: finalImageUrls,
+          updated_at: new Date().toISOString(),
         })
         .eq('id', housingId);
-      
-      if (error) throw error;
-      
-      Alert.alert('Success', 'Housing listing updated successfully', [
-        { 
-          text: 'OK', 
-          onPress: () => navigation.navigate('ManageListings')
-        }
-      ]);
+
+      if (error) {
+        console.error('Database error:', error);
+        throw error;
+      }
+
+      Alert.alert('Success', 'Housing listing updated successfully!');
+      navigation.goBack();
     } catch (error) {
       console.error('Error updating housing listing:', error);
-      Alert.alert('Error', error.message || 'Failed to update housing listing');
+      Alert.alert('Error', 'Failed to update housing listing. ' + error.message);
     } finally {
       setSaving(false);
     }
   };
 
+// ... (rest of the code remains the same)
   const deleteHousingListing = async () => {
     try {
       setSaving(true);
@@ -390,22 +410,30 @@ const EditHousingListingScreen = ({ route, navigation }) => {
   };
   
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView 
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+    >
       <AppHeader
         title="Edit Housing Listing"
-        showBack
-        onBack={() => navigation.goBack()}
+        navigation={navigation}
+        showBackButton={true}
       />
       
       {loading ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
+          <Image source={require('../../assets/loading.gif')} style={styles.loadingGif} />
         </View>
       ) : (
-        <ScrollView style={styles.scrollContainer}>
+        <ScrollView 
+          style={styles.scrollContainer} 
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.scrollContent} 
+        >
           <Card style={styles.formCard}>
             <Text style={styles.screenTitle}>Edit Housing Listing</Text>
-            {/* Form content will be added in next chunks */}
+            
             <View style={styles.formGroup}>
               <Text style={styles.label}>Title*</Text>
               <TextInput
@@ -435,17 +463,24 @@ const EditHousingListingScreen = ({ route, navigation }) => {
             
             <View style={styles.formGroup}>
               <Text style={styles.label}>Housing Type*</Text>
-              <View style={styles.pickerContainer}>
-                <Picker
-                  selectedValue={formData.housingType}
-                  style={styles.picker}
-                  onValueChange={(value) => handleChange('housingType', value)}
-                >
-                  {HOUSING_TYPES.map((type) => (
-                    <Picker.Item key={type} label={type} value={type} />
-                  ))}
-                </Picker>
-              </View>
+              <Dropdown
+                style={[styles.dropdown, { zIndex: 3000 }]} 
+                placeholderStyle={styles.placeholderStyle}
+                selectedTextStyle={styles.selectedTextStyle}
+                inputSearchStyle={styles.inputSearchStyle} 
+                iconStyle={styles.iconStyle} 
+                data={HOUSING_TYPES.map(type => ({ label: type, value: type }))}
+                search 
+                maxHeight={300}
+                labelField="label"
+                valueField="value"
+                placeholder={!formData.housingType ? 'Select housing type' : '...'}
+                searchPlaceholder="Search..." 
+                value={formData.housingType}
+                onChange={item => {
+                  handleChange('housingType', item.value);
+                }}
+              />
             </View>
 
             <View style={styles.formRow}>
@@ -498,19 +533,51 @@ const EditHousingListingScreen = ({ route, navigation }) => {
 
             <View style={styles.formGroup}>
               <Text style={styles.label}>Available From</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="YYYY-MM-DD"
-                value={formData.availableFrom}
-                onChangeText={(text) => handleChange('availableFrom', text)}
-              />
+              <View style={styles.formRow}>
+                <Dropdown
+                  style={[styles.dropdown, styles.dateDropdown, { flex: 1, marginRight: 8, zIndex: 1500 }]}
+                  placeholderStyle={styles.placeholderStyle}
+                  selectedTextStyle={styles.selectedTextStyle}
+                  data={DAYS}
+                  maxHeight={200}
+                  labelField="label"
+                  valueField="value"
+                  placeholder="Day"
+                  value={availableDay}
+                  onChange={item => setAvailableDay(item.value)}
+                />
+                <Dropdown
+                  style={[styles.dropdown, styles.dateDropdown, { flex: 1.5, marginRight: 8, zIndex: 1500 }]}
+                  placeholderStyle={styles.placeholderStyle}
+                  selectedTextStyle={styles.selectedTextStyle}
+                  data={MONTHS}
+                  maxHeight={200}
+                  labelField="label"
+                  valueField="value"
+                  placeholder="Month"
+                  value={availableMonth}
+                  onChange={item => setAvailableMonth(item.value)}
+                />
+                <Dropdown
+                  style={[styles.dropdown, styles.dateDropdown, { flex: 1.2, zIndex: 1500 }]}
+                  placeholderStyle={styles.placeholderStyle}
+                  selectedTextStyle={styles.selectedTextStyle}
+                  data={YEARS}
+                  maxHeight={200}
+                  labelField="label"
+                  valueField="value"
+                  placeholder="Year"
+                  value={availableYear}
+                  onChange={item => setAvailableYear(item.value)}
+                />
+              </View>
             </View>
 
             <View style={styles.formGroup}>
               <Text style={styles.sectionTitle}>NDIS Information</Text>
               
               <View style={styles.switchRow}>
-                <Text style={styles.switchLabel}>NDIS Eligible</Text>
+                <Text style={styles.label}>NDIS Eligible</Text> 
                 <Switch
                   value={formData.ndisEligible}
                   onValueChange={(value) => handleChange('ndisEligible', value)}
@@ -520,7 +587,7 @@ const EditHousingListingScreen = ({ route, navigation }) => {
               </View>
               
               <View style={styles.switchRow}>
-                <Text style={styles.switchLabel}>SDA Approved</Text>
+                <Text style={styles.label}>SDA Approved</Text> 
                 <Switch
                   value={formData.sdaApproved}
                   onValueChange={(value) => handleChange('sdaApproved', value)}
@@ -532,11 +599,23 @@ const EditHousingListingScreen = ({ route, navigation }) => {
               {formData.sdaApproved && (
                 <View style={styles.formGroup}>
                   <Text style={styles.label}>SDA Category*</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Enter SDA category"
+                  <Dropdown
+                    style={[styles.dropdown, { zIndex: 2000 }]} 
+                    placeholderStyle={styles.placeholderStyle} 
+                    selectedTextStyle={styles.selectedTextStyle} 
+                    inputSearchStyle={styles.inputSearchStyle} 
+                    iconStyle={styles.iconStyle} 
+                    data={SDA_CATEGORIES} 
+                    search
+                    maxHeight={300}
+                    labelField="label"
+                    valueField="value"
+                    placeholder={!formData.sdaCategory ? 'Select SDA category' : '...'}
+                    searchPlaceholder="Search..."
                     value={formData.sdaCategory}
-                    onChangeText={(text) => handleChange('sdaCategory', text)}
+                    onChange={item => {
+                      handleChange('sdaCategory', item.value);
+                    }}
                   />
                 </View>
               )}
@@ -559,22 +638,12 @@ const EditHousingListingScreen = ({ route, navigation }) => {
               <Text style={styles.sectionTitle}>Property Address*</Text>
               
               <View style={styles.formGroup}>
-                <Text style={styles.label}>Street Number</Text>
+                <Text style={styles.label}>Address (Number & Street)*</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="Street Number"
-                  value={formData.addressNumber}
-                  onChangeText={(text) => handleChange('addressNumber', text)}
-                />
-              </View>
-              
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Street*</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Street"
-                  value={formData.addressStreet}
-                  onChangeText={(text) => handleChange('addressStreet', text)}
+                  placeholder="e.g. 123 Main St"
+                  value={formData.address} 
+                  onChangeText={(text) => handleChange('address', text)}
                 />
               </View>
               
@@ -608,6 +677,61 @@ const EditHousingListingScreen = ({ route, navigation }) => {
                     onChangeText={(text) => handleChange('addressPostcode', text)}
                     keyboardType="numeric"
                     maxLength={4}
+                  />
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.sectionTitle}>Move-in Date</Text>
+              <Text style={styles.helperText}>When will this property be available for tenants?</Text>
+              <View style={styles.formRow}>
+                <View style={{flex: 1, marginRight: 4}}>
+                  <Text style={styles.helperText}>Day</Text>
+                  <Dropdown
+                    style={[styles.dropdown, { zIndex: 1500 }]}
+                    placeholderStyle={styles.placeholderStyle}
+                    selectedTextStyle={styles.selectedTextStyle}
+                    data={DAYS}
+                    maxHeight={250}
+                    labelField="label"
+                    valueField="value"
+                    placeholder="Day"
+                    value={availableDay}
+                    position="top"
+                    onChange={item => setAvailableDay(item.value)}
+                  />
+                </View>
+                <View style={{flex: 2, marginHorizontal: 4}}>
+                  <Text style={styles.helperText}>Month</Text>
+                  <Dropdown
+                    style={[styles.dropdown, { zIndex: 1500 }]}
+                    placeholderStyle={styles.placeholderStyle}
+                    selectedTextStyle={styles.selectedTextStyle}
+                    data={MONTHS}
+                    maxHeight={250}
+                    labelField="label"
+                    valueField="value"
+                    placeholder="Month"
+                    value={availableMonth}
+                    position="top"
+                    onChange={item => setAvailableMonth(item.value)}
+                  />
+                </View>
+                <View style={{flex: 1.2, marginLeft: 4}}>
+                  <Text style={styles.helperText}>Year</Text>
+                  <Dropdown
+                    style={[styles.dropdown, { zIndex: 1500 }]}
+                    placeholderStyle={styles.placeholderStyle}
+                    selectedTextStyle={styles.selectedTextStyle}
+                    data={YEARS}
+                    maxHeight={200}
+                    labelField="label"
+                    valueField="value"
+                    placeholder="Year"
+                    value={availableYear}
+                    position="top"
+                    onChange={item => setAvailableYear(item.value)}
                   />
                 </View>
               </View>
@@ -663,57 +787,56 @@ const EditHousingListingScreen = ({ route, navigation }) => {
               </View>
             </View>
 
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>Property Images</Text>
-              
-              {existingImageUrls.length > 0 && (
-                <View>
-                  <Text style={styles.subLabel}>Current Images</Text>
-                  <View style={styles.imagesContainer}>
-                    {existingImageUrls.map((url, index) => (
-                      <View key={`existing-${index}`} style={styles.imageWrapper}>
-                        <Image source={{ uri: url }} style={styles.imagePreview} />
-                        <TouchableOpacity
-                          style={styles.removeButton}
-                          onPress={() => removeExistingImage(index)}
-                        >
-                          <Feather name="x" size={16} color="white" />
-                        </TouchableOpacity>
-                      </View>
-                    ))}
-                  </View>
-                </View>
-              )}
+            <View style={styles.imageUploadContainer}>
+              <Text style={styles.sectionTitle}>Property Images</Text>
+              <Text style={styles.helperText}>Add up to 10 images to showcase your property</Text>
+              <View style={styles.imagesContainer}>
+                <ModernImagePicker
+                  images={images}
+                  setImages={setImages}
+                  maxImages={10 - existingImageUrls.length}
+                  containerStyle={{marginBottom: 12}}
+                />
 
-              {images.length > 0 && (
-                <View>
-                  <Text style={styles.subLabel}>New Images</Text>
-                  <View style={styles.imagesContainer}>
-                    {images.map((image, index) => (
-                      <View key={`new-${index}`} style={styles.imageWrapper}>
-                        <Image source={{ uri: image.uri }} style={styles.imagePreview} />
-                        <TouchableOpacity
-                          style={styles.removeButton}
-                          onPress={() => removeImage(index)}
-                        >
-                          <Feather name="x" size={16} color="white" />
-                        </TouchableOpacity>
-                      </View>
-                    ))}
-                  </View>
-                </View>
-              )}
-
-              {(existingImageUrls.length + images.length) < 10 && (
-                <TouchableOpacity style={styles.addImageButton} onPress={pickImage}>
-                  <Feather name="plus" size={24} color={COLORS.primary} />
-                  <Text style={styles.addImageText}>Add Image</Text>
-                </TouchableOpacity>
-              )}
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageScrollView}>
+                  {existingImageUrls.filter(url => !imagesToDelete.includes(url)).map((url, index) => (
+                    <View key={`existing-${index}`} style={styles.imageWrapper}>
+                      <Image 
+                        source={{ uri: url }} 
+                        style={styles.imagePreview}
+                        resizeMode="cover"
+                      />
+                      <TouchableOpacity 
+                        onPress={() => handleDeleteExistingImage(url)} 
+                        style={styles.removeButton}
+                      >
+                        <Text style={{color: 'white', fontWeight: 'bold'}}>X</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                  {images.map((image, index) => (
+                    <View key={`new-${index}`} style={styles.imageWrapper}>
+                      <Image 
+                        source={{ uri: image.uri }} 
+                        style={styles.imagePreview}
+                        resizeMode="cover"
+                      />
+                      <TouchableOpacity 
+                        onPress={() => handleDeleteNewImage(index)} 
+                        style={styles.removeButton}
+                      >
+                        <Text style={{color: 'white', fontWeight: 'bold'}}>X</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </ScrollView>
+                {/* Old addImageButton removed, ModernImagePicker is now used */}
+              </View>
             </View>
-
+            
             <View style={styles.formGroup}>
               <Text style={styles.label}>Availability</Text>
+              <Text style={styles.helperText}>Set listing visibility in discovery</Text>
               <View style={styles.switchContainer}>
                 <TouchableOpacity
                   style={[
@@ -728,7 +851,7 @@ const EditHousingListingScreen = ({ route, navigation }) => {
                       formData.available ? styles.switchTextActive : null,
                     ]}
                   >
-                    Available
+                    Visible
                   </Text>
                 </TouchableOpacity>
 
@@ -745,7 +868,7 @@ const EditHousingListingScreen = ({ route, navigation }) => {
                       !formData.available ? styles.switchTextActive : null,
                     ]}
                   >
-                    Not Available
+                    Hidden
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -754,7 +877,7 @@ const EditHousingListingScreen = ({ route, navigation }) => {
             <Button
               title="Save Changes"
               onPress={updateHousingListing}
-              loading={saving || uploadingImages}
+              loading={saving} // Removed uploadingImages from loading state
               style={styles.submitButton}
             />
             
@@ -780,7 +903,7 @@ const EditHousingListingScreen = ({ route, navigation }) => {
           </Card>
         </ScrollView>
       )}
-    </View>
+    </KeyboardAvoidingView>
   );
 };
 
@@ -793,6 +916,10 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  loadingGif: {
+    width: 100,
+    height: 100,
   },
   scrollContainer: {
     flex: 1,
@@ -834,6 +961,11 @@ const styles = StyleSheet.create({
     marginTop: 12,
     color: COLORS.text,
   },
+  helperText: {
+    fontSize: 14,
+    color: COLORS.gray,
+    marginBottom: 4,
+  },
   screenTitle: {
     fontSize: 20,
     fontWeight: 'bold',
@@ -859,14 +991,37 @@ const styles = StyleSheet.create({
     color: COLORS.gray,
     marginTop: 4,
   },
-  pickerContainer: {
-    borderWidth: 1,
-    borderColor: '#DDD',
-    borderRadius: 8,
-    backgroundColor: 'white',
-  },
-  picker: {
+  dropdown: {
     height: 50,
+    borderColor: COLORS.lightGray, // Changed from gray to lightGray for softer look
+    borderWidth: 1, // Changed from 0.5 to 1 for better definition
+    borderRadius: 8,
+    paddingHorizontal: 12, // Increased padding
+    backgroundColor: 'white', // Ensure background is white
+    marginBottom: 10, // Added margin bottom for spacing in form groups
+  },
+  placeholderStyle: {
+    fontSize: 16,
+    color: COLORS.gray, // Ensure placeholder color is distinct
+  },
+  selectedTextStyle: {
+    fontSize: 16,
+    color: COLORS.black, // Ensure selected text color is clear
+  },
+  iconStyle: {
+    width: 20,
+    height: 20,
+  },
+  inputSearchStyle: {
+    height: 40,
+    fontSize: 16,
+    borderRadius: 8, // Added border radius to search input
+    borderColor: COLORS.lightGray, // Added border color
+    borderWidth: 1, // Added border width
+    paddingHorizontal: 10, // Added padding
+  },
+  dateDropdown: {
+    // Specific styles for date dropdowns if needed, mostly handled by flex in formRow
   },
   switchRow: {
     flexDirection: 'row',

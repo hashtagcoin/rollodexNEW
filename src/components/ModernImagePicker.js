@@ -22,7 +22,7 @@ export default function ModernImagePicker({ onPick, avatar, style, loading }) {
       
       // Launch image picker
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ImagePicker.MediaTypeOptions.Images, // Use MediaTypeOptions instead of MediaType
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, FlatList, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, FlatList, ActivityIndicator, SafeAreaView } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import Feather from 'react-native-vector-icons/Feather'; 
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons'; 
@@ -10,6 +10,7 @@ import { COLORS, FONTS } from '../../constants/theme';
 import { useUser } from '../../context/UserContext';
 import { supabase } from '../../lib/supabaseClient';
 import { formatDistanceToNow, format, parseISO, isValid } from 'date-fns';
+import AppHeader from '../../components/layout/AppHeader';
 
 // Safe date parser to handle potentially invalid date strings
 const safelyFormatDate = (dateString, formatStr = 'MMM d') => {
@@ -260,41 +261,24 @@ const ProviderDashboardScreen = () => {
   };
   
   return (
-    <ScrollView 
-      ref={scrollViewRef}
-      style={styles.screenContainer} 
-      showsVerticalScrollIndicator={false}>
-      <View style={styles.contentContainer}>
-        {/* Top Bar with Logo and Avatar */}
-        <View style={styles.topBar}>
-          <View style={styles.logoContainer}>
-            <Image
-              source={require('../../assets/images/logo.png')}
-              style={styles.logo}
-              resizeMode="contain"
-            />
-          </View>
-          <View style={styles.topRightContainer}>
-            <TouchableOpacity style={{ marginRight: 12 }}>
-              <Ionicons name="notifications-outline" size={26} color="#222" />
-            </TouchableOpacity>
-            <View style={styles.avatarContainer}>
-              <Image
-                source={
-                  profile?.avatar_url
-                    ? { uri: profile.avatar_url }
-                    : require('../../assets/images/placeholder-avatar.jpg')
-                }
-                style={styles.avatar}
-              />
-            </View>
-          </View>
-        </View>
-
+    <SafeAreaView style={styles.screenContainer}>
+      <AppHeader 
+        title="Provider Dashboard"
+        navigation={navigation}
+        canGoBack={false}
+      />
+      <ScrollView 
+        ref={scrollViewRef}
+        style={styles.scrollView} 
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.contentContainer}
+      >
         {/* Welcome Header - Provider version */}
         <View style={styles.welcomeContainer}>
-          <Text style={styles.welcomeTitleText}>Provider Dashboard</Text>
-          <Text style={styles.userNameText}>{profile?.business_name || profile?.full_name || profile?.username}</Text>
+          <Text style={styles.welcomeTitleText}>
+            Welcome back, {profile?.business_name || profile?.full_name?.split(' ')[0] || ''}
+          </Text>
+          <Text style={styles.userNameText}>Here's what's happening today</Text>
         </View>
 
         {/* Provider Stats Section */}
@@ -510,22 +494,21 @@ const ProviderDashboardScreen = () => {
         
         {/* Add some padding at the bottom */}
         <View style={{ height: 20 }} />
-      </View>
-    </ScrollView>
+      </ScrollView>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   screenContainer: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 0,
-    paddingTop: 56,
+    backgroundColor: '#fff',
+  },
+  scrollView: {
+    flex: 1,
   },
   contentContainer: {
-    paddingHorizontal: 18,
-    paddingTop: 18,
-    paddingBottom: 24,
+    padding: 16,
   },
   topBar: {
     flexDirection: 'row',

@@ -5,6 +5,7 @@ import { Ionicons, MaterialIcons, Feather } from '@expo/vector-icons';
 import { COLORS } from '../../constants/theme';
 import { useUser } from '../../context/UserContext';
 import { supabase } from '../../lib/supabaseClient';
+import AppHeader from '../../components/layout/AppHeader';
 
 const ManageListingsScreen = ({ navigation }) => {
   const { profile } = useUser();
@@ -25,23 +26,40 @@ const ManageListingsScreen = ({ navigation }) => {
   // Fetch provider's service listings
   const fetchListings = async () => {
     if (!profile?.id) return;
-    
+
     setLoading(true);
     try {
-      // Get services provided by this user
+      // First, get the service_provider_id for the current user
+      const { data: providerData, error: providerError } = await supabase
+        .from('service_providers')
+        .select('id')
+        .eq('user_id', profile.id) // Assuming 'user_id' in service_providers links to auth.users.id
+        .single();
+
+      if (providerError) throw providerError;
+      if (!providerData) {
+        // Handle case where user is not a service provider or record not found
+        console.warn('Service provider record not found for this user.');
+        setListings({ services: [], housing: [] });
+        setLoading(false);
+        return;
+      }
+      const serviceProviderId = providerData.id;
+
+      // Get services provided by this service_provider_id
       const { data: serviceData, error: serviceError } = await supabase
         .from('services')
         .select('*')
-        .eq('provider_id', profile.id)
+        .eq('provider_id', serviceProviderId) // Use serviceProviderId
         .order('created_at', { ascending: false });
         
       if (serviceError) throw serviceError;
       
-      // Get housing listings provided by this user
+      // Get housing listings provided by this service_provider_id
       const { data: housingData, error: housingError } = await supabase
         .from('housing_listings')
         .select('*')
-        .eq('provider_id', profile.id)
+        .eq('provider_id', serviceProviderId) // Use serviceProviderId
         .order('created_at', { ascending: false });
         
       if (housingError) throw housingError;
@@ -73,18 +91,26 @@ const ManageListingsScreen = ({ navigation }) => {
         
       if (error) throw error;
       
-      // Update local state
-      setListings(prev => ({
-        ...prev,
-        [type + 's']: prev[type + 's'].map(item => 
-          item.id === id ? { ...item, available: newStatus } : item
-        )
-      }));
+      // Update local state - safely handle potentially undefined arrays
+      setListings(prev => {
+        // Ensure the array exists before trying to map it
+        const itemsArray = prev[type + 's'] || [];
+        
+        return {
+          ...prev,
+          [type + 's']: itemsArray.map(item => 
+            item.id === id ? { ...item, available: newStatus } : item
+          )
+        };
+      });
       
       Alert.alert(
         'Status Updated', 
         `Your ${type} is now ${newStatus ? 'available' : 'unavailable'} to clients.`
       );
+      
+      // Refresh listings to ensure state is consistent
+      fetchListings();
     } catch (err) {
       console.error('Error updating listing availability:', err);
       Alert.alert('Error', 'Failed to update listing status');
@@ -159,7 +185,7 @@ const ManageListingsScreen = ({ navigation }) => {
       />
       <View style={styles.listingContent}>
         <Text style={styles.listingTitle}>{item.title || 'Housing Listing'}</Text>
-        <Text style={styles.listingPrice}>${item.price_per_week}/week</Text>
+        <Text style={styles.listingPrice}>${item.weekly_rent}/week</Text>
         <View style={styles.listingStatusContainer}>
           <View style={[styles.listingStatusIndicator, { 
             backgroundColor: item.available ? '#4CAF50' : '#F44336' 
@@ -192,17 +218,11 @@ const ManageListingsScreen = ({ navigation }) => {
   
   return (
     <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Ionicons name="chevron-back" size={24} color={COLORS.primary} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Manage Listings</Text>
-        <View style={{ width: 24 }} />
-      </View>
+      <AppHeader
+        title="Manage Listings"
+        navigation={navigation}
+        showBackButton={true}
+      />
       
       {/* Tab buttons */}
       <View style={styles.tabContainer}>

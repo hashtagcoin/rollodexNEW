@@ -133,7 +133,8 @@ const ProviderDiscoveryScreen = ({ route }) => {
       const tableName = isHousing ? 'housing_listings' : 'services';
       const itemTypeForFavorites = isHousing ? 'housing_listing' : 'service_provider';
       
-      let query = supabase.from(tableName).select('*');
+      let query = supabase.from(tableName).select('*')
+        .eq('available', true); // Only show available listings
       
       if (!isHousing) {
         query = query.ilike('category', `%${selectedCategory}%`);
