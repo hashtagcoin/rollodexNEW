@@ -63,30 +63,33 @@ const useAuth = () => {
   };
 
   React.useEffect(() => {
-    // Clear any existing session on app start to force explicit login
-    const clearExistingSession = async () => {
+    // We don't need to clear existing sessions on app start; instead, handle auth transitions
+    const initializeAuth = async () => {
       try {
-        // Sign out any existing user
-        await supabase.auth.signOut();
-        // Clear stored provider mode
-        await AsyncStorage.removeItem('provider_mode');
-        // Silent operation - no console logs
+        const { data } = await supabase.auth.getSession();
+        // If there's a session, use it to determine authentication state
+        if (data?.session?.user?.id) {
+          setIsAuthenticated(true);
+          await checkUserRole(data.session.user.id);
+        } else {
+          setIsAuthenticated(false);
+          setUserRole('participant');
+        }
       } catch (error) {
         // Silent error handling
+        setIsAuthenticated(false);
+        setUserRole('participant');
+      } finally {
+        setIsLoading(false);
       }
-      
-      // Set loading to false as initialization is complete
-      setIsLoading(false);
-      setIsAuthenticated(false);
     };
     
-    clearExistingSession();
+    initializeAuth();
 
-    // Only listen for auth state changes after initial clear
+    // Listen for auth state changes
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
       // Silent authentication - no console logs
       
-      // Only set authenticated if there's an explicit SIGNED_IN event (not INITIAL_SESSION)
       if (event === 'SIGNED_IN' && session) {
         setIsAuthenticated(true);
         if (session.user) {
@@ -94,6 +97,7 @@ const useAuth = () => {
         }
       } else if (event === 'SIGNED_OUT') {
         setIsAuthenticated(false);
+        setUserRole('participant');
       }
     });
 
@@ -117,6 +121,7 @@ function AppNavigator() {
 
   // Customize initial route based on user role
   const getInitialRoute = () => {
+    // Check if provider mode is active from AsyncStorage
     if (userRole === 'provider') {
       // For providers, start with ProviderStack
       return 'ProviderStack';

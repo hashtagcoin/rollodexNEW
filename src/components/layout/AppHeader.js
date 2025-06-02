@@ -138,23 +138,24 @@ const AppHeader = ({
           <Ionicons name="notifications-outline" size={28} color={'#333'} />
           <NotificationBadge count={unreadCount} style={styles.notificationBadge} />
         </TouchableOpacity>
-        {navigation && (
-          <TouchableOpacity 
-            style={styles.iconButton} 
-            onPress={() => navigation.navigate('Profile')} 
-          >
-            {avatarUrl ? (
-              <Image 
-                source={{ uri: avatarUrl }} 
-                style={styles.avatarImage} 
-                // Use cache policy for faster loading
-                cachePolicy="memory-disk"
-              />
-            ) : (
-              <Ionicons name="person-circle-outline" size={28} color={'#333'} />
-            )}
-          </TouchableOpacity>
-        )}
+        <TouchableOpacity 
+          style={styles.iconButton} 
+          onPress={() => {
+            if (navigation && typeof navigation.navigate === 'function') {
+              navigation.navigate('Profile');
+            }
+          }}
+        >
+          {avatarUrl ? (
+            <Image 
+              source={{ uri: avatarUrl }} 
+              style={styles.avatarImage} 
+              cachePolicy="memory-disk"
+            />
+          ) : (
+            <Ionicons name="person-circle-outline" size={28} color={'#333'} />
+          )}
+        </TouchableOpacity>
       </View>
     </View>
   );

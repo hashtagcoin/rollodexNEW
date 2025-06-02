@@ -39,7 +39,7 @@ const ManageListingsScreen = ({ navigation }) => {
       if (providerError) throw providerError;
       if (!providerData) {
         // Handle case where user is not a service provider or record not found
-        console.warn('Service provider record not found for this user.');
+        // console.log(warn('Service provider record not found for this user.');
         setListings({ services: [], housing: [] });
         setLoading(false);
         return;
@@ -55,6 +55,42 @@ const ManageListingsScreen = ({ navigation }) => {
         
       if (serviceError) throw serviceError;
       
+      // Process service data to ensure image URLs are correct
+      const processedServiceData = serviceData?.map(service => {
+        if (service.media_urls && Array.isArray(service.media_urls)) {
+          // Log raw DB URLs for this service
+          // [LOG] Only keep logs for:
+// 1. URL saved to Supabase on upload
+// 2. URL displayed on screen when rendering
+// Remove all other logs.
+//
+// [LOG]`[ManageListingsScreen] Service ID ${service.id} raw DB media_urls:`, service.media_urls);
+          // Process each URL to ensure it's a full URL
+          const processedUrls = service.media_urls.filter(url => url && typeof url === 'string').map(url => {
+            if (url.startsWith('http')) {
+              return url;
+            }
+            // Insert userId subfolder if missing (for legacy paths)
+            const profileId = profile?.id;
+            if (profileId && !url.includes(`service-images/${profileId}/`)) {
+              const fileName = url.split('/').pop();
+              return `https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/providerimages/service-images/${profileId}/${fileName}`;
+            }
+            // Otherwise, construct full URL
+            return `https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/providerimages/${url}`;
+          });
+          service.media_urls = processedUrls;
+          // Log processed URLs for this service
+          // [LOG] Only keep logs for:
+// 1. URL saved to Supabase on upload
+// 2. URL displayed on screen when rendering
+// Remove all other logs.
+//
+// [LOG]`[ManageListingsScreen] Service ID ${service.id} processed image URLs:`, processedUrls);
+        }
+        return service;
+      }) || [];
+      
       // Get housing listings provided by this service_provider_id
       const { data: housingData, error: housingError } = await supabase
         .from('housing_listings')
@@ -64,12 +100,47 @@ const ManageListingsScreen = ({ navigation }) => {
         
       if (housingError) throw housingError;
       
+      // Process housing data to ensure image URLs are correct
+      const processedHousingData = housingData?.map(housing => {
+        if (housing.media_urls && Array.isArray(housing.media_urls)) {
+          // Process each URL to ensure it's a full URL
+          housing.media_urls = housing.media_urls.filter(url => url && typeof url === 'string').map(url => {
+  if (url.startsWith('http')) {
+    return url;
+  }
+  // Insert userId subfolder if missing (for legacy paths)
+  const profileId = profile?.id;
+  if (profileId && !url.includes(`housing-images/${profileId}/`)) {
+    const fileName = url.split('/').pop();
+    return `https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/housing-images/${profileId}/${fileName}`;
+  }
+  // Otherwise, construct full URL
+  return `https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/housingimages/${url}`;
+});
+          
+          // [LOG] Only keep logs for:
+// 1. URL saved to Supabase on upload
+// 2. URL displayed on screen when rendering
+// Remove all other logs.
+//
+// [LOG]`Processed housing ${housing.id} image URLs:`, housing.media_urls);
+        }
+        return housing;
+      }) || [];
+      
       setListings({
-        services: serviceData || [],
-        housing: housingData || []
+        services: processedServiceData,
+        housing: processedHousingData
       });
+      
+      // [LOG] Only keep logs for:
+// 1. URL saved to Supabase on upload
+// 2. URL displayed on screen when rendering
+// Remove all other logs.
+//
+// [LOG]'Processed service listings:', processedServiceData);
     } catch (err) {
-      console.error('Error fetching provider listings:', err);
+      // console.log(error('Error fetching provider listings:', err);
       Alert.alert('Error', 'Failed to load your listings');
     } finally {
       setLoading(false);
@@ -112,7 +183,7 @@ const ManageListingsScreen = ({ navigation }) => {
       // Refresh listings to ensure state is consistent
       fetchListings();
     } catch (err) {
-      console.error('Error updating listing availability:', err);
+      // console.log(error('Error updating listing availability:', err);
       Alert.alert('Error', 'Failed to update listing status');
     } finally {
       setLoading(false);
@@ -132,13 +203,21 @@ const ManageListingsScreen = ({ navigation }) => {
   const renderServiceItem = ({ item }) => (
     <View style={styles.listingCard}>
       <Image
-        source={{ 
-          uri: item.media_urls && item.media_urls.length > 0 
-            ? item.media_urls[0] 
-            : 'https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/providerimages/default-service.png'
-        }}
-        style={styles.listingImage}
-      />
+  source={{
+    uri:
+      item.media_urls && item.media_urls.length > 0
+        ? `${item.media_urls[0]}?cb=${Date.now()}` // Add cache-busting param
+        : 'https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/providerimages/default-service.png',
+  }}
+  style={styles.listingImage}
+  onError={e => {
+    // console.log('[ManageListingsScreen] Image load error:', {
+    //   uri: item.media_urls && item.media_urls.length > 0 ? item.media_urls[0] : 'default-service.png',
+    //   error: e.nativeEvent,
+    //   serviceId: item.id,
+    // });
+  }}
+/>
       <View style={styles.listingContent}>
         <Text style={styles.listingTitle}>{item.title || 'Service Title'}</Text>
         <Text style={styles.listingPrice}>${item.price}</Text>

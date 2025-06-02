@@ -10,9 +10,13 @@ import { getValidImageUrl } from '../../utils/imageHelper';
 
 const FILTERS = [
   { key: 'all', label: 'All' },
-  { key: 'social', label: 'Social' },
-  { key: 'interest', label: 'Interest' },
+  { key: 'sda', label: 'SDA' },
+  { key: 'pet', label: 'Pet' },
+  { key: 'accessible', label: 'Accessible' },
+  { key: 'wheelchair', label: 'Wheelchair' },
+  { key: 'smoking', label: 'Smoking' },
   { key: 'support', label: 'Support' },
+  { key: 'parking', label: 'Parking' },
 ];
 
 const GroupsListScreen = () => {
@@ -34,20 +38,17 @@ const GroupsListScreen = () => {
     const fetchCurrentUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        console.log('User authenticated:', user.id); // Debug log
+
         setUserId(user.id);
       } else {
-        console.log('No authenticated user found');
+
       }
     };
     
     fetchCurrentUser();
   }, []);
   
-  // Add this useEffect to monitor userId changes
-  useEffect(() => {
-    console.log('Current userId state:', userId);
-  }, [userId]);
+
 
   const fetchGroups = async () => {
     setLoading(true);
@@ -214,9 +215,9 @@ const GroupsListScreen = () => {
             .eq('user_id', userId)
             .eq('item_id', item.id)
             .eq('item_type', 'group')
-            .single();
+            .maybeSingle(); // Use maybeSingle to avoid PGRST116 error
           
-          if (error && error.code !== 'PGRST116') {
+          if (error) {
             console.error('Error checking favorite status:', error);
             return;
           }
@@ -231,15 +232,8 @@ const GroupsListScreen = () => {
     }, [userId, item.id]);
 
     const toggleFavorite = useCallback(async () => {
-      // Get the current user directly from Supabase instead of relying on state
-      const { data: { user } } = await supabase.auth.getUser();
-      const currentUserId = user?.id;
-      
-      console.log('Toggle favorite - Current user from auth:', currentUserId);
-      console.log('Toggle favorite - State userId:', userId);
-      
-      if (!currentUserId) {
-        Alert.alert('Sign in required', 'Please sign in to favorite groups');
+      // Use the userId from state for consistency
+      if (!userId) {
         return;
       }
       
@@ -247,49 +241,41 @@ const GroupsListScreen = () => {
       try {
         if (isFavorited) {
           // Remove from favorites
-          console.log('Removing favorite for group:', item.id);
           const { error } = await supabase
             .from('favorites')
             .delete()
-            .eq('user_id', currentUserId)
+            .eq('user_id', userId)
             .eq('item_id', item.id)
             .eq('item_type', 'group');
           
           if (error) {
-            console.error('Error removing favorite:', error);
             throw error;
           }
           
           setIsFavorited(false);
-          Alert.alert('Success', `${item.name} removed from favorites`);
         } else {
           // Add to favorites
-          console.log('Adding favorite for group:', item.id);
           const favoriteData = {
-            user_id: currentUserId,
+            user_id: userId,
             item_id: item.id,
             item_type: 'group',
             created_at: new Date().toISOString()
           };
           
-          console.log('Inserting favorite with data:', favoriteData);
+
           const { data, error } = await supabase
             .from('favorites')
             .insert(favoriteData)
             .select();
           
           if (error) {
-            console.error('Error adding favorite:', error);
             throw error;
           }
           
-          console.log('Favorite added successfully:', data);
           setIsFavorited(true);
-          Alert.alert('Success', `${item.name} added to favorites`);
         }
       } catch (error) {
-        console.error('Error toggling favorite:', error);
-        Alert.alert('Error', 'Failed to update favorites. Please try again.');
+        // Error handling
       } finally {
         setFavoriteLoading(false);
       }
@@ -339,75 +325,13 @@ const GroupsListScreen = () => {
       }
     };
     
-    const handleJoinGroup = async () => {
+    const handleJoinGroup = () => {
       if (!item.is_housing_group) {
-        alert('Join feature coming soon!');
         return;
       }
       
-      if (!userId) {
-        Alert.alert('Sign in required', 'Please sign in to join this housing group');
-        return;
-      }
-      
-      try {
-        // First check if the user is already a member of this housing group
-        const { data: existingMembership, error: checkError } = await supabase
-          .from('housing_group_members')
-          .select('status')
-          .eq('group_id', item.id)
-          .eq('user_id', userId)
-          .single();
-          
-        if (checkError && checkError.code !== 'PGRST116') { // PGRST116 is 'not found' error
-          throw checkError;
-        }
-        
-        // If membership exists, inform the user and update the UI
-        if (existingMembership) {
-          console.log('Membership already exists, status:', existingMembership.status);
-          
-          // Update local state to reflect current status
-          setMembershipStatus(prev => ({
-            ...prev,
-            [item.id]: existingMembership.status
-          }));
-          
-          // Inform the user based on status
-          if (existingMembership.status === 'pending') {
-            Alert.alert('Already Applied', 'Your request to join this group is still pending');
-          } else if (existingMembership.status === 'approved') {
-            Alert.alert('Already a Member', 'You are already a member of this housing group');
-          } else if (existingMembership.status === 'declined') {
-            Alert.alert('Application Declined', 'Your previous request to join this group was declined');
-          }
-          
-          return;
-        }
-        
-        // If no existing membership, create a new one
-        const { error: insertError } = await supabase
-          .from('housing_group_members')
-          .insert({
-            group_id: item.id,
-            user_id: userId,
-            status: 'pending',
-            join_date: new Date().toISOString()
-          });
-          
-        if (insertError) throw insertError;
-        
-        // Update local state
-        setMembershipStatus(prev => ({
-          ...prev,
-          [item.id]: 'pending'
-        }));
-        
-        Alert.alert('Success', 'Your request to join this housing group has been submitted');
-      } catch (error) {
-        console.error('Error joining housing group:', error);
-        Alert.alert('Error', 'Unable to process your request');
-      }
+      // Navigate to the housing group detail screen
+      navigation.navigate('HousingGroupDetailScreen', { groupId: item.id });
     };
     
     const { text: membershipButtonText, buttonStyle, textStyle, disabled } = getMembershipButtonInfo();
@@ -499,7 +423,7 @@ const GroupsListScreen = () => {
         opacity: fadeAnim
       }]}>
         <ActionButton
-          onPress={() => alert('Create new group feature coming soon!')}
+          onPress={() => {}}
           iconName="add"
           color="#007AFF"
           size={56}
@@ -515,28 +439,46 @@ const GroupsListScreen = () => {
             <Text style={[styles.filterBtnText, filter === 'all' && styles.filterBtnTextActive]}>All</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.filterBtn, filter === 'housing' && styles.filterBtnActive]}
-            onPress={() => setFilter('housing')}
+            style={[styles.filterBtn, filter === 'sda' && styles.filterBtnActive]}
+            onPress={() => setFilter('sda')}
           >
-            <Text style={[styles.filterBtnText, filter === 'housing' && styles.filterBtnTextActive]}>Housing</Text>
+            <Text style={[styles.filterBtnText, filter === 'sda' && styles.filterBtnTextActive]}>SDA</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.filterBtn, filter === 'social' && styles.filterBtnActive]}
-            onPress={() => setFilter('social')} 
+            style={[styles.filterBtn, filter === 'pet' && styles.filterBtnActive]}
+            onPress={() => setFilter('pet')}
           >
-            <Text style={[styles.filterBtnText, filter === 'social' && styles.filterBtnTextActive]}>Social</Text>
+            <Text style={[styles.filterBtnText, filter === 'pet' && styles.filterBtnTextActive]}>Pet</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.filterBtn, filter === 'interest' && styles.filterBtnActive]}
-            onPress={() => setFilter('interest')}
+            style={[styles.filterBtn, filter === 'accessible' && styles.filterBtnActive]}
+            onPress={() => setFilter('accessible')}
           >
-            <Text style={[styles.filterBtnText, filter === 'interest' && styles.filterBtnTextActive]}>Interest</Text>
+            <Text style={[styles.filterBtnText, filter === 'accessible' && styles.filterBtnTextActive]}>Accessible</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.filterBtn, filter === 'wheelchair' && styles.filterBtnActive]}
+            onPress={() => setFilter('wheelchair')}
+          >
+            <Text style={[styles.filterBtnText, filter === 'wheelchair' && styles.filterBtnTextActive]}>Wheelchair</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.filterBtn, filter === 'smoking' && styles.filterBtnActive]}
+            onPress={() => setFilter('smoking')}
+          >
+            <Text style={[styles.filterBtnText, filter === 'smoking' && styles.filterBtnTextActive]}>Smoking</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.filterBtn, filter === 'support' && styles.filterBtnActive]}
             onPress={() => setFilter('support')}
           >
             <Text style={[styles.filterBtnText, filter === 'support' && styles.filterBtnTextActive]}>Support</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.filterBtn, filter === 'parking' && styles.filterBtnActive]}
+            onPress={() => setFilter('parking')}
+          >
+            <Text style={[styles.filterBtnText, filter === 'parking' && styles.filterBtnTextActive]}>Parking</Text>
           </TouchableOpacity>
         </View>
       </View>

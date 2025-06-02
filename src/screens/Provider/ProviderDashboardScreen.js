@@ -535,8 +535,9 @@ const ProviderDashboardScreen = () => {
           <TouchableOpacity 
             style={styles.actionCard}
             onPress={() => {
+              // Toggle the provider mode in AsyncStorage for persistence
               toggleProviderMode();
-              // Navigate to participant dashboard - use replace to avoid stacking screens
+              // Navigation-based approach: Reset to MainApp stack
               navigation.reset({
                 index: 0,
                 routes: [{ name: 'MainApp' }],

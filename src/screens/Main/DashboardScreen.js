@@ -455,13 +455,18 @@ const DashboardScreen = () => {
         {/* Provider Dashboard Switch Button */}
         <TouchableOpacity 
           style={styles.switchButton}
-          onPress={toggleProviderMode}
+          onPress={() => {
+            // Use navigation to switch to provider stack instead of toggling state
+            toggleProviderMode(); // Still toggle the state for persistence
+            navigation.reset({
+              index: 0,
+              routes: [{ name: 'ProviderStack' }]
+            });
+          }}
         >
           <View style={styles.switchButtonContent}>
             <MaterialIcons name="swap-horiz" size={24} color="#FFFFFF" style={styles.switchButtonIcon} />
-            <Text style={styles.switchButtonText}>
-              {isProviderMode ? 'Switch to Participant Dashboard' : 'Switch to Provider Dashboard'}
-            </Text>
+            <Text style={styles.switchButtonText}>Switch to Provider Dashboard</Text>
           </View>
         </TouchableOpacity>
       </View>

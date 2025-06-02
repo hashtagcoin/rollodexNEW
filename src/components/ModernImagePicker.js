@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { View, TouchableOpacity, Image, StyleSheet, ActivityIndicator, Text } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { COLORS } from '../constants/theme';
+import { Ionicons } from '@expo/vector-icons';
 
-export default function ModernImagePicker({ onPick, avatar, style, loading }) {
+export default function ModernImagePicker({ onPick, images, setImages, maxImages = 10, avatar, style, loading, containerStyle }) {
   const [pickingImage, setPickingImage] = useState(false);
   
   const pickImage = async () => {
@@ -20,13 +21,14 @@ export default function ModernImagePicker({ onPick, avatar, style, loading }) {
         return;
       }
       
-      // Launch image picker
+      // Launch image picker - adjust parameters based on whether it's an avatar or gallery
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images, // Use MediaTypeOptions instead of MediaType
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-        exif: true,
+        mediaTypes: ImagePicker.MediaTypeOptions.Images, // Keep this for now until we update expo-image-picker
+        allowsEditing: avatar ? true : false, // Only enable editing for avatar
+        aspect: avatar ? [1, 1] : undefined, // Square aspect ratio for avatar only
+        quality: 0.8, 
+        base64: true, // Get base64 data to ensure we can always create a valid blob
+        exif: false, // Disable exif to reduce data size and potential issues
       });
       
       console.log('Image picker result:', JSON.stringify(result));
@@ -46,13 +48,25 @@ export default function ModernImagePicker({ onPick, avatar, style, loading }) {
           else mimeType = 'image/jpeg'; // Default fallback
         }
         
-        onPick({ 
+        // Store base64 data if available for fallback upload method
+        const processedImage = { 
           uri: selectedAsset.uri, 
           mimeType: mimeType,
           width: selectedAsset.width,
           height: selectedAsset.height,
-          fileSize: selectedAsset.fileSize
-        });
+          fileSize: selectedAsset.fileSize,
+          base64: result.assets[0].base64, // Store base64 data from the image picker
+          fileName: `Screenshot${new Date().toISOString().replace(/[:.]/g, '')}.${mimeType.split('/')[1]}` // Generate a unique filename
+        };
+        
+        // Handle based on component mode
+        if (setImages && images) {
+          // Multiple image mode
+          setImages(prev => [...prev, processedImage]);
+        } else if (onPick) {
+          // Single image mode (legacy)
+          onPick(processedImage);
+        }
       }
     } catch (error) {
       console.error('Error picking image:', error);
@@ -62,6 +76,32 @@ export default function ModernImagePicker({ onPick, avatar, style, loading }) {
     }
   };
   
+  // For gallery view
+  if (setImages && images !== undefined) {
+    return (
+      <View style={[styles.galleryContainer, containerStyle]}>
+        <TouchableOpacity 
+          style={[styles.addButton, style]}
+          onPress={pickImage}
+          disabled={loading || pickingImage || (maxImages && images.length >= maxImages)}
+        >
+          {loading || pickingImage ? (
+            <ActivityIndicator size="small" color={COLORS.primary} />
+          ) : (
+            <>
+              <Ionicons name="add-circle" size={24} color={COLORS.primary} />
+              <Text style={styles.addText}>Add Image</Text>
+              {maxImages && (
+                <Text style={styles.maxText}>{images.length}/{maxImages}</Text>
+              )}
+            </>
+          )}
+        </TouchableOpacity>
+      </View>
+    );
+  }
+  
+  // For avatar view (legacy mode)
   return (
     <TouchableOpacity 
       style={[styles.avatarWrap, style]} 
@@ -99,7 +139,32 @@ const styles = StyleSheet.create({
   avatarImg: {
     width: '100%',
     height: '100%',
-    borderRadius: 48,
+  },
+  galleryContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  addButton: {
+    width: 120,
+    height: 96,
+    borderRadius: 8,
+    backgroundColor: '#f0f0f0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderStyle: 'dashed',
+  },
+  addText: {
+    color: COLORS.primary,
+    fontSize: 14,
+    marginTop: 4,
+  },
+  maxText: {
+    color: '#888',
+    fontSize: 12,
+    marginTop: 2,
   },
   placeholder: {
     width: '100%',

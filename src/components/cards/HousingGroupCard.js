@@ -125,12 +125,12 @@ const HousingGroupCard = ({
     statusLabel = 'Member';
     statusLabelStyle = styles.memberLabel;
   } else if (item.membershipStatus === 'pending') {
-    buttonText = 'Pending';
-    buttonStyle = styles.pendingButton;
-    buttonTextStyle = styles.pendingButtonText;
+    buttonText = 'Leave'; // Changed from 'Pending' to 'Leave'
+    buttonStyle = styles.leaveButton; // Changed to use leaveButton style instead of pendingButton
+    buttonTextStyle = styles.leaveButtonText;
     statusLabel = 'Pending';
     statusLabelStyle = styles.pendingLabel;
-    disabled = true;
+    disabled = false; // Allow users to cancel their pending request
   } else if (item.applicationStatus === 'pending') {
     buttonText = 'Application Pending';
     buttonStyle = styles.pendingButton;
@@ -173,6 +173,13 @@ const HousingGroupCard = ({
       onPress={onPress}
       activeOpacity={0.7}
     >
+      {/* Status label for list view - outside of image container */}
+      {!gridMode && statusLabel && (
+        <View style={[styles.statusLabelContainer, styles.cardStatusLabel]}>
+          <Text style={styles.statusLabelText}>{statusLabel}</Text>
+        </View>
+      )}
+      
       <View style={gridMode ? styles.gridImageContainer : styles.listImageContainer}>
         {!imageLoaded && (
           <View style={styles.loaderContainer}>
@@ -209,12 +216,21 @@ const HousingGroupCard = ({
         
         {/* NDIS labels removed as requested */}
         
-        {/* Membership status label */}
-        {statusLabel && (
+        {/* Membership status label for grid view only */}
+        {gridMode && statusLabel && (
           <View style={[styles.statusLabelContainer, statusLabelStyle]}>
             <Text style={styles.statusLabelText}>{statusLabel}</Text>
           </View>
         )}
+        
+        {/* Join/Leave button positioned at bottom right of image */}
+        <TouchableOpacity 
+          style={[styles.actionButton, buttonStyle, styles.imageButton]} 
+          onPress={() => !disabled && onActionPress()}
+          disabled={disabled}
+        >
+          <Text style={buttonTextStyle}>{buttonText}</Text>
+        </TouchableOpacity>
       </View>
       
       <View style={styles.cardContent}>
@@ -228,41 +244,38 @@ const HousingGroupCard = ({
         
         {/* Location from housing listing if available */}
         <Text style={styles.locationText} numberOfLines={1}>
+          <Ionicons name="location-outline" size={12} color="#888" style={{marginRight: 4}} />
           {item.housing_listing_data?.suburb || 'Location N/A'}
         </Text>
         
         <Text 
           style={styles.cardDescription} 
-          numberOfLines={2} 
+          numberOfLines={gridMode ? 3 : 2} 
           ellipsizeMode="tail"
         >
           {item.description || 'No description available.'}
         </Text>
         
         <View style={styles.cardFooter}>
-          <View style={styles.memberCountContainer}>
-            <Ionicons name="people" size={16} color="#666" />
-            <Text style={styles.memberCount}>
-              {item.current_members || 0}/{item.max_members || 0}
-            </Text>
-          </View>
-          
-          <View style={styles.moveInContainer}>
-            <Ionicons name="calendar" size={14} color="#666" />
-            <Text style={styles.moveInText}>
-              {moveInDateText}
-            </Text>
+          <View style={styles.infoRow}>
+            <View style={styles.memberCountContainer}>
+              <Ionicons name="people" size={14} color="#666" />
+              <Text style={styles.memberCount}>
+                {item.current_members || 0}/{item.max_members || 0}
+              </Text>
+            </View>
+            
+            <View style={styles.moveInContainer}>
+              <Ionicons name="calendar" size={14} color="#666" />
+              <Text style={styles.moveInText}>
+                {moveInDateText}
+              </Text>
+            </View>
           </View>
         </View>
-        
-        <TouchableOpacity 
-          style={[styles.actionButton, buttonStyle]} 
-          onPress={() => !disabled && onActionPress()}
-          disabled={disabled}
-        >
-          <Text style={buttonTextStyle}>{buttonText}</Text>
-        </TouchableOpacity>
       </View>
+      
+      {/* Join/Leave button moved inside image container */}
     </TouchableOpacity>
   );
 };
@@ -270,29 +283,32 @@ const HousingGroupCard = ({
 const styles = StyleSheet.create({
   card: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    marginBottom: 16,
+    borderRadius: 16, // More rounded corners like Airbnb
+    marginBottom: 20, // More space between cards
     overflow: 'hidden',
     ...SHADOWS.medium,
+    elevation: 4, // Add more depth on Android
   },
   listCard: {
     flexDirection: 'row',
     width: '100%',
-    height: 150,
+    height: 160, // Slightly taller
+    position: 'relative',
   },
   gridCard: {
     width: CARD_WIDTH / 2 - 8,
-    height: 280, // Increased height to fix button cropping issue
+    height: 320, // Taller to accommodate modern layout and button
     marginHorizontal: 4,
+    position: 'relative',
   },
   listImageContainer: {
-    width: 120,
+    width: 140, // Wider image container
     height: '100%',
     position: 'relative',
   },
   gridImageContainer: {
     width: '100%',
-    height: 120,
+    height: 160, // Taller images like Airbnb
     position: 'relative',
   },
   loaderContainer: {
@@ -345,13 +361,22 @@ const styles = StyleSheet.create({
   },
   statusLabelContainer: {
     position: 'absolute',
-    bottom: 10,
+    top: 10,
     left: 10,
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
+    borderRadius: 4,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+  },
+  cardStatusLabel: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    zIndex: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
   },
   statusLabelText: {
     color: '#FFFFFF',
@@ -369,18 +394,23 @@ const styles = StyleSheet.create({
   },
   cardContent: {
     flex: 1,
-    padding: 12,
+    padding: 16, // More padding for better content spacing
+    display: 'flex',
+    flexDirection: 'column',
   },
   cardTitle: {
-    fontSize: 16,
+    fontSize: 17, // Slightly larger title
     fontWeight: 'bold',
-    marginBottom: 2,
-    color: '#333',
+    marginBottom: 4, // More space beneath title
+    color: '#212121', // Darker for better contrast
+    letterSpacing: 0.3, // Modern typography
   },
   locationText: {
     fontSize: 12,
     color: '#888',
-    marginBottom: 4,
+    marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   cardDescription: {
     fontSize: 14,
@@ -389,10 +419,14 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   cardFooter: {
+    marginTop: 'auto',
+    paddingTop: 8,
+    paddingBottom: 8,
+  },
+  infoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
   },
   memberCountContainer: {
     flexDirection: 'row',
@@ -413,12 +447,24 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   actionButton: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 20,
+    paddingVertical: 8, // Taller button
+    paddingHorizontal: 16, // Wider button
+    borderRadius: 24, // More rounded button
     alignItems: 'center',
     justifyContent: 'center',
     alignSelf: 'flex-start',
+    minWidth: 80, // Minimum width for better appearance
+  },
+  imageButton: {
+    position: 'absolute',
+    bottom: 12,
+    right: 12,
+    zIndex: 5,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
   joinButton: {
     backgroundColor: COLORS.primary,

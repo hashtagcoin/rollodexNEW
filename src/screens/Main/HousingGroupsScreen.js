@@ -26,14 +26,17 @@ const { width } = Dimensions.get('window');
 
 // NDIS-relevant filters for housing groups
 const HOUSING_FILTERS = [
-  { key: 'sda', label: 'SDA Certified' },
-  { key: 'ndis', label: 'NDIS Supported' },
+  { key: 'sda', label: 'SDA' },
+  { key: 'pets', label: 'Pet Friendly' },
   { key: 'accessible', label: 'Accessible' },
   { key: 'wheelchair', label: 'Wheelchair Friendly' },
-  { key: 'support', label: '24/7 Support' },
   { key: 'sil', label: 'SIL' },
-  { key: 'single', label: 'Single Room' },
-  { key: 'shared', label: 'Shared Room' },
+  { key: 'supportsOnsite', label: 'Supports Onsite' },
+  { key: 'sensory', label: 'Sensory Friendly' },
+  { key: 'smoking', label: 'Smoking Allowed' },
+  { key: 'parking', label: 'Parking Available' },
+  { key: 'female', label: 'Female Only' },
+  { key: 'male', label: 'Male Only' },
 ];
 
 const HousingGroupsScreen = ({ navigation }) => {
@@ -184,22 +187,35 @@ const HousingGroupsScreen = ({ navigation }) => {
       switch(filter) {
         case 'sda':
           return group.housing_listing_data?.is_sda_certified === true;
-        case 'ndis':
-          return group.housing_listing_data?.ndis_supported === true;
+        case 'pets':
+          return group.housing_listing_data?.pet_friendly === true || 
+                 group.housing_listing_data?.features?.includes('pet friendly');
         case 'accessible':
           return (group.housing_listing_data?.accessibility_rating || 0) >= 3;
         case 'wheelchair':
-          return group.housing_listing_data?.accessibility_features?.includes('wheelchair');
-        case 'support':
-          return group.support_needs?.includes('24/7') || 
-                 group.housing_listing_data?.features?.includes('24/7 support');
+          return group.housing_listing_data?.accessibility_features?.includes('wheelchair') || 
+                 group.housing_listing_data?.features?.includes('wheelchair access');
+        case 'supportsOnsite':
+          return group.housing_listing_data?.features?.includes('onsite support') || 
+                 group.housing_listing_data?.supports_onsite === true;
+        case 'sensory':
+          return group.housing_listing_data?.features?.includes('sensory friendly') || 
+                 group.housing_listing_data?.accessibility_features?.includes('sensory');
+        case 'smoking':
+          return group.housing_listing_data?.smoking_allowed === true || 
+                 group.housing_listing_data?.features?.includes('smoking allowed');
+        case 'parking':
+          return group.housing_listing_data?.parking_available === true || 
+                 group.housing_listing_data?.features?.includes('parking');
+        case 'female':
+          return group.gender_preference === 'female' || 
+                 group.housing_listing_data?.gender_preference === 'female';
+        case 'male':
+          return group.gender_preference === 'male' || 
+                 group.housing_listing_data?.gender_preference === 'male';
         case 'sil':
           return group.support_needs?.includes('SIL') || 
                  group.housing_listing_data?.features?.includes('SIL');
-        case 'single':
-          return group.housing_listing_data?.features?.includes('single room');
-        case 'shared':
-          return group.housing_listing_data?.features?.includes('shared room');
         default:
           return true;
       }
@@ -213,35 +229,56 @@ const HousingGroupsScreen = ({ navigation }) => {
         throw new Error('User not authenticated');
       }
 
-      const { data, error } = await supabase
+      // First check if a membership already exists
+      const { data: existingMembership, error: checkError } = await supabase
         .from('housing_group_members')
-        .insert([
-          { 
-            group_id: groupId, 
-            user_id: userId,
-            status: 'pending',
-            join_date: new Date().toISOString()
-          }
-        ]);
+        .select('id, status')
+        .eq('group_id', groupId)
+        .eq('user_id', userId)
+        .maybeSingle();
 
-      if (error) throw error;
+      if (checkError) throw checkError;
+
+      // If membership exists with 'pending' or 'declined' status, update it
+      if (existingMembership) {
+        const { error: updateError } = await supabase
+          .from('housing_group_members')
+          .update({ status: 'pending', join_date: new Date().toISOString() })
+          .eq('id', existingMembership.id);
+
+        if (updateError) throw updateError;
+      } else {
+        // If no membership exists, create a new one
+        const { error: insertError } = await supabase
+          .from('housing_group_members')
+          .insert([
+            { 
+              group_id: groupId, 
+              user_id: userId,
+              status: 'pending',
+              join_date: new Date().toISOString()
+            }
+          ]);
+
+        if (insertError) throw insertError;
+      }
 
       // Refresh the groups list to update status
       fetchHousingGroups();
     } catch (error) {
       console.error('Error joining group:', error);
-      // Show error to user
-      alert('Failed to join group. Please try again.');
     }
   };
 
-  // Handle leave group action
+  // Handle leave group action - this cancels a join request
   const handleLeaveGroup = async (groupId) => {
     try {
       if (!userId) {
         throw new Error('User not authenticated');
       }
 
+      // For approved members, we'll delete the membership
+      // For pending members, we'll delete their request
       const { error } = await supabase
         .from('housing_group_members')
         .delete()
@@ -254,16 +291,16 @@ const HousingGroupsScreen = ({ navigation }) => {
       fetchHousingGroups();
     } catch (error) {
       console.error('Error leaving group:', error);
-      // Show error to user
-      alert('Failed to leave group. Please try again.');
     }
   };
 
   // Handle card action based on membership status
   const handleCardAction = (item) => {
-    if (item.membershipStatus === 'approved') {
+    if (item.membershipStatus === 'approved' || item.membershipStatus === 'pending') {
+      // If user is a member or has a pending request, allow them to leave/cancel
       handleLeaveGroup(item.id);
-    } else if (!item.membershipStatus) {
+    } else {
+      // If user is not a member, allow them to join
       handleJoinGroup(item.id);
     }
   };
@@ -274,7 +311,7 @@ const HousingGroupsScreen = ({ navigation }) => {
       <HousingGroupCard 
         item={item}
         onPress={() => navigation.navigate('HousingGroupDetailScreen', { groupId: item.id })}
-        onActionPress={() => handleCardAction(item)}
+        onActionPress={() => navigation.navigate('HousingGroupDetailScreen', { groupId: item.id })} // Navigate to detail screen on button press
         gridMode={viewMode === 'Grid'}
       />
     </View>
@@ -334,33 +371,7 @@ const HousingGroupsScreen = ({ navigation }) => {
         contentType="housing_groups"
       />
       
-      {/* NDIS-specific filters */}
-      <ScrollView 
-        horizontal 
-        showsHorizontalScrollIndicator={false} 
-        style={styles.filterScroll} 
-        contentContainerStyle={{paddingHorizontal: 10}}
-      >
-        {HOUSING_FILTERS.map(filter => (
-          <TouchableOpacity
-            key={filter.key}
-            style={[
-              styles.filterChip, 
-              activeFilters.includes(filter.key) && styles.filterChipActive
-            ]}
-            onPress={() => toggleFilter(filter.key)}
-          >
-            <Text 
-              style={[
-                styles.filterChipText, 
-                activeFilters.includes(filter.key) && styles.filterChipTextActive
-              ]}
-            >
-              {filter.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      {/* Filters removed as requested */}
       
       {/* Listing count */}
       <Text style={styles.listingCount}>

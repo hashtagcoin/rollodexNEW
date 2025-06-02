@@ -1093,9 +1093,9 @@ const ProfileScreen = () => {
         
         <View style={styles.statsRow}>
           <View style={styles.statBox}><Text style={styles.statNumber}>{posts.length}</Text><Text style={styles.statLabel}>Posts</Text></View>
-          <View style={styles.statBox}><Text style={styles.statNumber}>8</Text><Text style={styles.statLabel}>Friends</Text></View>
-          <View style={styles.statBox}><Text style={styles.statNumber}>3</Text><Text style={styles.statLabel}>Groups</Text></View>
-          <View style={styles.statBox}><Text style={styles.statNumber}>2</Text><Text style={styles.statLabel}>Bookings</Text></View>
+          <View style={styles.statBox}><Text style={styles.statNumber}>{friendsList.length}</Text><Text style={styles.statLabel}>Friends</Text></View>
+          <View style={styles.statBox}><Text style={styles.statNumber}>{favoriteGroups.length}</Text><Text style={styles.statLabel}>Groups</Text></View>
+          <View style={styles.statBox}><Text style={styles.statNumber}>{upcomingBookings.length}</Text><Text style={styles.statLabel}>Bookings</Text></View>
         </View>
         
         <View style={styles.profileButtonRow}>

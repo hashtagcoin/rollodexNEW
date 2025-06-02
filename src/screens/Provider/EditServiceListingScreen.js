@@ -11,11 +11,23 @@ import {
   Image,
   Platform,
 } from 'react-native';
+import * as FileSystem from 'expo-file-system';
+import { decode } from 'base64-arraybuffer';
 import { Feather, MaterialIcons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
 import * as ImagePicker from 'expo-image-picker';
 import { v4 as uuidv4 } from 'uuid';
 import { supabase } from '../../lib/supabaseClient';
+
+// Function to generate a random string for filenames
+const generateRandomString = (length) => {
+  const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let result = '';
+  for (let i = 0; i < length; i++) {
+    result += characters.charAt(Math.floor(Math.random() * characters.length));
+  }
+  return result;
+};
 import { useUser } from '../../context/UserContext';
 import AppHeader from '../../components/layout/AppHeader';
 import Button from '../../components/common/Button';
@@ -47,6 +59,7 @@ const EditServiceListingScreen = ({ route, navigation }) => {
   const [saving, setSaving] = useState(false);
   const [images, setImages] = useState([]);
   const [existingImageUrls, setExistingImageUrls] = useState([]);
+  const [removedImageUrls, setRemovedImageUrls] = useState([]);
   const [uploadingImages, setUploadingImages] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -65,7 +78,32 @@ const EditServiceListingScreen = ({ route, navigation }) => {
 
   useEffect(() => {
     fetchServiceDetails();
-  }, [serviceId]);
+    // We don't need to call loadUserProfile() as it doesn't exist
+    // The profile is already available via useUser() context
+    
+    // Log any existing image URLs for debugging
+    if (existingImageUrls.length > 0) {
+      // [LOG] Only keep logs for:
+// 1. URL saved to Supabase on upload
+// 2. URL displayed on screen when rendering
+// Remove all other logs.
+//
+// (Below, all logs will be removed except those two cases)
+//
+// [LOG]'Existing images on load:', existingImageUrls);
+    }
+  }, []);
+  
+  // This effect refreshes the UI when we navigate back to this screen
+  useEffect(() => {
+  const unsubscribe = navigation.addListener('focus', () => {
+    if (serviceId) {
+      setImages([]); // Clear unsaved images to avoid grey squares
+      fetchServiceDetails();
+    }
+  });
+  return unsubscribe;
+}, [navigation, serviceId]);
 
   const fetchServiceDetails = async () => {
     try {
@@ -109,10 +147,50 @@ const EditServiceListingScreen = ({ route, navigation }) => {
       
       // Set existing image URLs
       if (data.media_urls && Array.isArray(data.media_urls)) {
-        setExistingImageUrls(data.media_urls);
+        // [LOG] Only keep logs for:
+// 1. URL saved to Supabase on upload
+// 2. URL displayed on screen when rendering
+// Remove all other logs.
+//
+// (Below, all logs will be removed except those two cases)
+//
+// [LOG]'[EditServiceListingScreen] Raw DB media_urls:', data.media_urls);
+        // Ensure all URLs are full paths with correct user subfolder structure
+        const processedUrls = data.media_urls.filter(url => url && typeof url === 'string').map(url => {
+          if (url.startsWith('http')) {
+            return url;
+          }
+          // Insert userId subfolder if missing (for legacy paths)
+          const profileId = profile?.id;
+          if (profileId && !url.includes(`service-images/${profileId}/`)) {
+            const fileName = url.split('/').pop();
+            return `https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/providerimages/service-images/${profileId}/${fileName}`;
+          }
+          // Otherwise, construct full URL
+          return `https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/providerimages/${url}`;
+        });
+        // [LOG] Only keep logs for:
+// 1. URL saved to Supabase on upload
+// 2. URL displayed on screen when rendering
+// Remove all other logs.
+//
+// (Below, all logs will be removed except those two cases)
+//
+// [LOG]'[EditServiceListingScreen] Processed image URLs:', processedUrls);
+        setExistingImageUrls(processedUrls);
+        setTimeout(() => {
+          // [LOG] Only keep logs for:
+// 1. URL saved to Supabase on upload
+// 2. URL displayed on screen when rendering
+// Remove all other logs.
+//
+// (Below, all logs will be removed except those two cases)
+//
+// [LOG]'[EditServiceListingScreen] State existingImageUrls:', processedUrls);
+        }, 500);
       }
     } catch (error) {
-      console.error('Error fetching service details:', error);
+      // [LOG] (Removed error logs except for Alert/critical errors)'Error fetching service details:', error);
       Alert.alert('Error', 'Failed to load service details');
       navigation.goBack();
     } finally {
@@ -157,83 +235,249 @@ const EditServiceListingScreen = ({ route, navigation }) => {
 
   const pickImage = async () => {
     try {
-      // Request permissions
-      if (Platform.OS !== 'web') {
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== 'granted') {
-          Alert.alert('Permission needed', 'Please grant permission to access your photo library');
-          return;
-        }
+      // No need to request permissions explicitly as ImagePicker now handles this internally
+      const maxImages = 10 - (existingImageUrls.length + images.length);
+      
+      if (maxImages <= 0) {
+        Alert.alert('Image Limit', 'You have reached the maximum number of images allowed (10).');
+        return;
       }
       
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.7,
+        allowsEditing: false,
+        quality: 0.8,
+        base64: true, // Request base64 data for reliable upload
+        exif: false   // Skip exif data to reduce payload size
       });
       
-      if (!result.canceled) {
-        // Add the new image to the list of images
-        setImages([...images, result.assets[0]]);
+      // [LOG] Only keep logs for:
+// 1. URL saved to Supabase on upload
+// 2. URL displayed on screen when rendering
+// Remove all other logs.
+//
+// (Below, all logs will be removed except those two cases)
+//
+// [LOG]'Image picker result:', result.canceled ? 'Canceled' : `Selected ${result.assets?.length || 0} image(s)`);
+      
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const selectedAsset = result.assets[0];
+        // [LOG] Only keep logs for:
+// 1. URL saved to Supabase on upload
+// 2. URL displayed on screen when rendering
+// Remove all other logs.
+//
+// (Below, all logs will be removed except those two cases)
+//
+// [LOG]'Selected image:', selectedAsset.uri);
+        
+        // Store both URI and base64 data for reliable upload
+        setImages(prevImages => [...prevImages, { 
+          uri: selectedAsset.uri,
+          base64: selectedAsset.base64,
+          width: selectedAsset.width,
+          height: selectedAsset.height,
+          type: selectedAsset.type || 'image/jpeg'
+        }]);
       }
     } catch (error) {
-      console.error('Error picking image:', error);
+      // [LOG] (Removed error logs except for Alert/critical errors)'Error picking image:', error);
       Alert.alert('Error', 'Failed to select image');
     }
   };
 
   const removeImage = (index) => {
-    const updatedImages = [...images];
-    updatedImages.splice(index, 1);
-    setImages(updatedImages);
+    // [LOG] Only keep logs for:
+// 1. URL saved to Supabase on upload
+// 2. URL displayed on screen when rendering
+// Remove all other logs.
+//
+// (Below, all logs will be removed except those two cases)
+//
+// [LOG]'Removing new image at index:', index);
+    setImages(prevImages => prevImages.filter((_, i) => i !== index));
+    Alert.alert('Image Removed', 'The selected image has been removed');
   };
 
   const removeExistingImage = (index) => {
-    const updatedUrls = [...existingImageUrls];
-    updatedUrls.splice(index, 1);
-    setExistingImageUrls(updatedUrls);
+    // [LOG] Only keep logs for:
+// 1. URL saved to Supabase on upload
+// 2. URL displayed on screen when rendering
+// Remove all other logs.
+//
+// (Below, all logs will be removed except those two cases)
+//
+// [LOG]'Removing existing image at index:', index);
+    const imageUrl = existingImageUrls[index];
+    // Add to removed images list
+    setRemovedImageUrls(prev => [...prev, imageUrl]);
+    // Remove from UI
+    setExistingImageUrls(prevUrls => prevUrls.filter((_, i) => i !== index));
+    Alert.alert('Image Removed', 'The existing image has been removed and will be deleted when you save');
   };
 
   const uploadImages = async () => {
+    if (images.length === 0) return [];
+    
+    setUploadingImages(true);
+    const uploadedUrls = [];
+    
     try {
-      setUploadingImages(true);
-      const uploadedUrls = [];
-      
-      for (const image of images) {
-        // Create a file name with uuid to avoid conflicts
-        const fileExt = image.uri.split('.').pop();
-        const fileName = `${uuidv4()}.${fileExt}`;
-        const filePath = `service-images/${fileName}`;
-        
-        // Convert the image to blob
-        const response = await fetch(image.uri);
-        const blob = await response.blob();
-        
-        // Upload to Supabase Storage
-        const { data, error } = await supabase.storage
-          .from('media')
-          .upload(filePath, blob, {
-            contentType: `image/${fileExt}`,
-            cacheControl: '3600',
-          });
-        
-        if (error) {
-          throw error;
-        }
-        
-        // Get the public URL
-        const { data: { publicUrl } } = supabase.storage
-          .from('media')
-          .getPublicUrl(filePath);
-        
-        uploadedUrls.push(publicUrl);
+      // Get the profile ID for use in the folder path
+      if (!profile) {
+        throw new Error('User profile not found');
       }
+      const profileId = profile.id;
+      // [LOG] Only keep logs for:
+// 1. URL saved to Supabase on upload
+// 2. URL displayed on screen when rendering
+// Remove all other logs.
+//
+// (Below, all logs will be removed except those two cases)
+//
+// [LOG]'Using profile ID for uploads:', profileId);
+      
+      // Create the service-images folder first to ensure it exists
+      try {
+        await supabase.storage
+          .from('providerimages')
+          .upload('service-images/.emptyFolderPlaceholder', new Uint8Array(0), {
+            contentType: 'text/plain',
+            upsert: true
+          });
+        // [LOG] Only keep logs for:
+// 1. URL saved to Supabase on upload
+// 2. URL displayed on screen when rendering
+// Remove all other logs.
+//
+// (Below, all logs will be removed except those two cases)
+//
+// [LOG]'Verified service-images folder access');
+    } catch (folderError) {
+      // If error is about the file already existing, that's fine
+      if (!folderError.message.includes('already exists')) {
+        // console.log(warn('Error creating service-images folder:', folderError);
+      }
+    }
+    
+    // Create the user-specific folder
+    const userFolderPath = `service-images/${profileId}`;
+    try {
+      await supabase.storage
+        .from('providerimages')
+        .upload(`${userFolderPath}/.emptyFolderPlaceholder`, new Uint8Array(0), {
+          contentType: 'text/plain',
+          upsert: true
+        });
+      // [LOG] Only keep logs for:
+// 1. URL saved to Supabase on upload
+// 2. URL displayed on screen when rendering
+// Remove all other logs.
+//
+// (Below, all logs will be removed except those two cases)
+//
+// [LOG]'Created user folder placeholder');
+    } catch (folderErr) {
+      if (!folderErr.message.includes('already exists')) {
+        // console.log(warn('Error creating user folder:', folderErr);
+      }
+    }
+    
+    // Process and upload each image
+    for (let i = 0; i < images.length; i++) {
+      const image = images[i];
+      const timestamp = new Date().getTime();
+      const randomString = generateRandomString(16);
+      const uri = image.uri;
+      const fileExt = uri.split('.').pop().toLowerCase();
+      let uploadData = null;
+      let uploadContentType = 'application/octet-stream';
+
+      // Prepare image data
+      try {
+        if (image.base64) {
+          uploadData = decode(image.base64);
+          uploadContentType = `image/${fileExt}` === 'image/jpg' ? 'image/jpeg' : `image/${fileExt}`;
+        } else {
+          try {
+            const base64 = await FileSystem.readAsStringAsync(uri, {
+              encoding: FileSystem.EncodingType.Base64
+            });
+            uploadData = decode(base64);
+            uploadContentType = `image/${fileExt}` === 'image/jpg' ? 'image/jpeg' : `image/${fileExt}`;
+          } catch (fileReadErr) {
+            try {
+              const response = await fetch(uri);
+              uploadData = await response.blob();
+              uploadContentType = uploadData.type;
+            } catch (blobErr) {
+              Alert.alert('Error', `Failed to prepare image ${i+1}: ${blobErr.message}`);
+              continue;
+            }
+          }
+        }
+        if (uploadData instanceof ArrayBuffer && uploadData.byteLength === 0) {
+          Alert.alert('Error', `Image ${i+1} appears to be corrupted or empty. Please select a different image.`);
+          continue;
+        }
+        if (uploadData instanceof Blob && uploadData.size === 0) {
+          Alert.alert('Error', `Image ${i+1} appears to be corrupted or empty. Please select a different image.`);
+          continue;
+        }
+      } catch (dataErr) {
+        Alert.alert('Error', `Failed to prepare image ${i+1}: ${dataErr.message}`);
+        continue;
+      }
+
+      // Upload with retry logic
+      let fileName = `${userFolderPath}/${timestamp}_${randomString}.${fileExt}`;
+      let uploadSuccess = false;
+      let attempts = 0;
+      let maxAttempts = 3;
+      let uploadCompleted = false;
+      try {
+        while (!uploadCompleted && attempts < maxAttempts) {
+          attempts++;
+          const { data, error } = await supabase.storage
+            .from('providerimages')
+            .upload(fileName, uploadData, {
+              contentType: uploadContentType,
+              cacheControl: '3600',
+              upsert: false
+            });
+          if (error) {
+            if (error.message.includes('already exists')) {
+              const newRandomString = generateRandomString(16);
+              fileName = `${userFolderPath}/${timestamp}_${newRandomString}.${fileExt}`;
+              continue;
+            }
+            throw error;
+          }
+          uploadCompleted = true;
+          // Get the public URL for the successfully uploaded image
+          const { data: { publicUrl } } = supabase.storage
+            .from('providerimages')
+            .getPublicUrl(fileName);
+          uploadedUrls.push(publicUrl);
+          setExistingImageUrls(prev => [...prev, publicUrl]);
+        }
+        if (!uploadCompleted) {
+          throw new Error('Failed after maximum upload attempts');
+        }
+      } catch (uploadError) {
+        Alert.alert('Upload Error', uploadError.message || 'Failed to upload image');
+        continue;
+      }
+    }
+      
+      // Clear the images array since they've been uploaded and moved to existingImageUrls
+      setImages([]);
       
       return uploadedUrls;
-    } catch (error) {
-      console.error('Error uploading images:', error);
-      throw error;
+    } catch (err) {
+      // [LOG] (Removed error logs except for Alert/critical errors)'Error during image upload:', err);
+      Alert.alert('Upload Error', err.message || 'An error occurred during image upload');
+      return [];
     } finally {
       setUploadingImages(false);
     }
@@ -246,36 +490,152 @@ const EditServiceListingScreen = ({ route, navigation }) => {
     
     try {
       setSaving(true);
+      // [LOG] Only keep logs for:
+// 1. URL saved to Supabase on upload
+// 2. URL displayed on screen when rendering
+// Remove all other logs.
+//
+// (Below, all logs will be removed except those two cases)
+//
+// [LOG]'Starting service update process...');
       
       // Upload new images if any
       let newMediaUrls = [];
       if (images.length > 0) {
+        // [LOG] Only keep logs for:
+// 1. URL saved to Supabase on upload
+// 2. URL displayed on screen when rendering
+// Remove all other logs.
+//
+// (Below, all logs will be removed except those two cases)
+//
+// [LOG]`Uploading ${images.length} new images...`);
         newMediaUrls = await uploadImages();
+        // [LOG] Only keep logs for:
+// 1. URL saved to Supabase on upload
+// 2. URL displayed on screen when rendering
+// Remove all other logs.
+//
+// (Below, all logs will be removed except those two cases)
+//
+// [LOG]'Uploaded image URLs:', newMediaUrls);
       }
       
-      // Combine existing and new media URLs
-      const allMediaUrls = [...existingImageUrls, ...newMediaUrls];
+      // Filter out any removed images and combine with new media URLs
+      // Make sure we filter by URL without worrying about parameter differences
+      const filteredExistingUrls = existingImageUrls.filter(url => {
+        // Check if this URL isn't in the removedImageUrls list
+        return !removedImageUrls.some(removedUrl => {
+          // Compare base URLs without query parameters
+          const baseUrl = url.split('?')[0];
+          const baseRemovedUrl = removedUrl.split('?')[0];
+          return baseUrl === baseRemovedUrl;
+        });
+      });
+      
+      // Combine filtered existing URLs with new uploaded URLs
+      const allMediaUrls = [...filteredExistingUrls, ...newMediaUrls];
+      
+      // [LOG] Only keep logs for:
+// 1. URL saved to Supabase on upload
+// 2. URL displayed on screen when rendering
+// Remove all other logs.
+//
+// (Below, all logs will be removed except those two cases)
+//
+// [LOG]'Removed image URLs:', removedImageUrls);
+      // [LOG] Only keep logs for:
+// 1. URL saved to Supabase on upload
+// 2. URL displayed on screen when rendering
+// Remove all other logs.
+//
+// (Below, all logs will be removed except those two cases)
+//
+// [LOG]'Filtered existing URLs:', filteredExistingUrls);
+      // [LOG] Only keep logs for:
+// 1. URL saved to Supabase on upload
+// 2. URL displayed on screen when rendering
+// Remove all other logs.
+//
+// (Below, all logs will be removed except those two cases)
+//
+// [LOG]'New media URLs:', newMediaUrls);
+      // [LOG] Only keep logs for:
+// 1. URL saved to Supabase on upload
+// 2. URL displayed on screen when rendering
+// Remove all other logs.
+//
+// (Below, all logs will be removed except those two cases)
+//
+// [LOG]'All media URLs to save:', allMediaUrls);
+      
+      // Prepare update object
+      const updateData = {
+        title: formData.title,
+        description: formData.description,
+        category: formData.category,
+        format: formData.format,
+        price: parseFloat(formData.price),
+        media_urls: allMediaUrls,
+        address_number: formData.addressNumber,
+        address_street: formData.addressStreet,
+        address_suburb: formData.addressSuburb,
+        address_state: formData.addressState,
+        address_postcode: formData.addressPostcode,
+        available: formData.available
+      };
+      
+      // [LOG] Only keep logs for:
+// 1. URL saved to Supabase on upload
+// 2. URL displayed on screen when rendering
+// Remove all other logs.
+//
+// (Below, all logs will be removed except those two cases)
+//
+// [LOG]'Updating service record with data:', updateData);
       
       // Update the service
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('services')
-        .update({
-          title: formData.title,
-          description: formData.description,
-          category: formData.category,
-          format: formData.format,
-          price: parseFloat(formData.price),
-          media_urls: allMediaUrls,
-          address_number: formData.addressNumber,
-          address_street: formData.addressStreet,
-          address_suburb: formData.addressSuburb,
-          address_state: formData.addressState,
-          address_postcode: formData.addressPostcode,
-          available: formData.available
-        })
-        .eq('id', serviceId);
+        .update(updateData)
+        .eq('id', serviceId)
+        .select();
       
       if (error) throw error;
+      
+      // Update the existing image URLs to match what's in the database
+      if (data && data[0] && data[0].media_urls) {
+        // [LOG] Only keep logs for:
+// 1. URL saved to Supabase on upload
+// 2. URL displayed on screen when rendering
+// Remove all other logs.
+//
+// (Below, all logs will be removed except those two cases)
+//
+// [LOG]'Database returned media_urls:', data[0].media_urls);
+        
+        // Ensure all URLs in the database are full URLs
+        const processedUrls = data[0].media_urls.filter(url => url && typeof url === 'string').map(url => {
+          // If the URL is already a full URL, return it as is
+          if (url.startsWith('http')) {
+            return url;
+          }
+          
+          // Otherwise, construct the full URL with the Supabase storage URL
+          return `https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/providerimages/${url}`;
+        });
+        
+        // [LOG] Only keep logs for:
+// 1. URL saved to Supabase on upload
+// 2. URL displayed on screen when rendering
+// Remove all other logs.
+//
+// (Below, all logs will be removed except those two cases)
+//
+// [LOG]'Processed URLs after update:', processedUrls);
+        setExistingImageUrls(processedUrls);
+        setRemovedImageUrls([]);
+      }
       
       Alert.alert('Success', 'Service listing updated successfully', [
         { 
@@ -284,7 +644,7 @@ const EditServiceListingScreen = ({ route, navigation }) => {
         }
       ]);
     } catch (error) {
-      console.error('Error updating service listing:', error);
+      // [LOG] (Removed error logs except for Alert/critical errors)'Error updating service listing:', error);
       Alert.alert('Error', error.message || 'Failed to update service listing');
     } finally {
       setSaving(false);
@@ -443,52 +803,68 @@ const EditServiceListingScreen = ({ route, navigation }) => {
           )}
 
           <View style={styles.formGroup}>
-            <Text style={styles.label}>Service Images</Text>
+            <View style={styles.labelRow}>
+              <Text style={styles.label}>Service Images</Text>
+              <Text style={styles.imageCount}>{existingImageUrls.length + images.length}/10 images</Text>
+            </View>
             
-            {existingImageUrls.length > 0 && (
-              <View>
-                <Text style={styles.subLabel}>Current Images</Text>
-                <View style={styles.imagesContainer}>
-                  {existingImageUrls.map((url, index) => (
-                    <View key={`existing-${index}`} style={styles.imageWrapper}>
-                      <Image source={{ uri: url }} style={styles.imagePreview} />
-                      <TouchableOpacity
-                        style={styles.removeButton}
-                        onPress={() => removeExistingImage(index)}
-                      >
-                        <Feather name="x" size={16} color="white" />
-                      </TouchableOpacity>
-                    </View>
-                  ))}
+            <ScrollView 
+              horizontal
+              showsHorizontalScrollIndicator={false} 
+              style={styles.imagesScrollView}
+              contentContainerStyle={styles.imagesScrollContent}
+            >
+              {/* Existing Images */}
+              {existingImageUrls.map((url, index) => (
+                <View key={`existing-${index}`} style={styles.imageCard}>
+                  <Image source={{ uri: url }} style={styles.imagePreview} />
+                  <TouchableOpacity
+                    style={styles.removeButton}
+                    onPress={() => removeExistingImage(index)}
+                  >
+                    <Feather name="x-circle" size={22} color={COLORS.primary} />
+                  </TouchableOpacity>
                 </View>
-              </View>
-            )}
-
-            {images.length > 0 && (
-              <View>
-                <Text style={styles.subLabel}>New Images</Text>
-                <View style={styles.imagesContainer}>
-                  {images.map((image, index) => (
-                    <View key={`new-${index}`} style={styles.imageWrapper}>
-                      <Image source={{ uri: image.uri }} style={styles.imagePreview} />
-                      <TouchableOpacity
-                        style={styles.removeButton}
-                        onPress={() => removeImage(index)}
-                      >
-                        <Feather name="x" size={16} color="white" />
-                      </TouchableOpacity>
-                    </View>
-                  ))}
+              ))}
+              
+              {/* New Images */}
+              {images.map((image, index) => (
+                <View key={`new-${index}`} style={styles.imageCard}>
+                  <Image source={{ uri: image.uri }} style={styles.imagePreview} />
+                  <View style={styles.newImageBadge}>
+                    <Text style={styles.newImageText}>New</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.removeButton}
+                    onPress={() => removeImage(index)}
+                  >
+                    <Feather name="x-circle" size={22} color={COLORS.primary} />
+                  </TouchableOpacity>
                 </View>
-              </View>
-            )}
-
-            {(existingImageUrls.length + images.length) < 5 && (
-              <TouchableOpacity style={styles.addImageButton} onPress={pickImage}>
-                <Feather name="plus" size={24} color={COLORS.primary} />
-                <Text style={styles.addImageText}>Add Image</Text>
-              </TouchableOpacity>
-            )}
+              ))}
+              
+              {/* Add Image Button */}
+              {(existingImageUrls.length + images.length) < 10 && (
+                <TouchableOpacity 
+                  style={styles.addImageCard} 
+                  onPress={pickImage}
+                  disabled={uploadingImages}
+                >
+                  {uploadingImages ? (
+                    <ActivityIndicator size="small" color={COLORS.primary} />
+                  ) : (
+                    <>
+                      <Feather name="plus" size={32} color={COLORS.primary} />
+                      <Text style={styles.addImageText}>Add Image</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
+            </ScrollView>
+            
+            <Text style={styles.helperText}>
+              Tip: High-quality images help attract more clients to your service
+            </Text>
           </View>
 
           <View style={styles.formGroup}>
@@ -561,7 +937,7 @@ const EditServiceListingScreen = ({ route, navigation }) => {
                         navigation.navigate('ManageListings');
                         Alert.alert('Success', 'Service deleted successfully');
                       } catch (error) {
-                        console.error('Error deleting service:', error);
+                        // [LOG] (Removed error logs except for Alert/critical errors)'Error deleting service:', error);
                         Alert.alert('Error', 'Failed to delete service');
                       } finally {
                         setSaving(false);
@@ -699,6 +1075,93 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     marginLeft: 8,
     fontWeight: '500',
+  },
+  labelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  imageCount: {
+    fontSize: 14,
+    color: COLORS.gray,
+    fontFamily: FONTS.regular,
+  },
+  imagesScrollView: {
+    marginVertical: 10,
+  },
+  imagesScrollContent: {
+    paddingRight: 16,
+  },
+  imageCard: {
+    width: 120,
+    height: 120,
+    borderRadius: 12,
+    marginRight: 12,
+    overflow: 'hidden',
+    position: 'relative',
+    backgroundColor: '#f0f0f0',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  imagePreview: {
+    width: '100%',
+    height: '100%',
+  },
+  removeButton: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderRadius: 12,
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1,
+    elevation: 2,
+  },
+  addImageCard: {
+    width: 120,
+    height: 120,
+    borderRadius: 12,
+    marginRight: 12,
+    borderWidth: 2,
+    borderColor: COLORS.primary,
+    borderStyle: 'dashed',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.03)',
+  },
+  addImageText: {
+    marginTop: 8,
+    color: COLORS.primary,
+    fontSize: 14,
+    fontFamily: FONTS.medium,
+  },
+  helperText: {
+    fontSize: 12,
+    color: COLORS.gray,
+    marginTop: 8,
+    fontStyle: 'italic',
+    textAlign: 'center',
+  },
+  newImageBadge: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+  },
+  newImageText: {
+    color: 'white',
+    fontSize: 10,
+    fontFamily: FONTS.bold,
   },
   switchContainer: {
     flexDirection: 'row',

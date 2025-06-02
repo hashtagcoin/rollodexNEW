@@ -13,6 +13,8 @@ import {
   Switch,
   KeyboardAvoidingView,
 } from 'react-native';
+import * as FileSystem from 'expo-file-system';
+import { decode } from 'base64-arraybuffer';
 import { Feather, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import { Dropdown } from 'react-native-element-dropdown'; 
 import * as ImagePicker from 'expo-image-picker';
@@ -98,7 +100,12 @@ const EditHousingListingScreen = ({ route, navigation }) => {
       
       if (error) throw error;
       
-      console.log('Fetched housing data:', JSON.stringify(data));
+      // [LOG] Only keep logs for:
+// 1. URL saved to Supabase on upload
+// 2. URL displayed on screen when rendering
+// Remove all other logs.
+//
+// [LOG]'Fetched housing data:', JSON.stringify(data));
       
       const { data: providerData } = await supabase
         .from('service_providers')
@@ -134,13 +141,38 @@ const EditHousingListingScreen = ({ route, navigation }) => {
       });
       
       // Log media URLs for debugging
-      console.log('Media URLs:', data.media_urls);
+      // [LOG] Only keep logs for:
+// 1. URL saved to Supabase on upload
+// 2. URL displayed on screen when rendering
+// Remove all other logs.
+//
+// [LOG]'Media URLs:', data.media_urls);
       
       if (data.media_urls && Array.isArray(data.media_urls)) {
-        setExistingImageUrls(data.media_urls);
-        console.log('Set existing image URLs:', data.media_urls);
+        // Ensure all URLs are full public URLs and include userId subfolder if not already
+        const processedUrls = data.media_urls.map(url => {
+          if (url.startsWith('http')) {
+            return url;
+          }
+          // Insert userId subfolder if missing (for legacy paths)
+          const profileId = profile?.id;
+          if (profileId && !url.includes(`housing-images/${profileId}/`)) {
+            // Assume url is just filename, e.g. 'housing-images/abc.jpg' or 'housing-images/12345_abc.jpg'
+            const fileName = url.split('/').pop();
+            return `https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/housing-images/${profileId}/${fileName}`;
+          }
+          // Otherwise, construct full URL
+          return `https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/${url}`;
+        });
+        setExistingImageUrls(processedUrls);
       }
-
+      // [LOG] Only keep logs for:
+// 1. URL saved to Supabase on upload
+// 2. URL displayed on screen when rendering
+// Remove all other logs.
+//
+// [LOG]'Set existing image URLs:', data.media_urls);
+      
       if (data.available_from) {
         const [yearPart, monthPart, dayPart] = data.available_from.split('T')[0].split('-');
         setAvailableYear(yearPart || '');
@@ -148,7 +180,7 @@ const EditHousingListingScreen = ({ route, navigation }) => {
         setAvailableDay(dayPart || '');
       }
     } catch (error) {
-      console.error('Error fetching housing details:', error);
+      // console.error('Error fetching housing details:', error);
       Alert.alert('Error', 'Failed to load housing details');
       navigation.goBack();
     } finally {
@@ -221,16 +253,7 @@ const EditHousingListingScreen = ({ route, navigation }) => {
     }));
   };
 
-  const handleImagePicked = (pickedImage) => {
-    if ((images.length + existingImageUrls.length - imagesToDelete.length) >= 5) {
-      Alert.alert('Maximum images reached', 'You can upload a maximum of 5 images (including existing ones).');
-      return;
-    }
-    const extension = pickedImage.mimeType ? pickedImage.mimeType.split('/')[1] : 'jpg';
-    const fileName = `img_${Date.now()}.${extension}`;
-    
-    setImages(prevImages => [...prevImages, { ...pickedImage, fileName }]);
-  };
+  // ModernImagePicker now handles image selection directly with setImages
 
   const removeImage = (index) => {
     const updatedImages = [...images];
@@ -251,58 +274,111 @@ const EditHousingListingScreen = ({ route, navigation }) => {
   const uploadImages = async () => {
     try {
       const uploadedUrls = [];
-      // Ensure profile.id is available in this scope. If not, fetch or pass it.
-      // For example, if 'profile' state is set from a context or earlier fetch:
+      // Ensure profile.id is available in this scope
       const profileId = profile?.id; 
 
       if (!profileId) {
-        console.error('User profile ID not found for image upload path.');
+        // console.error('User profile ID not found for image upload path.');
         Alert.alert('Error', 'Could not upload images: User session error.');
         return []; 
       }
 
       for (const imageAsset of images) { 
-        const contentType = imageAsset.mimeType || 'application/octet-stream';
+        // [LOG] Only keep logs for:
+// 1. URL saved to Supabase on upload
+// 2. URL displayed on screen when rendering
+// Remove all other logs.
+//
+// [LOG]'Processing image for upload:', imageAsset.uri);
         
-        const storageFileName = imageAsset.fileName; 
-        const filePath = `housing-images/${profileId}/${storageFileName}`; 
-
-        const response = await fetch(imageAsset.uri);
-        const blob = await response.blob();
-
-        if (blob.size === 0) {
-          console.warn(`Skipping 0-byte blob for image: ${imageAsset.uri} (filename: ${imageAsset.fileName})`);
-          Alert.alert('Upload Warning', `A new image (${imageAsset.fileName || 'selected image'}) appears to be empty and was not uploaded.`);
-          continue; 
-        }
+        // Generate a unique filename using user ID for organization
+        const timestamp = new Date().getTime();
+        const randomStr = Math.random().toString(36).substring(2, 10);
+        const extension = imageAsset.uri.split('.').pop().toLowerCase() || 'jpg';
+        const fileName = `housing-images/${profileId}/${timestamp}_${randomStr}.${extension}`;
+        let base64Data;
+        const contentType = 
+          extension === 'png' ? 'image/png' : 
+          extension === 'gif' ? 'image/gif' : 'image/jpeg';
         
-        const { data, error: uploadError } = await supabase.storage
-          .from('housing') 
-          .upload(filePath, blob, {
-            contentType: contentType,
-            cacheControl: '3600',
-            upsert: false 
-          });
-        
-        if (uploadError) {
-          console.error('Supabase upload error for:', imageAsset.uri, uploadError);
-          throw uploadError; 
-        }
-        
-        const { data: urlData } = supabase.storage
-          .from('housing')
-          .getPublicUrl(filePath);
-        
-        if (urlData && urlData.publicUrl) {
-           uploadedUrls.push(urlData.publicUrl);
+        // Handle image data extraction
+        if (imageAsset.base64) {
+          // Use the base64 data directly if available
+          base64Data = imageAsset.base64;
+        } else if (imageAsset.uri) {
+          try {
+            // Use expo-file-system to read the file as base64
+            base64Data = await FileSystem.readAsStringAsync(imageAsset.uri, {
+              encoding: FileSystem.EncodingType.Base64
+            });
+            // [LOG] Only keep logs for:
+// 1. URL saved to Supabase on upload
+// 2. URL displayed on screen when rendering
+// Remove all other logs.
+//
+// [LOG]'Successfully read file as base64, length:', base64Data.length);
+          } catch (error) {
+            // console.error('Error reading file:', error);
+            Alert.alert('Upload Issue', 'Could not read image file. Please try a different image.');
+            continue;
+          }
         } else {
-          console.warn('Failed to get public URL for uploaded image:', filePath);
-          // Decide if this is a critical error or if you can proceed
+          // console.error('No valid image data found');
+          continue;
+        }
+        
+        // Convert base64 to array buffer for upload
+        try {
+          const arrayBuffer = decode(base64Data);
+          // [LOG] Only keep logs for:
+// 1. URL saved to Supabase on upload
+// 2. URL displayed on screen when rendering
+// Remove all other logs.
+//
+// [LOG]'Successfully converted base64 to array buffer');
+          
+          // Upload to Supabase storage
+          const { data, error } = await supabase.storage
+            .from('housing')
+            .upload(fileName, arrayBuffer, {
+              contentType,
+              cacheControl: '3600',
+              upsert: true
+            });
+    
+          if (error) {
+            // console.error('Supabase storage upload error:', error);
+            throw error;
+          }
+          
+          // Get public URL for the uploaded image
+          const { data: urlData } = supabase.storage
+            .from('housing')
+            .getPublicUrl(fileName);
+            
+          if (urlData && urlData.publicUrl) {
+            uploadedUrls.push(urlData.publicUrl);
+            // [LOG] Only keep logs for:
+// 1. URL saved to Supabase on upload
+// 2. URL displayed on screen when rendering
+// Remove all other logs.
+//
+// [LOG]'Successfully uploaded image:', urlData.publicUrl);
+          } else {
+            throw new Error('Failed to get public URL for uploaded image');
+          }
+        } catch (error) {
+          // console.error('Error in upload process:', error);
+          Alert.alert(
+            'Upload Issue',
+            'There was a problem uploading one of your images. Please try a different image.',
+            [{ text: 'OK' }]
+          );
         }
       }
       return uploadedUrls;
     } catch (error) {
-      console.error('Error uploading images:', error);
+      // console.error('Error uploading images:', error);
       Alert.alert('Error', 'An error occurred while uploading images. Please try again.');
       throw error; 
     }
@@ -336,7 +412,12 @@ const EditHousingListingScreen = ({ route, navigation }) => {
       // Combine with newly uploaded images
       const finalImageUrls = [...remainingImageUrls, ...uploadedUrls];
 
-      console.log('Final image URLs:', finalImageUrls);
+      // [LOG] Only keep logs for:
+// 1. URL saved to Supabase on upload
+// 2. URL displayed on screen when rendering
+// Remove all other logs.
+//
+// [LOG]'Final image URLs:', finalImageUrls);
 
       // Format the availableFrom date if all parts are provided
       let availableFromDate = null;
@@ -373,14 +454,14 @@ const EditHousingListingScreen = ({ route, navigation }) => {
         .eq('id', housingId);
 
       if (error) {
-        console.error('Database error:', error);
+        // console.error('Database error:', error);
         throw error;
       }
 
       Alert.alert('Success', 'Housing listing updated successfully!');
       navigation.goBack();
     } catch (error) {
-      console.error('Error updating housing listing:', error);
+      // console.error('Error updating housing listing:', error);
       Alert.alert('Error', 'Failed to update housing listing. ' + error.message);
     } finally {
       setSaving(false);
@@ -402,7 +483,7 @@ const EditHousingListingScreen = ({ route, navigation }) => {
       navigation.navigate('ManageListings');
       Alert.alert('Success', 'Housing listing deleted successfully');
     } catch (error) {
-      console.error('Error deleting housing listing:', error);
+      // console.error('Error deleting housing listing:', error);
       Alert.alert('Error', 'Failed to delete housing listing');
     } finally {
       setSaving(false);
@@ -791,12 +872,67 @@ const EditHousingListingScreen = ({ route, navigation }) => {
               <Text style={styles.sectionTitle}>Property Images</Text>
               <Text style={styles.helperText}>Add up to 10 images to showcase your property</Text>
               <View style={styles.imagesContainer}>
-                <ModernImagePicker
-                  images={images}
-                  setImages={setImages}
-                  maxImages={10 - existingImageUrls.length}
-                  containerStyle={{marginBottom: 12}}
-                />
+                <View style={styles.imagePickerContainer}>
+                  <TouchableOpacity 
+                    style={styles.addImageButton}
+                    onPress={async () => {
+                      // Check if we've reached the maximum number of images
+                      if ((images.length + existingImageUrls.length - imagesToDelete.length) >= 10) {
+                        Alert.alert('Maximum images reached', 'You can upload a maximum of 10 images (including existing ones).');
+                        return;
+                      }
+
+                      // No permissions request is necessary for launching the image library
+                      // The picker will handle permission requests internally
+                      let result = await ImagePicker.launchImageLibraryAsync({
+                        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                        allowsEditing: false,
+                        quality: 0.8,
+                        base64: true, // Request base64 data for reliable upload
+                        exif: false   // Skip exif data to reduce payload size
+                      });
+
+                      // [LOG] Only keep logs for:
+// 1. URL saved to Supabase on upload
+// 2. URL displayed on screen when rendering
+// Remove all other logs.
+//
+// [LOG]'Image picker result:', result);
+                      
+                      if (!result.canceled && result.assets && result.assets.length > 0) {
+                        const selectedAsset = result.assets[0];
+                        // [LOG] Only keep logs for:
+// 1. URL saved to Supabase on upload
+// 2. URL displayed on screen when rendering
+// Remove all other logs.
+//
+// [LOG]'Selected image:', selectedAsset.uri);
+                        
+                        // Store both URI and base64 data for reliable upload
+                        setImages(prevImages => [...prevImages, { 
+                          uri: selectedAsset.uri,
+                          base64: selectedAsset.base64,
+                          width: selectedAsset.width,
+                          height: selectedAsset.height,
+                          type: selectedAsset.type || 'image/jpeg'
+                        }]);
+                      }
+                    }}
+                    disabled={saving}
+                  >
+                    {saving ? (
+                      <ActivityIndicator size="small" color="#007AFF" />
+                    ) : (
+                      <>
+                        <MaterialIcons name="add-photo-alternate" size={24} color="#007AFF" />
+                        <Text style={styles.addImageText}>Add Image</Text>
+                        <Text style={styles.imageCountText}>
+                          {images.length + existingImageUrls.length - imagesToDelete.length}/10
+                        </Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
 
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageScrollView}>
                   {existingImageUrls.filter(url => !imagesToDelete.includes(url)).map((url, index) => (
@@ -830,7 +966,6 @@ const EditHousingListingScreen = ({ route, navigation }) => {
                     </View>
                   ))}
                 </ScrollView>
-                {/* Old addImageButton removed, ModernImagePicker is now used */}
               </View>
             </View>
             
@@ -1061,10 +1196,35 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 8,
   },
+  imagePickerContainer: {
+    marginBottom: 16,
+  },
+  addImageButton: {
+    width: 120, 
+    height: 100,
+    borderRadius: 8,
+    backgroundColor: '#f0f0f0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderStyle: 'dashed',
+    marginRight: 10,
+  },
+  addImageText: {
+    color: '#007AFF',
+    fontSize: 14,
+    marginTop: 4,
+  },
+  imageCountText: {
+    color: '#888',
+    fontSize: 12,
+    marginTop: 2,
+  },
   imagesContainer: {
     flexDirection: 'row', // Instagram-style horizontal list
     flexWrap: 'wrap',
-    marginTop: 8,
+    marginTop: 12,
   },
   imageWrapper: {
     position: 'relative',

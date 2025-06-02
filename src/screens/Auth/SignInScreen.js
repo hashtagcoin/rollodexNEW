@@ -393,13 +393,13 @@ const styles = StyleSheet.create({
     marginBottom: 40,
   },
   logo: {
-    width: 100,
-    height: 100,
+    width: 80,
+    height: 80,
     marginBottom: 10,
   },
   titleLogo: {
-    width: 200,
-    height: 60,
+    width: 160,
+    height: 48,
     marginBottom: 10,
   },
   tagline: {

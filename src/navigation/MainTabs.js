@@ -23,7 +23,7 @@ const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
 const TabNavigator = () => {
-  const { isProviderMode } = useUser();
+  // No longer conditionally rendering based on provider mode
   
   return (
     <Tab.Navigator
@@ -44,7 +44,7 @@ const TabNavigator = () => {
     >
       <Tab.Screen 
         name="Home" 
-        component={isProviderMode ? ProviderDashboardScreen : DashboardScreen} 
+        component={DashboardScreen} 
       />
       <Tab.Screen 
         name="Explore" 

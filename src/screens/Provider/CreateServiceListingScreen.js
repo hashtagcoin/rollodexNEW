@@ -10,17 +10,28 @@ import {
   ActivityIndicator,
   Image,
   Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { Feather, MaterialIcons, AntDesign, Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { v4 as uuidv4 } from 'uuid';
 import { supabase } from '../../lib/supabaseClient';
 import { useUser } from '../../context/UserContext';
 import AppHeader from '../../components/layout/AppHeader';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
+import ModernImagePicker from '../../components/ModernImagePicker';
 import AvailabilityCalendarModal from '../../components/calendar/AvailabilityCalendarModal.clean';
 import { COLORS, FONTS } from '../../constants/theme';
+
+// Function to generate a random string for filenames
+const generateRandomString = (length) => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let result = '';
+  for (let i = 0; i < length; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+};
 
 const SERVICE_CATEGORIES = [
   'Health',
@@ -146,32 +157,27 @@ const CreateServiceListingScreen = ({ navigation }) => {
     return true;
   };
 
-  const pickImage = async () => {
-    try {
-      // Request permissions
-      if (Platform.OS !== 'web') {
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== 'granted') {
-          Alert.alert('Permission needed', 'Please grant permission to access your photo library');
-          return;
-        }
-      }
-      
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.7,
-      });
-      
-      if (!result.canceled) {
-        // Add the new image to the list of images
-        setImages([...images, result.assets[0]]);
-      }
-    } catch (error) {
-      console.error('Error picking image:', error);
-      Alert.alert('Error', 'Failed to select image');
+  const handleImagePicked = (imageData) => {
+    if (images.length >= 5) {
+      Alert.alert('Limit Reached', 'You can only upload up to 5 images.');
+      return;
     }
+    
+    // Get file extension from URI or mimeType
+    const fileExt = imageData.uri.split('.').pop() || 
+                  (imageData.mimeType ? imageData.mimeType.split('/')[1] : 'jpg');
+    
+    // Create a proper file name that will be used during upload
+    const fileName = `service_${Date.now()}_${generateRandomString(8)}.${fileExt}`;
+    
+    setImages([...images, {
+      uri: imageData.uri,
+      fileName: fileName,
+      mimeType: imageData.mimeType,
+      width: imageData.width,
+      height: imageData.height,
+      fileSize: imageData.fileSize
+    }]);
   };
 
   const removeImage = (index) => {
@@ -180,59 +186,53 @@ const CreateServiceListingScreen = ({ navigation }) => {
     setImages(updatedImages);
   };
 
-  // Generate a simple unique ID as a fallback when UUID v4 fails
-  const generateSimpleId = () => {
-    // Combine timestamp with random numbers
-    const timestamp = new Date().getTime();
-    const random = Math.floor(Math.random() * 10000);
-    return `${timestamp}-${random}`;
-  };
-  
   const uploadImages = async () => {
     try {
       setUploadingImages(true);
       const uploadedUrls = [];
       
-      for (const image of images) {
-        // Create a file name with a unique identifier to avoid conflicts
-        const fileExt = image.uri.split('.').pop();
-        let fileName;
+      for (const imageAsset of images) {
+        // Use exact same approach as the working housing listing implementation
+        const contentType = imageAsset.mimeType || 'application/octet-stream';
+
+        // Get file extension from filename or mimetype
+        const fileExt = imageAsset.fileName 
+          ? imageAsset.fileName.split('.').pop() 
+          : contentType.split('/')[1] || 'jpg';
         
-        try {
-          // Try to use UUID v4 first
-          fileName = `${uuidv4()}.${fileExt}`;
-        } catch (uuidError) {
-          // Fall back to simple ID if UUID fails
-          console.log('UUID generation failed, using fallback:', uuidError);
-          fileName = `${generateSimpleId()}.${fileExt}`;
-        }
+        // Generate a long random string exactly as in housing listing
+        const randomString = generateRandomString(32);
+        const storageFileName = `${randomString}.${fileExt}`;
+        const filePath = `service-images/${storageFileName}`;
         
-        const filePath = `service-images/${fileName}`;
-        
-        // Convert the image to blob
-        const response = await fetch(image.uri);
+        // Fetch the image as blob
+        const response = await fetch(imageAsset.uri);
         const blob = await response.blob();
         
-        // Upload to Supabase Storage with correct bucket name 'providerimages'
-        console.log(`Uploading to bucket 'providerimages' with path: ${filePath}`);
+        // Check for 0-byte blob exactly as in housing listing
+        if (blob.size === 0) {
+          console.warn(`Skipping 0-byte blob for image: ${imageAsset.uri}`);
+          Alert.alert('Upload Warning', `An image (${imageAsset.fileName || 'selected image'}) appears to be empty and was not uploaded.`);
+          continue; // Skip this image
+        }
+        
+        // Upload to Supabase Storage
         const { data, error } = await supabase.storage
           .from('providerimages')
           .upload(filePath, blob, {
-            contentType: `image/${fileExt}`,
+            contentType: contentType,
             cacheControl: '3600',
           });
         
         if (error) {
-          console.error('Storage upload error:', error);
-          throw error;
+          console.error('Supabase upload error for:', imageAsset.uri, error);
+          throw error; // Throw error exactly as in housing listing
         }
         
-        // Get the public URL from the correct bucket
+        // Get the public URL exactly as in housing listing
         const { data: { publicUrl } } = supabase.storage
           .from('providerimages')
           .getPublicUrl(filePath);
-        
-        console.log('Generated public URL:', publicUrl);
         
         uploadedUrls.push(publicUrl);
       }
@@ -240,7 +240,7 @@ const CreateServiceListingScreen = ({ navigation }) => {
       return uploadedUrls;
     } catch (error) {
       console.error('Error uploading images:', error);
-      throw error;
+      throw error; // Throw error exactly as in housing listing
     } finally {
       setUploadingImages(false);
     }
@@ -565,7 +565,15 @@ const CreateServiceListingScreen = ({ navigation }) => {
         initialDate={selectedDate}
       />
 
-      <ScrollView style={styles.scrollContainer}>
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
+      >
+        <ScrollView 
+          style={styles.scrollContainer}
+          contentContainerStyle={styles.scrollContentContainer}
+          showsVerticalScrollIndicator={true}>
         <Card style={styles.formCard}>
           <View style={styles.formGroup}>
             <Text style={styles.label}>Title*</Text>
@@ -685,30 +693,35 @@ const CreateServiceListingScreen = ({ navigation }) => {
             </View>
           )}
 
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>Service Images</Text>
-            <Text style={styles.helperText}>Add up to 5 images to showcase your service</Text>
-
-            <View style={styles.imagesContainer}>
+          {/* Service Images Section */}
+          <Card style={styles.formSection}>
+            <Text style={styles.sectionTitle}>Images</Text>
+            <Text style={styles.sectionDescription}>Upload images of your service (up to 5 images).</Text>
+            
+            <View style={styles.imageGrid}>
               {images.map((image, index) => (
-                <View key={index} style={styles.imageWrapper}>
+                <View key={index} style={styles.imageContainer}>
                   <Image source={{ uri: image.uri }} style={styles.imagePreview} />
                   <TouchableOpacity
-                    style={styles.removeButton}
+                    style={styles.removeImageButton}
                     onPress={() => removeImage(index)}
                   >
-                    <Feather name="x" size={16} color="white" />
+                    <Feather name="x-circle" size={20} color="white" />
                   </TouchableOpacity>
                 </View>
               ))}
-
+              
               {images.length < 5 && (
-                <TouchableOpacity style={styles.addImageButton} onPress={pickImage}>
-                  <Feather name="plus" size={24} color={COLORS.primary} />
-                </TouchableOpacity>
+                <View style={styles.addImageContainer}>
+                  <ModernImagePicker 
+                    onPick={handleImagePicked}
+                    style={styles.modernImagePicker}
+                  />
+                  <Text style={styles.addImageText}>Add Image</Text>
+                </View>
               )}
             </View>
-          </View>
+          </Card>
 
           <View style={styles.formGroup}>
             <Text style={styles.label}>Availability</Text>
@@ -764,8 +777,12 @@ const CreateServiceListingScreen = ({ navigation }) => {
             loading={loading || uploadingImages}
             style={styles.submitButton}
           />
+          
+          {/* Extra padding at bottom to ensure scroll reaches the end */}
+          <View style={{ height: 50 }} />
         </Card>
       </ScrollView>
+      </KeyboardAvoidingView>
     </View>
   );
 };
@@ -779,9 +796,23 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
   },
+  scrollContentContainer: {
+    paddingBottom: 100, // Extra padding to ensure scrolling to bottom
+  },
   formCard: {
     padding: 16,
     marginBottom: 20,
+  },
+  formSection: {
+    padding: 16,
+    marginBottom: 20,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1.41,
+    elevation: 2,
   },
   formGroup: {
     marginBottom: 16,
@@ -799,9 +830,13 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    marginBottom: 16,
-    marginTop: 8,
+    marginBottom: 8,
     color: COLORS.text,
+  },
+  sectionDescription: {
+    fontSize: 14,
+    color: COLORS.gray,
+    marginBottom: 12,
   },
   input: {
     borderWidth: 1,
@@ -863,7 +898,7 @@ const styles = StyleSheet.create({
     borderBottomColor: '#F0F0F0',
   },
   dropdownItemSelected: {
-    backgroundColor: COLORS.primary + '20', // 20% opacity
+    backgroundColor: COLORS.primary + '20',
   },
   dropdownItemText: {
     fontSize: 16,
@@ -880,57 +915,47 @@ const styles = StyleSheet.create({
   imageGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginTop: 10,
+    marginTop: 16,
   },
-  availabilitySection: {
-    marginBottom: 20,
-  },
-  availabilityButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.primary,
-    padding: 12,
+  imageContainer: {
+    width: 100,
+    height: 100,
     borderRadius: 8,
-    marginTop: 10,
-  },
-  availabilityButtonText: {
-    color: COLORS.white,
-    fontSize: 16,
-    fontWeight: '500',
-    marginLeft: 8,
-  },
-  imageWrapper: {
-    position: 'relative',
     margin: 4,
+    position: 'relative',
+    overflow: 'hidden',
+    backgroundColor: '#f0f0f0',
   },
   imagePreview: {
-    width: 100,
-    height: 100,
-    borderRadius: 8,
+    width: '100%',
+    height: '100%',
   },
-  removeButton: {
+  removeImageButton: {
     position: 'absolute',
-    top: 4,
-    right: 4,
+    top: 5,
+    right: 5,
     backgroundColor: 'rgba(0,0,0,0.5)',
     borderRadius: 12,
-    width: 24,
-    height: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
+    padding: 3,
   },
-  addImageButton: {
+  addImageContainer: {
     width: 100,
     height: 100,
+    margin: 4,
+    alignItems: 'center',
+  },
+  modernImagePicker: {
+    width: 80,
+    height: 80,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#DDD',
+    borderColor: COLORS.primary,
     borderStyle: 'dashed',
-    justifyContent: 'center',
-    alignItems: 'center',
-    margin: 4,
-    backgroundColor: '#F9F9F9',
+  },
+  addImageText: {
+    color: COLORS.primary,
+    marginTop: 4,
+    fontSize: 12,
   },
   switchContainer: {
     flexDirection: 'row',
@@ -938,6 +963,7 @@ const styles = StyleSheet.create({
     borderColor: '#DDD',
     borderRadius: 8,
     overflow: 'hidden',
+    marginTop: 8,
   },
   switchOption: {
     flex: 1,
@@ -960,6 +986,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.gray,
     marginBottom: 8,
+  },
+  availabilitySection: {
+    marginVertical: 16,
   },
   submitButton: {
     marginTop: 16,
