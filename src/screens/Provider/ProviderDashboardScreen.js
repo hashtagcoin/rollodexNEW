@@ -10,7 +10,7 @@ import { COLORS, FONTS } from '../../constants/theme';
 import { useUser } from '../../context/UserContext';
 import { supabase } from '../../lib/supabaseClient';
 import { formatDistanceToNow, format, parseISO, isValid } from 'date-fns';
-import AppHeader from '../../components/layout/AppHeader';
+import { useNotifications, NotificationBadge } from '../../components/notifications';
 
 // Safe date parser to handle potentially invalid date strings
 const safelyFormatDate = (dateString, formatStr = 'MMM d') => {
@@ -50,6 +50,7 @@ const safeTimeAgo = (dateString) => {
 
 const ProviderDashboardScreen = () => {
   const { profile, isProviderMode, toggleProviderMode } = useUser();
+  const { showNotificationTray, unreadCount } = useNotifications();
   const navigation = useNavigation();
   const scrollViewRef = useRef(null);
   
@@ -262,49 +263,104 @@ const ProviderDashboardScreen = () => {
   
   return (
     <SafeAreaView style={styles.screenContainer}>
-      <AppHeader 
-        title="Provider Dashboard"
-        navigation={navigation}
-        canGoBack={false}
-      />
+      {/* Top Bar with Logo Icon, Title and Notification */}
+      <View style={styles.topBar}>
+        <View style={styles.titleContainer}>
+          <Image
+            source={require('../../assets/images/rollodex-title.png')}
+            style={styles.titleLogo}
+            resizeMode="contain"
+          />
+        </View>
+        <View style={styles.logoContainer}>
+          <Image
+            source={require('../../assets/images/logoicon.png')}
+            style={styles.logo}
+            resizeMode="contain"
+          />
+        </View>
+        <View style={styles.notificationContainer}>
+          <TouchableOpacity onPress={showNotificationTray}>
+            <Ionicons name="notifications-outline" size={26} color="#222" />
+            <NotificationBadge count={unreadCount} style={styles.notificationBadge} />
+          </TouchableOpacity>
+        </View>
+      </View>
       <ScrollView 
         ref={scrollViewRef}
         style={styles.scrollView} 
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.contentContainer}
       >
-        {/* Welcome Header - Provider version */}
+        {/* Welcome Header with Avatar */}
         <View style={styles.welcomeContainer}>
-          <Text style={styles.welcomeTitleText}>
-            Welcome back, {profile?.business_name || profile?.full_name?.split(' ')[0] || ''}
-          </Text>
-          <Text style={styles.userNameText}>Here's what's happening today</Text>
+          <View style={styles.welcomeTextContainer}>
+            <Text style={styles.welcomeTitleText}>
+              Welcome back,
+            </Text>
+            <Text style={styles.userNameText}>{profile?.business_name || profile?.full_name?.split(' ')[0] || ''}</Text>
+          </View>
+          <View style={styles.avatarContainer}>
+            <Image
+              source={
+                profile?.avatar_url
+                  ? { uri: profile.avatar_url }
+                  : require('../../assets/images/placeholder-avatar.jpg')
+              }
+              style={styles.avatar}
+            />
+          </View>
         </View>
 
         {/* Provider Stats Section */}
         <View style={styles.statsContainer}>
           {loading.stats ? (
             <View style={styles.loadingContainer}>
-              <ActivityIndicator size="small" color="#3A76F0" />
+              <ActivityIndicator size="large" color="#3A76F0" />
             </View>
           ) : (
-            <View style={styles.statsRow}>
-              <View style={styles.statCard}>
-                <Ionicons name="calendar" size={24} color={COLORS.primary} />
-                <Text style={styles.statValue}>{stats.totalBookings}</Text>
-                <Text style={styles.statLabel}>Bookings</Text>
+            <LinearGradient
+              colors={['#3A76F0', '#1E90FF']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.statsGradient}
+            >
+              <View style={styles.statsRow}>
+                <View style={styles.statCard}>
+                  <View style={styles.statIconContainer}>
+                    <Ionicons name="calendar" size={28} color="rgba(255,255,255,0.9)" />
+                  </View>
+                  <View style={styles.statValueContainer}>
+                    <Text style={styles.statValue}>{stats.totalBookings}</Text>
+                  </View>
+                  <View style={styles.statLabelContainer}>
+                    <Text style={styles.statLabel}>Bookings</Text>
+                  </View>
+                </View>
+                <View style={styles.statCard}>
+                  <View style={styles.statIconContainer}>
+                    <Ionicons name="document-text-outline" size={28} color="rgba(255,255,255,0.9)" />
+                  </View>
+                  <View style={styles.statValueContainer}>
+                    <Text style={styles.statValue}>{stats.pendingAgreements}</Text>
+                  </View>
+                  <View style={styles.statLabelContainer}>
+                    <Text style={styles.statLabel}>Agreements</Text>
+                  </View>
+                </View>
+                <View style={styles.statCard}>
+                  <View style={styles.statIconContainer}>
+                    <Ionicons name="cash-outline" size={28} color="rgba(255,255,255,0.9)" />
+                  </View>
+                  <View style={styles.statValueContainer}>
+                    <Text style={styles.statValue}>${Math.floor(stats.revenue).toLocaleString()}</Text>
+                  </View>
+                  <View style={styles.statLabelContainer}>
+                    <Text style={styles.statLabel}>Revenue</Text>
+                  </View>
+                </View>
               </View>
-              <View style={styles.statCard}>
-                <Ionicons name="document-text-outline" size={24} color={COLORS.primary} />
-                <Text style={styles.statValue}>{stats.pendingAgreements}</Text>
-                <Text style={styles.statLabel}>Pending Agreements</Text>
-              </View>
-              <View style={styles.statCard}>
-                <Ionicons name="cash-outline" size={24} color={COLORS.primary} />
-                <Text style={styles.statValue}>${Math.floor(stats.revenue).toLocaleString()}</Text>
-                <Text style={styles.statLabel}>Revenue</Text>
-              </View>
-            </View>
+            </LinearGradient>
           )}
         </View>
         
@@ -502,13 +558,18 @@ const ProviderDashboardScreen = () => {
 const styles = StyleSheet.create({
   screenContainer: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 0,
+    paddingTop: 56,
   },
   scrollView: {
     flex: 1,
+    backgroundColor: '#FFFFFF',
   },
   contentContainer: {
-    padding: 16,
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 24,
   },
   topBar: {
     flexDirection: 'row',
@@ -516,46 +577,88 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 20,
     paddingTop: 5,
+    paddingHorizontal: 18,
   },
   logoContainer: {
     justifyContent: 'flex-start',
+    flex: 1,
+    alignItems: 'flex-start',
+    marginLeft: -18, // Negative margin to counter parent padding
+    paddingLeft: 12,
   },
   logo: {
-    height: 30,
-    width: 120,
+    height: 52,
+    width: 52,
+    marginLeft: 0,
   },
-  topRightContainer: {
+  titleContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 0,
+  },
+  titleLogo: {
+    height: 32,
+    width: 160,
+    resizeMode: 'contain',
+  },
+  notificationContainer: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'flex-end',
+    marginRight: -18,
+    paddingRight: 12,
+    zIndex: 1,
   },
-  avatarContainer: {
-    height: 38,
-    width: 38,
-    borderRadius: 19,
-    overflow: 'hidden',
-    backgroundColor: '#f1f1f1',
-  },
-  avatar: {
-    height: '100%',
-    width: '100%',
+  notificationBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
   },
   welcomeContainer: {
-    marginBottom: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 18,
+  },
+  welcomeTextContainer: {
+    flex: 1,
+  },
+  avatarContainer: {
+    borderRadius: 39,
+    overflow: 'hidden',
+    marginRight: 10,
+  },
+  avatar: {
+    width: 78,
+    height: 78,
+    borderRadius: 39,
   },
   welcomeTitleText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: COLORS.primary,
+    fontSize: 18,
+    color: '#888',
+    fontWeight: '600',
+    marginBottom: 2,
   },
   userNameText: {
-    fontSize: 24,
-    fontWeight: '700',
+    fontSize: 26,
+    fontWeight: 'bold',
     color: '#222',
-    marginTop: 4,
   },
   statsContainer: {
     marginVertical: 16,
-    backgroundColor: '#f8f8f8',
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  statsGradient: {
     borderRadius: 16,
     padding: 16,
   },
@@ -564,20 +667,38 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   statCard: {
-    alignItems: 'center',
     flex: 1,
     padding: 8,
+    height: 120, // Fixed height to ensure alignment
+    justifyContent: 'space-between',
+  },
+  statIconContainer: {
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  statValueContainer: {
+    height: 32, // Fixed height for value container
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statLabelContainer: {
+    height: 40, // Fixed height for label container
+    alignItems: 'center',
+    justifyContent: 'flex-start', // Top align the text
   },
   statValue: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '700',
-    color: '#222',
-    marginTop: 8,
+    color: '#FFFFFF',
+    textAlign: 'center',
   },
   statLabel: {
-    fontSize: 12,
-    color: '#666',
-    marginTop: 2,
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.9)',
+    textAlign: 'center',
+    lineHeight: 18, // Help with the Service Agreements text alignment
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -740,19 +861,21 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f8f8f8',
     borderRadius: 12,
-    padding: 16,
-    marginHorizontal: 6,
+    padding: 12,
+    marginHorizontal: 4,
     alignItems: 'center',
     justifyContent: 'center',
+    minWidth: 105, // Ensure minimum width to fit text
   },
   actionCardIcon: {
     marginBottom: 8,
   },
   actionCardText: {
-    fontSize: 14,
+    fontSize: 13, // Slightly smaller font size
     fontWeight: '500',
     color: '#333',
     textAlign: 'center',
+    width: '100%', // Ensure text has full width of container
   },
   switchButton: {
     backgroundColor: COLORS.primary,

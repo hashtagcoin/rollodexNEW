@@ -205,15 +205,17 @@ const SignInScreen = () => {
     setFullName('');
   };
 
+  // Adjust keyboardVerticalOffset to match your header/navbar height if needed
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={60}
       style={styles.container}
     >
       <StatusBar style="dark" />
       
       <ScrollView
-        contentContainerStyle={styles.scrollContainer}
+        contentContainerStyle={[styles.scrollContainer, { flexGrow: 1 }]}
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.logoContainer}>

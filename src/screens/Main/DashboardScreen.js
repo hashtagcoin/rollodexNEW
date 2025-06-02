@@ -10,11 +10,13 @@ import { COLORS, FONTS } from '../../constants/theme';
 import { useUser } from '../../context/UserContext';
 import { supabase } from '../../lib/supabaseClient';
 import { formatDistanceToNow, format, parseISO } from 'date-fns';
+import { useNotifications, NotificationBadge } from '../../components/notifications';
 
 const DashboardScreen = () => {
   const { profile, isProviderMode, toggleProviderMode } = useUser();
   const navigation = useNavigation();
   const scrollViewRef = useRef(null);
+  const { showNotificationTray, unreadCount } = useNotifications();
   
   const [wallet, setWallet] = useState(null);
   const [upcomingBookings, setUpcomingBookings] = useState([]);
@@ -198,36 +200,46 @@ const DashboardScreen = () => {
       style={styles.screenContainer} 
       showsVerticalScrollIndicator={false}>
       <View style={styles.contentContainer}>
-        {/* Top Bar with Logo and Avatar */}
+        {/* Top Bar with Logo Icon, Title and Notification */}
         <View style={styles.topBar}>
+          <View style={styles.titleContainer}>
+            <Image
+              source={require('../../assets/images/rollodex-title.png')}
+              style={styles.titleLogo}
+              resizeMode="contain"
+            />
+          </View>
           <View style={styles.logoContainer}>
             <Image
-              source={require('../../assets/images/logo.png')}
+              source={require('../../assets/images/logoicon.png')}
               style={styles.logo}
               resizeMode="contain"
             />
           </View>
-          <View style={styles.topRightContainer}>
-            <TouchableOpacity style={{ marginRight: 12 }}>
+          <View style={styles.notificationContainer}>
+            <TouchableOpacity onPress={showNotificationTray}>
               <Ionicons name="notifications-outline" size={26} color="#222" />
+              <NotificationBadge count={unreadCount} style={styles.notificationBadge} />
             </TouchableOpacity>
-            <View style={styles.avatarContainer}>
-              <Image
-                source={
-                  profile?.avatar_url
-                    ? { uri: profile.avatar_url }
-                    : require('../../assets/images/placeholder-avatar.jpg')
-                }
-                style={styles.avatar}
-              />
-            </View>
           </View>
         </View>
 
-        {/* Welcome Header */}
+        {/* Welcome Header with Avatar */}
         <View style={styles.welcomeContainer}>
-          <Text style={styles.welcomeTitleText}>Welcome back,</Text>
-          <Text style={styles.userNameText}>{profile?.full_name || profile?.username || 'User'}</Text>
+          <View style={styles.welcomeTextContainer}>
+            <Text style={styles.welcomeTitleText}>Welcome back,</Text>
+            <Text style={styles.userNameText}>{profile?.full_name || profile?.username || 'User'}</Text>
+          </View>
+          <View style={styles.avatarContainer}>
+            <Image
+              source={
+                profile?.avatar_url
+                  ? { uri: profile.avatar_url }
+                  : require('../../assets/images/placeholder-avatar.jpg')
+              }
+              style={styles.avatar}
+            />
+          </View>
         </View>
 
         {/* Financial Information Group */}
@@ -598,18 +610,54 @@ const styles = StyleSheet.create({
   },
   logoContainer: {
     justifyContent: 'flex-start',
+    flex: 1,
+    alignItems: 'flex-start',
+    marginLeft: -12, // Adjusted for padding
+    paddingLeft: 12, // Added padding to left edge
   },
   logo: {
-    height: 40,
-    width: 120,
+    height: 52, // 30% larger (40 * 1.3 = 52)
+    width: 52, // Making it square for the icon
+    marginLeft: 0,
   },
-  topRightContainer: {
+
+  titleContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 0,
+  },
+  titleLogo: {
+    height: 32,
+    width: 160,
+    resizeMode: 'contain',
+  },
+  notificationContainer: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'flex-end',
+    marginRight: -12,
+    paddingRight: 12, // Added padding to right edge
+    zIndex: 1, // Ensure it appears above the title
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
   },
   welcomeContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 18,
   },
+  welcomeTextContainer: {
+    flex: 1,
+  },
+
   financialGroup: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
@@ -649,16 +697,14 @@ const styles = StyleSheet.create({
     color: '#222',
   },
   avatarContainer: {
-    marginLeft: 10,
-    borderRadius: 30,
+    borderRadius: 39,
     overflow: 'hidden',
-    borderWidth: 2,
-    borderColor: '#eaeaea',
+    marginRight: 10, // Added padding to right edge
   },
   avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 78,
+    height: 78,
+    borderRadius: 39,
   },
   walletCard: {
     flexDirection: 'row',

@@ -3,6 +3,8 @@ import { View, Text, Image, StyleSheet, TouchableOpacity, Platform, Dimensions }
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import Feather from 'react-native-vector-icons/Feather';
 import { useUser } from '../../context/UserContext';
+import { useNotifications } from '../notifications';
+import { NotificationBadge } from '../notifications';
 import { COLORS } from '../../constants/theme';
 
 const AppHeader = ({
@@ -84,6 +86,9 @@ const AppHeader = ({
       setAvatarUrl(profile.avatar_url);
     }
   }, [profile]);
+  // Get notification tray functions and unread count
+  const { showNotificationTray, unreadCount } = useNotifications();
+
   const handleBackPress = () => {
     if (onBackPressOverride) {
       onBackPressOverride();
@@ -129,8 +134,9 @@ const AppHeader = ({
       </View>
 
       <View style={styles.rightSection}>
-        <TouchableOpacity style={styles.iconButton} onPress={() => alert('Notification bell pressed!')}>
+        <TouchableOpacity style={styles.iconButton} onPress={showNotificationTray}>
           <Ionicons name="notifications-outline" size={28} color={'#333'} />
+          <NotificationBadge count={unreadCount} style={styles.notificationBadge} />
         </TouchableOpacity>
         {navigation && (
           <TouchableOpacity 
@@ -225,6 +231,11 @@ const styles = StyleSheet.create({
   iconButton: { 
     padding: 5,
     marginLeft: 15, 
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
   },
 });
 

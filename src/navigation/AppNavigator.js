@@ -3,6 +3,8 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { AppStateProvider } from '../context/AppStateContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import LoadingScreen from '../components/LoadingScreen';
+import { NotificationProvider } from '../components/notifications';
 
 import MainTabs from './MainTabs';
 import ProviderStackNavigator from './ProviderStackNavigator';
@@ -109,9 +111,8 @@ function AppNavigator() {
   const { isAuthenticated, isLoading, userRole } = useAuth();
 
   if (isLoading) {
-    // Optionally, return a loading spinner/splash screen
-    // For now, returning null to avoid rendering anything before auth state is known
-    return null; 
+    // Show loading screen while loading user role/auth state
+    return <LoadingScreen />;
   }
 
   // Customize initial route based on user role
@@ -128,6 +129,7 @@ function AppNavigator() {
   return (
     <AppStateProvider>
       <NavigationContainer>
+        <NotificationProvider>
         {isAuthenticated ? (
           <RootStack.Navigator 
             initialRouteName={getInitialRoute()}
@@ -148,6 +150,7 @@ function AppNavigator() {
             <AuthFlowStack.Screen name="Auth" component={AuthStack} />
           </AuthFlowStack.Navigator>
         )}
+        </NotificationProvider>
       </NavigationContainer>
     </AppStateProvider>
   );
