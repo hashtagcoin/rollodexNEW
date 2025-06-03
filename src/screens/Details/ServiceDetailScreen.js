@@ -1,14 +1,17 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, Linking, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, Linking, ActivityIndicator, FlatList } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import AppHeader from '../../components/layout/AppHeader';
-import { Feather, MaterialIcons, Ionicons } from '@expo/vector-icons';
+import { Feather, MaterialIcons, Ionicons, FontAwesome5, FontAwesome } from '@expo/vector-icons';
 import { COLORS } from '../../constants/theme';
 import { supabase } from '../../lib/supabaseClient';
-import CheckAvailabilityButton from '../../components/calendar/CheckAvailabilityButton';
+import { format, addDays, isSameDay, parseISO } from 'date-fns';
+
+import BookingAvailabilityScreen from '../Bookings/BookingAvailabilityScreen';
 
 const ServiceDetailScreen = ({ route }) => {
+  console.log('[ServiceDetailScreen] Rendering...');
   const { serviceId } = route.params;
   const navigation = useNavigation();
   const [activeTab, setActiveTab] = useState('Overview');
@@ -16,7 +19,69 @@ const ServiceDetailScreen = ({ route }) => {
   const [error, setError] = useState(null);
   const [serviceData, setServiceData] = useState(null);
   const [liked, setLiked] = useState(false);
+  const [showAvailabilityModal, setShowAvailabilityModal] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [selectedTime, setSelectedTime] = useState(null);
+  const [selectedTimeDisplay, setSelectedTimeDisplay] = useState(null);
+  const [hourlyRate, setHourlyRate] = useState(null);
+  const [quickAvailLoading, setQuickAvailLoading] = useState(false);
+  const [quickSlots, setQuickSlots] = useState([]);
+  const [bookingConfirmed, setBookingConfirmed] = useState(false);
   
+  // Generate quick availability slots for the next 7 days
+  useEffect(() => {
+    if (serviceData && serviceData.available) {
+      setQuickAvailLoading(true);
+      
+      // Generate availability for next 7 days
+      const today = new Date();
+      const availabilitySlots = [];
+      
+      // For demo purposes, generate some random availability
+      for (let i = 0; i < 7; i++) {
+        const date = addDays(today, i);
+        const dateStr = format(date, 'yyyy-MM-dd');
+        const isAvailable = Math.random() > 0.3; // 70% chance of availability
+        
+        if (isAvailable) {
+          // Generate 1-3 random time slots for this day
+          const numSlots = Math.floor(Math.random() * 3) + 1;
+          const hours = [9, 10, 11, 13, 14, 15, 16, 17];
+          
+          for (let j = 0; j < numSlots; j++) {
+            const randomHourIndex = Math.floor(Math.random() * hours.length);
+            const hour = hours.splice(randomHourIndex, 1)[0]; // Remove used hour
+            
+            const time = `${hour}:00:00`;
+            const display = `${hour % 12 || 12}:00 ${hour < 12 ? 'AM' : 'PM'}`;
+            const hourlyRate = serviceData.price || 50;
+            
+            availabilitySlots.push({
+              date,
+              dateStr,
+              time,
+              display,
+              hourlyRate,
+              dayName: format(date, 'EEE'),
+              dayOfMonth: format(date, 'd'),
+              month: format(date, 'MMM')
+            });
+          }
+        }
+      }
+      
+      // Sort by date and time
+      availabilitySlots.sort((a, b) => {
+        const dateA = new Date(`${a.dateStr}T${a.time}`);
+        const dateB = new Date(`${b.dateStr}T${b.time}`);
+        return dateA - dateB;
+      });
+      
+      setQuickSlots(availabilitySlots);
+      setQuickAvailLoading(false);
+    }
+  }, [serviceData]);
+
   // Fetch service details from Supabase
   useEffect(() => {
     const fetchServiceDetails = async () => {
@@ -113,7 +178,77 @@ const ServiceDetailScreen = ({ route }) => {
             <View style={styles.infoSection}>
               <Text style={styles.sectionTitle}>Availability</Text>
               <Text style={styles.infoText}>{serviceData.availability}</Text>
-              <CheckAvailabilityButton serviceId={serviceData.id} serviceData={serviceData} />
+              
+              {/* Horizontal scrolling available dates */}
+              <View style={styles.quickAvailabilitySection}>
+                <Text style={styles.sectionTitle}>Next Available</Text>
+                {quickAvailLoading ? (
+                  <ActivityIndicator size="small" color="#007AFF" style={{marginTop: 10}} />
+                ) : quickSlots.length > 0 ? (
+                  <FlatList
+                    horizontal
+                    data={quickSlots}
+                    keyExtractor={(item, index) => `slot-${index}`}
+                    showsHorizontalScrollIndicator={false}
+                    renderItem={({item}) => (
+                      <TouchableOpacity 
+                        style={[styles.quickSlotItem, 
+                          selectedDate && selectedTime && 
+                          format(selectedDate, 'yyyy-MM-dd') === format(item.date, 'yyyy-MM-dd') && 
+                          selectedTime === item.time ? styles.selectedQuickSlot : null]} 
+                        onPress={() => {
+                          // Select this quick slot
+                          setSelectedDate(item.date);
+                          setSelectedTime(item.time);
+                          setSelectedTimeDisplay(item.display);
+                          setHourlyRate(item.hourlyRate);
+                        }}
+                      >
+                        <Text style={styles.quickSlotMonth}>{item.month.toUpperCase()}</Text>
+                        <Text style={styles.quickSlotDay}>{item.dayOfMonth}</Text>
+                        <Text style={styles.quickSlotTime}>{item.display}</Text>
+                      </TouchableOpacity>
+                    )}
+                    contentContainerStyle={styles.quickSlotsContainer}
+                  />
+                ) : (
+                  <Text style={styles.noAvailabilityText}>No availability for the next few days</Text>
+                )}
+                
+                {/* Modern blue button with calendar icon - moved under Next Available */}
+                <TouchableOpacity 
+                  style={styles.modernBlueButton} 
+                  onPress={() => setShowAvailabilityModal(true)}
+                >
+                  <Ionicons name="calendar-outline" size={22} color="#fff" style={styles.btnIcon} />
+                  <Text style={styles.modernButtonText}>Check Availability</Text>
+                </TouchableOpacity>
+              </View>
+              
+              {/* Booking information (shows when date/time selected) */}
+              {selectedDate && selectedTime && (
+                <View style={styles.bookingSummary}>
+                  <Text style={styles.bookingSummaryTitle}>You are booking:</Text>
+                  <View style={styles.bookingInfoRow}>
+                    <FontAwesome5 name="calendar-alt" size={18} color="#007AFF" style={styles.bookingInfoIcon} />
+                    <Text style={styles.bookingInfoText}>
+                      {format(selectedDate, 'EEE, MMM d, yyyy')} at {selectedTimeDisplay}
+                    </Text>
+                  </View>
+                  <View style={styles.bookingInfoRow}>
+                    <FontAwesome5 name="map-marker-alt" size={18} color="#007AFF" style={styles.bookingInfoIcon} />
+                    <Text style={styles.bookingInfoText}>
+                      {serviceData.service_area || 'Online'}
+                    </Text>
+                  </View>
+                  <View style={styles.bookingInfoRow}>
+                    <FontAwesome5 name="money-bill-wave" size={18} color="#007AFF" style={styles.bookingInfoIcon} />
+                    <Text style={styles.bookingInfoText}>
+                      ${hourlyRate} per hour
+                    </Text>
+                  </View>
+                </View>
+              )}
             </View>
             
             <View style={styles.infoSection}>
@@ -276,28 +411,176 @@ const ServiceDetailScreen = ({ route }) => {
           <Text style={styles.secondaryButtonText}>Share</Text>
         </TouchableOpacity>
         
-        <TouchableOpacity 
+        <TouchableOpacity
           style={[styles.primaryButton, !serviceData.available && styles.disabledButton]}
           disabled={!serviceData.available}
-          onPress={() => navigation.navigate('BookingsScreen', { 
-            screen: 'BookingsMain',
-            params: { 
-              serviceId: serviceData.id, 
-              serviceData: serviceData,
-              isBooking: true // Flag to indicate we're in booking flow 
+          onPress={() => {
+            console.log('[ServiceDetailScreen] Action button pressed - selectedDate:', selectedDate, 'selectedTime:', selectedTime);
+            
+            if (selectedDate && selectedTime) {
+              // Navigate to create booking screen with all required information
+              navigation.navigate('CreateBooking', {
+                serviceId: serviceData.id,
+                serviceName: serviceData.title,
+                serviceProviderName: serviceData.business_name,
+                servicePrice: hourlyRate || serviceData.price,
+                selectedDate: selectedDate,
+                selectedTime: selectedTime,
+                selectedTimeDisplay: selectedTimeDisplay,
+                location: serviceData.service_area || 'Online'
+              });
+            } else {
+              // If no date/time selected, show the availability modal
+              setShowAvailabilityModal(true);
             }
-          })}
+          }}
         >
           <Text style={styles.primaryButtonText}>
-            {serviceData.available ? 'Book Now' : 'Currently Unavailable'}
+            {!serviceData.available ? 'Currently Unavailable' : 
+             (selectedDate && selectedTime) ? 'Confirm' : 'Book'}
           </Text>
         </TouchableOpacity>
       </View>
-    </View>
+    {/* Booking Availability Modal */}
+    <BookingAvailabilityScreen
+      visible={showAvailabilityModal}
+      onClose={() => {
+        console.log('[ServiceDetailScreen] onClose called');
+        setShowAvailabilityModal(false);
+      }}
+      onSelect={({ date, time, display, hourlyRate }) => {
+        console.log('[ServiceDetailScreen] onSelect triggered. Date:', date, 'TimeSlot:', { time, display, hourlyRate });
+        setShowAvailabilityModal(false);
+        // Use setTimeout to decouple state updates from modal closing
+        setTimeout(() => {
+          console.log('[ServiceDetailScreen] Setting state in onSelect after timeout.');
+          setSelectedDate(date);
+          setSelectedTime(time);
+          setSelectedTimeDisplay(display);
+          setHourlyRate(hourlyRate);
+          console.log('[ServiceDetailScreen] State updates complete after timeout.');
+        }, 50);
+      }}
+      selectedServiceId={serviceData.id}
+      baseHourlyRate={serviceData.price}
+      // serviceData={serviceData} // Pass the whole serviceData object
+    />
+  </View>
   );
 };
 
 const styles = StyleSheet.create({
+  // Modern button (now green to match primaryButton)
+  modernBlueButton: {
+    backgroundColor: '#2E7D32', // Changed from blue to green to match primaryButton
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    marginVertical: 12,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1.5,
+  },
+  modernButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 16,
+    marginLeft: 6,
+  },
+  btnIcon: {
+    marginRight: 8,
+  },
+  
+  // Quick availability section - Instagram style horizontal list
+  quickAvailabilitySection: {
+    marginTop: 16,
+    marginBottom: 10,
+  },
+  quickSlotsContainer: {
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+  },
+  quickSlotItem: {
+    backgroundColor: '#f5f5f5',
+    borderRadius: 12,
+    padding: 12,
+    marginRight: 10,
+    minWidth: 90,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 1,
+    elevation: 1,
+  },
+  selectedQuickSlot: {
+    backgroundColor: '#e1f5fe',
+    borderColor: '#007AFF',
+    borderWidth: 1,
+  },
+  quickSlotMonth: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#333', // Changed from blue to black
+    marginBottom: 4,
+  },
+  quickSlotDay: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  quickSlotTime: {
+    fontSize: 14,
+    color: '#555',
+  },
+  noAvailabilityText: {
+    marginTop: 8,
+    fontSize: 14,
+    color: '#888',
+    fontStyle: 'italic',
+  },
+  
+  // Booking summary - Airbnb style card
+  bookingSummary: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    marginTop: 20,
+    marginBottom: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+    borderColor: '#eee',
+    borderWidth: 1,
+  },
+  bookingSummaryTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 15,
+    color: '#333',
+  },
+  bookingInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  bookingInfoIcon: {
+    marginRight: 12,
+  },
+  bookingInfoText: {
+    fontSize: 16,
+    color: '#333',
+    flex: 1,
+  },
+  
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',

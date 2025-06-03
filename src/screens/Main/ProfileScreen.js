@@ -168,60 +168,63 @@ const ProfileScreen = () => {
     
     setLoadingGroups(true);
     try {
-      // Get groups that the user has favorited (check for both regular groups and housing groups)
+      // Fetch both regular groups and housing groups that the user has favorited
       const { data: favoriteData, error } = await supabase
         .from('user_favorites_detailed')
         .select('*')
         .eq('user_id', currentUser.id)
-        .or('item_type.eq.group,item_type.eq.housing_group');
+        .or('item_type.eq.group,item_type.eq.housing_group,item_type.is.null');
       
       if (error) throw error;
       
       console.log('Favorite groups data:', favoriteData);
       
-      // Also fetch directly from favorites table as a backup
-      const { data: regularFavorites, error: regularError } = await supabase
-        .from('favorites')
-        .select('*')
-        .eq('user_id', currentUser.id)
-        .eq('item_type', 'group');
-      
-      if (regularError) throw regularError;
-      
-      console.log('Regular favorites data:', regularFavorites);
-      
-      // Combine both results if needed
-      if (regularFavorites && regularFavorites.length > 0) {
-        // We need to fetch the group details for these favorites
-        const groupIds = regularFavorites.map(fav => fav.item_id);
-        
-        const { data: groupDetails, error: groupError } = await supabase
-          .from('groups')
+      // If no favorites found in the detailed view, try the regular favorites table
+      if (!favoriteData || favoriteData.length === 0) {
+        const { data: regularFavorites, error: regularError } = await supabase
+          .from('favorites')
           .select('*')
-          .in('id', groupIds);
+          .eq('user_id', currentUser.id)
+          .or('item_type.eq.group,item_type.eq.housing_group');
+        
+        if (regularError) throw regularError;
+        
+        console.log('Regular favorites data:', regularFavorites);
+        
+        if (regularFavorites && regularFavorites.length > 0) {
+          // We need to fetch the group details for these favorites
+          const groupIds = regularFavorites.map(fav => fav.item_id);
           
-        if (groupError) throw groupError;
-        
-        console.log('Group details for favorites:', groupDetails);
-        
-        // Format these groups like user_favorites_detailed format
-        const formattedGroups = groupDetails.map(group => {
-          const favorite = regularFavorites.find(fav => fav.item_id === group.id);
-          return {
-            favorite_id: favorite.favorite_id,
-            item_id: group.id,
-            item_title: group.name,
-            item_description: group.description,
-            item_image_url: group.avatar_url || 'https://via.placeholder.com/300x200?text=Group',
-            favorited_at: favorite.created_at
-          };
-        });
-        
-        // Combine with the other favorites
-        setFavoriteGroups([...favoriteData, ...formattedGroups]);
-      } else {
-        setFavoriteGroups(favoriteData || []);
+          const { data: groupDetails, error: groupError } = await supabase
+            .from('groups')
+            .select('*')
+            .in('id', groupIds);
+            
+          if (groupError) throw groupError;
+          
+          console.log('Group details for favorites:', groupDetails);
+          
+          // Format these groups to match the user_favorites_detailed format
+          const formattedGroups = groupDetails.map(group => {
+            const favorite = regularFavorites.find(fav => fav.item_id === group.id);
+            return {
+              favorite_id: favorite.id,
+              item_id: group.id,
+              item_title: group.name,
+              item_description: group.description,
+              item_image_url: group.avatar_url || 'https://via.placeholder.com/300x200?text=Group',
+              item_type: 'group', // Make sure to set the item_type
+              favorited_at: favorite.created_at
+            };
+          });
+          
+          setFavoriteGroups(formattedGroups);
+          return;
+        }
       }
+      
+      // If we have data from user_favorites_detailed, use it
+      setFavoriteGroups(favoriteData || []);
     } catch (error) {
       console.error('Error fetching favorite groups:', error);
       Alert.alert('Error', 'Failed to load favorite groups');

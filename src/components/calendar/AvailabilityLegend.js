@@ -1,4 +1,4 @@
-import React from 'react';
+// DEPRECATED: This file is no longer used. Please use the new booking tray implementation in BookingsScreen.js. from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { COLORS } from '../../constants/theme';
 

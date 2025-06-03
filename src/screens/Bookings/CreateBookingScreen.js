@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { 
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Animated, 
   View, 
   Text, 
   StyleSheet, 
@@ -16,6 +16,7 @@ import { Feather, MaterialIcons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabaseClient';
 import AppHeader from '../../components/layout/AppHeader';
 import { format, isValid, parseISO } from 'date-fns';
+import BookingAvailabilityScreen from './BookingAvailabilityScreen';
 
 // Safe date parser to handle potentially invalid date strings
 const safelyCreateDate = (dateInput) => {
@@ -40,16 +41,33 @@ const safelyCreateDate = (dateInput) => {
 };
 
 const CreateBookingScreen = ({ route, navigation }) => {
-  const { serviceId, serviceData } = route.params;
+  // --- Booking Availability Modal Integration ---
+  const [showAvailabilityModal, setShowAvailabilityModal] = useState(false);
+  const [pendingBooking, setPendingBooking] = useState(null); // { date, time, rate }
+  const [bookingLoading, setBookingLoading] = useState(false);
+  const [bookingError, setBookingError] = useState(null);
+
+  // Get all parameters passed from ServiceDetailScreen
+  const { 
+    serviceId, 
+    serviceName, 
+    serviceProviderName, 
+    servicePrice, 
+    selectedDate: passedDate, 
+    selectedTime: passedTime, 
+    selectedTimeDisplay: passedTimeDisplay, 
+    location: passedLocation 
+  } = route.params || {};
   const [loading, setLoading] = useState(true);
   const [service, setService] = useState(null);
   const [provider, setProvider] = useState(null);
-  const [selectedDate, setSelectedDate] = useState(safelyCreateDate(new Date()));
-  const [selectedTime, setSelectedTime] = useState('9:00 AM');
+  const [selectedDate, setSelectedDate] = useState(passedDate ? safelyCreateDate(passedDate) : safelyCreateDate(new Date()));
+  const [selectedTime, setSelectedTime] = useState(passedTimeDisplay || '9:00 AM');
   const [isDateModalVisible, setDateModalVisible] = useState(false);
   const [isTimeModalVisible, setTimeModalVisible] = useState(false);
   const [isDurationModalVisible, setDurationModalVisible] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState('ndis'); // ndis, visa, mastercard
+  const [primaryPayment, setPrimaryPayment] = useState('ndis');
+  const [gapPayment, setGapPayment] = useState(null); // ndis, visa, mastercard
   const [selectedDuration, setSelectedDuration] = useState('1 hour');
   const [isOnline, setIsOnline] = useState(false);
   
@@ -64,6 +82,8 @@ const CreateBookingScreen = ({ route, navigation }) => {
     setIsOnline(previousState => !previousState);
   };
   const [showConfirmButton, setShowConfirmButton] = useState(false);
+  const [pastPaymentSection, setPastPaymentSection] = useState(false);
+  const buttonOpacity = useRef(new Animated.Value(0)).current;
   
   // Compliance modal state
   const [isComplianceModalVisible, setComplianceModalVisible] = useState(false);
@@ -83,12 +103,22 @@ const CreateBookingScreen = ({ route, navigation }) => {
   useEffect(() => {
     const fetchServiceDetails = async () => {
       try {
-        if (serviceData) {
-          setService(serviceData);
+        // If we have service data from passed parameters
+        if (serviceName && serviceProviderName) {
+          // Create service object from passed parameters
+          const serviceObj = {
+            id: serviceId,
+            title: serviceName,
+            business_name: serviceProviderName,
+            price: servicePrice || 0,
+            location: passedLocation
+          };
+          
+          setService(serviceObj);
           setLoading(false);
 
           // Calculate costs based on service price
-          const totalCost = Number(serviceData.price) || 0;
+          const totalCost = Number(servicePrice) || 0;
           const ndisCoverage = totalCost * 0.85; // Assume NDIS covers 85%
           const gapPayment = totalCost - ndisCoverage;
           
@@ -100,47 +130,56 @@ const CreateBookingScreen = ({ route, navigation }) => {
           
           return;
         }
-        
-        setLoading(true);
-        
-        // If no serviceData provided, fetch it using serviceId
-        const { data, error } = await supabase
-          .from('services')
-          .select(`
-            id, title, description, category, format, price, available, media_urls,
-            service_providers!inner(
-              business_name, credentials, verified, service_area, business_description, logo_url
-            )
-          `)
-          .eq('id', serviceId)
-          .single();
+        // Fall back to using serviceId to fetch data
+        else {
+          // Fetch service details using the serviceId
+          if (!serviceId) {
+            console.error('No service ID or data provided');
+            setLoading(false);
+            return;
+          }
           
-        if (error) throw error;
-        
-        if (data) {
-          setService({
-            id: data.id,
-            title: data.title,
-            description: data.description,
-            category: data.category,
-            format: data.format,
-            price: data.price,
-            available: data.available,
-            media_urls: data.media_urls,
-            business_name: data.service_providers.business_name,
-            logo_url: data.service_providers.logo_url,
-          });
+          // Fetch from Supabase using serviceId
+          const { data, error } = await supabase
+            .from('services')
+            .select(`
+              id, title, description, category, format, price, available, media_urls,
+              service_providers!inner(
+                business_name, credentials, verified, service_area, business_description, logo_url
+              )
+            `)
+            .eq('id', serviceId)
+            .single();
+            
+          if (error) throw error;
           
-          // Calculate costs based on service price
-          const totalCost = Number(data.price) || 0;
-          const ndisCoverage = totalCost * 0.85; // Assume NDIS covers 85%
-          const gapPayment = totalCost - ndisCoverage;
+          if (data) {
+            setService({
+              id: data.id,
+              title: data.title,
+              description: data.description,
+              category: data.category,
+              format: data.format,
+              price: data.price,
+              available: data.available,
+              media_urls: data.media_urls,
+              business_name: data.service_providers.business_name,
+              logo_url: data.service_providers.logo_url,
+            });
+            
+            // Calculate costs based on service price
+            const totalCost = Number(data.price) || 0;
+            const ndisCoverage = totalCost * 0.85; // Assume NDIS covers 85%
+            const gapPayment = totalCost - ndisCoverage;
+            
+            setCosts({
+              totalCost,
+              ndisCoverage,
+              gapPayment
+            });
+          }
           
-          setCosts({
-            totalCost,
-            ndisCoverage,
-            gapPayment
-          });
+          setLoading(false);
         }
       } catch (err) {
         console.error('Error fetching service details:', err);
@@ -149,15 +188,39 @@ const CreateBookingScreen = ({ route, navigation }) => {
       }
     };
     
-    // Set service title as provider
+    // Set service provider
     setProvider({
       id: '123',
-      name: serviceData?.title || 'Service'
+      name: serviceProviderName || 'Service'
     });
     
     fetchServiceDetails();
-  }, [serviceId, serviceData]);
+  }, [serviceId, serviceName, serviceProviderName, servicePrice, passedLocation]);
   
+  // --- Handler for opening the availability modal ---
+  const handleOpenAvailability = () => {
+    setShowAvailabilityModal(true);
+  };
+
+  // --- Handler for slot selection ---
+  const handleSlotSelected = ({ date, time, rate }) => {
+    setPendingBooking({ date, time, rate });
+    setShowAvailabilityModal(false);
+  };
+
+  // --- Render selected booking details ---
+  const renderPendingBooking = () => {
+    if (!pendingBooking) return null;
+    return (
+      <View style={styles.pendingBookingCard}>
+        <Text style={styles.pendingBookingTitle}>Selected Slot</Text>
+        <Text style={styles.pendingBookingDetail}>Date: {pendingBooking.date}</Text>
+        <Text style={styles.pendingBookingDetail}>Time: {pendingBooking.time}</Text>
+        <Text style={styles.pendingBookingDetail}>Charge: ${pendingBooking.rate}</Text>
+      </View>
+    );
+  };
+
   // Simple functions to handle date changes with predefined options
   const handleSelectDate = (daysToAdd = 0) => {
     try {
@@ -216,11 +279,26 @@ const CreateBookingScreen = ({ route, navigation }) => {
     }
   };
   
-  const handlePaymentMethodSelect = (method) => {
-    setPaymentMethod(method);
+  const handlePrimaryPaymentSelect = (method) => {
+    setPrimaryPayment(method);
+  };
+  
+  const handleGapPaymentSelect = (method) => {
+    setGapPayment(method);
   };
   
   const handleConfirmBooking = () => {
+    // Validate that we have both payment methods selected if needed
+    if (costs.gapPayment > 0 && !gapPayment) {
+      // Show alert if gap payment is needed but no method selected
+      Alert.alert(
+        'Payment Method Required',
+        'Please select a payment method for your gap payment.',
+        [{ text: 'OK', onPress: () => {} }]
+      );
+      return;
+    }
+    
     // Show compliance modal first
     setComplianceModalVisible(true);
   };
@@ -266,17 +344,18 @@ const CreateBookingScreen = ({ route, navigation }) => {
         price: costs?.totalCost || 0,
         ndisCoverage: costs?.ndisCoverage || 0,
         gapPayment: costs?.gapPayment || 0,
-        paymentMethod: paymentMethod || 'Credit Card',
+        primaryPayment: primaryPayment || 'ndis',
+        gapPaymentMethod: gapPayment || null,
       };
       
-      // Navigate to service agreement with serialized data
-      navigation.navigate('ServiceAgreement', { 
-        serviceId: serviceId, // Pass serviceId at the root level for easier access
-        bookingDetails,
-        exploreParams: {
-          initialCategory: category,
-        }
-      });
+      // Do not navigate to BookingsScreen
+      // navigation.navigate('BookingsScreen', { 
+        // serviceId: serviceId, // Pass serviceId at the root level for easier access
+        // bookingDetails,
+        // exploreParams: {
+          // initialCategory: category,
+        // }
+      // });
     } catch (error) {
       console.error('Error in handleReviewAgreement:', error);
       Alert.alert('Error', 'Failed to proceed to agreement. Please try again.');
@@ -301,27 +380,51 @@ const CreateBookingScreen = ({ route, navigation }) => {
   return (
     <View style={styles.container}>
       <AppHeader 
-        title="Booking"
-        canGoBack={true}
-        navigation={navigation}
+        title="Create Booking"
+        showBack
+        onBack={() => navigation.goBack()}
       />
-      
       <ScrollView 
-        style={styles.scrollView}
+        contentContainerStyle={[styles.scrollContent, styles.horizontalPadding]}
         onScroll={({ nativeEvent }) => {
           const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
-          const paddingToBottom = 20;
-          const isCloseToBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
           
-          if (isCloseToBottom && !showConfirmButton) {
-            setShowConfirmButton(true);
+          // Payment section is roughly 60% down the content - show button after that
+          const paymentSectionEnd = contentSize.height * 0.6;
+          const hasPassedPaymentSection = contentOffset.y > paymentSectionEnd;
+          
+          // Check if we're near the bottom of the scroll view
+          const paddingToBottom = 20;
+          const isCloseToBottom = 
+            layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
+            
+          // Show button when either condition is met
+          const shouldShowButton = hasPassedPaymentSection || isCloseToBottom;
+          
+          // Update button visibility state
+          if (shouldShowButton !== showConfirmButton) {
+            setShowConfirmButton(shouldShowButton);
+            
+            // Always animate button immediately
+            Animated.timing(buttonOpacity, {
+              toValue: shouldShowButton ? 1 : 0,
+              duration: 150, // Faster animation for immediate feedback
+              useNativeDriver: true
+            }).start();
+          }
+          
+          // Track payment section state separately for component updates
+          if (hasPassedPaymentSection !== pastPaymentSection) {
+            setPastPaymentSection(hasPassedPaymentSection);
           }
         }}
-        scrollEventThrottle={400}
+        scrollEventThrottle={200}
       >
         {/* Service Title */}
-        <View style={styles.serviceTitleContainer}>
+        <View style={[styles.serviceTitleContainer, styles.horizontalPadding]}>
           <Text style={styles.serviceTitleText}>{service?.title || 'Service'}</Text>
+          <Text style={styles.serviceProviderText}>Provider: {service?.business_name || serviceProviderName || 'Unknown'}</Text>
+          {passedLocation && <Text style={styles.locationText}>Location: {passedLocation}</Text>}
         </View>
         
         {/* Date Selection */}
@@ -411,16 +514,16 @@ const CreateBookingScreen = ({ route, navigation }) => {
           </View>
         </View>
         
-        {/* Payment Method */}
+        {/* Primary Payment Method */}
         <View style={styles.sectionContainer}>
-          <Text style={[styles.sectionTitle, { color: '#000' }]}>Payment</Text>
+          <Text style={[styles.sectionTitle, { color: '#000' }]}>Primary Payment</Text>
           
           <TouchableOpacity 
             style={[
               styles.paymentOption, 
-              paymentMethod === 'ndis' && styles.selectedPaymentOption
+              primaryPayment === 'ndis' && styles.selectedPaymentOption
             ]}
-            onPress={() => handlePaymentMethodSelect('ndis')}
+            onPress={() => handlePrimaryPaymentSelect('ndis')}
           >
             <View style={styles.paymentOptionContent}>
               <View style={styles.ndisBox}>
@@ -429,47 +532,59 @@ const CreateBookingScreen = ({ route, navigation }) => {
               <Text style={styles.paymentMethodText}>NDIS</Text>
             </View>
             
-            {paymentMethod === 'ndis' && (
+            {primaryPayment === 'ndis' && (
               <MaterialIcons name="check-circle" size={24} color="#2E7D32" />
             )}
           </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={[
-              styles.paymentOption, 
-              paymentMethod === 'visa' && styles.selectedPaymentOption
-            ]}
-            onPress={() => handlePaymentMethodSelect('visa')}
-          >
-            <View style={styles.paymentOptionContent}>
-              <Image 
-                source={{ uri: 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/Visa_Inc._logo.svg/800px-Visa_Inc._logo.svg.png' }}
-                style={styles.cardImage}
-                resizeMode="contain"
-              />
-              <Text style={styles.paymentMethodText}>•••• 4242</Text>
-            </View>
-            <Feather name="chevron-right" size={24} color="#333" />
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={[
-              styles.paymentOption, 
-              paymentMethod === 'mastercard' && styles.selectedPaymentOption
-            ]}
-            onPress={() => handlePaymentMethodSelect('mastercard')}
-          >
-            <View style={styles.paymentOptionContent}>
-              <Image 
-                source={{ uri: 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/2a/Mastercard-logo.svg/800px-Mastercard-logo.svg.png' }}
-                style={styles.cardImage}
-                resizeMode="contain"
-              />
-              <Text style={styles.paymentMethodText}>•••• 523 5004</Text>
-            </View>
-            <Feather name="chevron-right" size={24} color="#333" />
-          </TouchableOpacity>
         </View>
+          
+        {/* Gap Payment Section */}
+        {costs.gapPayment > 0 && (
+          <View style={styles.sectionContainer}>
+            <Text style={[styles.sectionTitle, { color: '#000' }]}>Gap Payment - ${costs.gapPayment.toFixed(2)}</Text>
+            <Text style={styles.gapPaymentInfo}>Select a payment method for your gap payment:</Text>
+            
+            <TouchableOpacity 
+              style={[
+                styles.paymentOption, 
+                gapPayment === 'visa' && styles.selectedPaymentOption
+              ]}
+              onPress={() => handleGapPaymentSelect('visa')}
+            >
+              <View style={styles.paymentOptionContent}>
+                <Image 
+                  source={{ uri: 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/Visa_Inc._logo.svg/800px-Visa_Inc._logo.svg.png' }}
+                  style={styles.cardImage}
+                  resizeMode="contain"
+                />
+                <Text style={styles.paymentMethodText}>•••• 4242</Text>
+              </View>
+              {gapPayment === 'visa' && (
+                <MaterialIcons name="check-circle" size={24} color="#2E7D32" />
+              )}
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[
+                styles.paymentOption, 
+                gapPayment === 'mastercard' && styles.selectedPaymentOption
+              ]}
+              onPress={() => handleGapPaymentSelect('mastercard')}
+            >
+              <View style={styles.paymentOptionContent}>
+                <Image 
+                  source={{ uri: 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/2a/Mastercard-logo.svg/800px-Mastercard-logo.svg.png' }}
+                  style={styles.cardImage}
+                  resizeMode="contain"
+                />
+                <Text style={styles.paymentMethodText}>•••• 5235</Text>
+              </View>
+              {gapPayment === 'mastercard' && (
+                <MaterialIcons name="check-circle" size={24} color="#2E7D32" />
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
         
         {/* Spacing for button */}
         <View style={{ height: 100 }} />
@@ -482,17 +597,18 @@ const CreateBookingScreen = ({ route, navigation }) => {
         )}
       </ScrollView>
       
-      {/* Confirm Booking Button - only shown when scrolled to bottom */}
-      {showConfirmButton && (
+      {/* Confirm Booking Button - with animated fade in/out */}
+      <Animated.View style={[styles.confirmButtonContainer, { opacity: buttonOpacity }]}>
         <TouchableOpacity 
           style={styles.confirmButton}
           onPress={handleConfirmBooking}
           activeOpacity={0.8}
+          disabled={!showConfirmButton}
         >
           <Feather name="check-circle" size={22} color="white" />
           <Text style={styles.confirmButtonText}>Confirm Booking</Text>
         </TouchableOpacity>
-      )}
+      </Animated.View>
       
       {/* Date Selection Modal */}
       <Modal
@@ -697,9 +813,18 @@ const styles = StyleSheet.create({
     color: '#666',
     fontWeight: '500',
   },
+  gapPaymentInfo: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 12,
+    marginTop: 4,
+  },
   container: {
     flex: 1,
     backgroundColor: '#f8f8f8',
+  },
+  horizontalPadding: {
+    paddingHorizontal: 16,
   },
   loadingContainer: {
     flex: 1,
@@ -727,10 +852,22 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
   },
   serviceTitleText: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: 'bold',
     color: '#000',
     textAlign: 'center',
+  },
+  serviceProviderText: {
+    fontSize: 16,
+    color: '#555',
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  locationText: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    marginTop: 4,
   },
   sectionContainer: {
     marginBottom: 24,
@@ -842,22 +979,25 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#333',
   },
-  confirmButton: {
+  confirmButtonContainer: {
     position: 'absolute',
-    bottom: Platform.OS === 'ios' ? 30 : 16,
-    left: 16,
-    right: 16,
+    bottom: 20,
+    left: 20,
+    right: 20,
+    zIndex: 100,
+  },
+  confirmButton: {
     backgroundColor: '#2E7D32',
-    paddingVertical: 16,
+    borderRadius: 12,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 12,
+    paddingVertical: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.1,
     shadowRadius: 4,
-    elevation: 4,
-    flexDirection: 'row',
+    elevation: 3,
   },
   confirmButtonText: {
     color: '#fff',
@@ -1079,12 +1219,16 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  
   cancelButton: {
     paddingVertical: 12,
   },
   cancelButtonText: {
     color: '#666',
     fontSize: 16,
+  },
+  scrollContent: {
+    paddingVertical: 16,
   },
 });
 
