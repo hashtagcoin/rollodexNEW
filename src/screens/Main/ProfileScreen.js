@@ -397,13 +397,63 @@ const ProfileScreen = () => {
     if (!currentUser) return;
     
     try {
-      // Update the relationship status to accepted
-      const { error } = await supabase
+      // First, get the original friendship request to know who the requester is
+      const { data: friendRequest, error: fetchError } = await supabase
         .from('user_relationships')
-        .update({ status: 'accepted' })
+        .select('*')
+        .eq('user_relationships_id', requestId)
+        .single();
+      
+      if (fetchError) throw fetchError;
+      
+      if (!friendRequest) {
+        throw new Error('Friend request not found');
+      }
+      
+      // Update the relationship status to accepted
+      const { error: updateError } = await supabase
+        .from('user_relationships')
+        .update({ status: 'accepted', updated_at: new Date().toISOString() })
         .eq('user_relationships_id', requestId);
       
-      if (error) throw error;
+      if (updateError) throw updateError;
+      
+      // Check if a reciprocal relationship already exists
+      const { data: existingReciprocal, error: checkError } = await supabase
+        .from('user_relationships')
+        .select('*')
+        .eq('requester_id', friendRequest.addressee_id)
+        .eq('addressee_id', friendRequest.requester_id)
+        .maybeSingle();
+      
+      if (checkError && checkError.code !== 'PGRST116') { // PGRST116 means no row found
+        throw checkError;
+      }
+      
+      if (!existingReciprocal) {
+        // No reciprocal relationship, insert one as accepted
+        const { error: insertError } = await supabase
+          .from('user_relationships')
+          .insert({
+            requester_id: friendRequest.addressee_id,
+            addressee_id: friendRequest.requester_id,
+            status: 'accepted',
+            category: friendRequest.category || 'friend',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          });
+        if (insertError) throw insertError;
+      } else if (existingReciprocal.status !== 'accepted') {
+        // Reciprocal relationship exists but is not accepted, update it
+        const { error: updateRecipError } = await supabase
+          .from('user_relationships')
+          .update({
+            status: 'accepted',
+            updated_at: new Date().toISOString()
+          })
+          .eq('user_relationships_id', existingReciprocal.user_relationships_id);
+        if (updateRecipError) throw updateRecipError;
+      }
       
       // Refresh friend requests and friendships
       fetchFriendRequests();

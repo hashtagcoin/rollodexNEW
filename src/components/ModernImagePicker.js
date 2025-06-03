@@ -4,7 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { COLORS } from '../constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 
-export default function ModernImagePicker({ onPick, images, setImages, maxImages = 10, avatar, style, loading, containerStyle }) {
+export default function ModernImagePicker({ onPick, images, setImages, maxImages = 10, avatar, style: customStyle, loading, containerStyle }) {
   const [pickingImage, setPickingImage] = useState(false);
   
   const pickImage = async () => {
@@ -81,7 +81,7 @@ export default function ModernImagePicker({ onPick, images, setImages, maxImages
     return (
       <View style={[styles.galleryContainer, containerStyle]}>
         <TouchableOpacity 
-          style={[styles.addButton, style]}
+          style={[styles.addButton, customStyle]}
           onPress={pickImage}
           disabled={loading || pickingImage || (maxImages && images.length >= maxImages)}
         >
@@ -104,7 +104,7 @@ export default function ModernImagePicker({ onPick, images, setImages, maxImages
   // For avatar view (legacy mode)
   return (
     <TouchableOpacity 
-      style={[styles.avatarWrap, style]} 
+      style={[styles.avatarWrap, customStyle]} 
       onPress={pickImage}
       disabled={loading || pickingImage}
     >
