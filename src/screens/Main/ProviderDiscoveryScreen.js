@@ -54,6 +54,8 @@ const ProviderDiscoveryScreen = ({ route }) => {
   // State variables
   const [selectedCategory, setSelectedCategory] = useState(CATEGORIES[0]);
   const listViewRef = useRef(null);
+  const gridViewRef = useRef(null);
+  const swipeViewRef = useRef(null);
   
   // Handle initial category from params
   useEffect(() => {
@@ -65,13 +67,34 @@ const ProviderDiscoveryScreen = ({ route }) => {
   // Reset scroll position when tab is focused
   useFocusEffect(
     useCallback(() => {
-      console.log('[ProviderDiscovery] Focus effect: scrolling to top if list view.');
-      if (viewMode === 'List' && listViewRef.current) {
+      console.log('[ProviderDiscovery] Focus effect: scrolling to top for all views.');
+      
+      // Reset scroll for all view modes regardless of which is active
+      // For List view
+      if (listViewRef.current) {
+        console.log('[ProviderDiscovery] Resetting List view scroll');
         listViewRef.current.scrollToOffset({ offset: 0, animated: false });
       }
-      // Optionally, trigger a data refresh on focus if needed, though current setup relies on deps for useEffect
-      // fetchData(false); // Example: if you want to refresh on every focus
-    }, [viewMode]) // Dependency: viewMode to ensure ref is current for list
+      
+      // For Grid view
+      if (gridViewRef.current) {
+        console.log('[ProviderDiscovery] Resetting Grid view scroll');
+        gridViewRef.current.scrollToOffset({ offset: 0, animated: false });
+      }
+      
+      // Always reset to first view mode
+      setViewMode(VIEW_MODES[0]);
+      
+      // Reset data to initial state
+      if (initialParams.initialCategory && CATEGORIES.includes(initialParams.initialCategory)) {
+        setSelectedCategory(initialParams.initialCategory);
+      } else {
+        setSelectedCategory(CATEGORIES[0]);
+      }
+      
+      // Force refresh data on tab focus
+      fetchData(true); // Pass true to force refresh
+    }, []) // No dependencies to ensure it runs on every focus
   );
   const [viewMode, setViewMode] = useState(VIEW_MODES[0]);
   const [items, setItems] = useState([]);
@@ -363,6 +386,7 @@ const ProviderDiscoveryScreen = ({ route }) => {
       
       return (
         <FlatList
+          ref={gridViewRef}
           key={`${isHousing ? 'housing' : 'services'}-grid`}
           data={items}
           renderItem={({ item }) => (
@@ -398,6 +422,7 @@ const ProviderDiscoveryScreen = ({ route }) => {
       
       return (
         <FlatList
+          ref={listViewRef}
           key={`${isHousing ? 'housing' : 'services'}-list`}
           data={items}
           renderItem={({ item }) => (

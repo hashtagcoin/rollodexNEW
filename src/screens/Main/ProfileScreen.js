@@ -45,9 +45,15 @@ const ProfileScreen = () => {
   // Friends state
   useFocusEffect(
     React.useCallback(() => {
+      console.log('[ProfileScreen] Focus effect: scrolling to top');
       // When the screen is focused via BottomNavbar, reset to the first tab
       // and refresh posts
       setSelectedTab('Posts');
+      
+      // Reset scroll position
+      if (scrollViewRef.current) {
+        scrollViewRef.current.scrollTo({ y: 0, animated: false });
+      }
       
       // Refresh posts when the screen is focused
       if (user) {

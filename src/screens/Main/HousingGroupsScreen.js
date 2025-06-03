@@ -49,11 +49,7 @@ const HousingGroupsScreen = ({ navigation }) => {
   const [userId, setUserId] = useState(null);
   const [activeFilters, setActiveFilters] = useState([]);
   
-  // Animation values for the FloatingActionButton
-  const fadeAnim = useRef(new Animated.Value(1)).current;
-  const scrollY = useRef(new Animated.Value(0)).current;
-  const [isScrolling, setIsScrolling] = useState(false);
-  const scrollEndTimer = useRef(null);
+  // Animation values removed (FAB no longer present)
 
   // Fetch user ID on component mount
   useEffect(() => {
@@ -300,7 +296,7 @@ const HousingGroupsScreen = ({ navigation }) => {
       // If user is a member or has a pending request, allow them to leave/cancel
       handleLeaveGroup(item.id);
     } else {
-      // If user is not a member, navigate to the detail screen to join
+      // If user is not a member, navigate to the Main version of HousingGroupDetailScreen
       navigation.navigate('HousingGroupDetailScreen', { groupId: item.id, fromJoinButton: true });
     }
   };
@@ -322,7 +318,7 @@ const HousingGroupsScreen = ({ navigation }) => {
       <View style={viewMode === 'Grid' ? styles.gridCardWrapper : styles.listCardWrapper}>
         <HousingGroupCard 
           item={modifiedItem}
-          // Always navigate to the detail screen when tapping the card
+          // Always navigate to the Main version when tapping the card
           onPress={() => navigation.navigate('HousingGroupDetailScreen', { groupId: item.id })}
           // Use handleCardAction for the button press
           onActionPress={() => handleCardAction(item)}
@@ -356,21 +352,7 @@ const HousingGroupsScreen = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      {/* Floating Action Button with fade animation */}
-      <Animated.View style={[
-        styles.fabContainer,
-        {
-          opacity: fadeAnim
-        }
-      ]}>
-        <TouchableOpacity 
-          style={styles.fab}
-          onPress={() => navigation.navigate('CreateHousingGroup')}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="add" color="#FFFFFF" size={24} />
-        </TouchableOpacity>
-      </Animated.View>
+      {/* FAB button removed as requested */}
       
       <AppHeader title="Housing Groups" navigation={navigation} canGoBack={true} />
       
@@ -409,38 +391,6 @@ const HousingGroupsScreen = ({ navigation }) => {
             colors={[COLORS.primary]} 
           />
         }
-        onScroll={Animated.event(
-          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          { 
-            useNativeDriver: true,
-            listener: () => {
-              // Clear any existing timer
-              if (scrollEndTimer.current) {
-                clearTimeout(scrollEndTimer.current);
-              }
-              
-              // If not already scrolling, animate button fade out
-              if (!isScrolling) {
-                setIsScrolling(true);
-                Animated.timing(fadeAnim, {
-                  toValue: 0,
-                  duration: 200,
-                  useNativeDriver: true,
-                }).start();
-              }
-              
-              // Set a timer to detect when scrolling stops
-              scrollEndTimer.current = setTimeout(() => {
-                setIsScrolling(false);
-                Animated.timing(fadeAnim, {
-                  toValue: 1,
-                  duration: 500, // Slower fade in
-                  useNativeDriver: true,
-                }).start();
-              }, 200);
-            }
-          }
-        )}
         scrollEventThrottle={16}
         ListEmptyComponent={EmptyListComponent}
         showsVerticalScrollIndicator={false}
@@ -456,7 +406,7 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     flexGrow: 1,
-    paddingBottom: 80, // Extra padding at the bottom for the FAB
+    paddingBottom: 20, // Reduced padding since FAB is removed
     paddingHorizontal: 4,
   },
   headerContainer: {
@@ -529,28 +479,8 @@ const styles = StyleSheet.create({
     color: '#888',
     textAlign: 'center',
   },
-  fabContainer: {
-    position: 'absolute',
-    bottom: 20,
-    right: 20,
-    zIndex: 100,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
-  },
-  fab: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: COLORS.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+  // FAB styles removed
+
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',

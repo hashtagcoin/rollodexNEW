@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   View, 
   Text, 
@@ -28,6 +28,7 @@ const CARD_MARGIN = 10;
 
 const FavouritesScreen = () => { 
   const navigation = useNavigation(); 
+  const flatListRef = useRef(null);
   const [favorites, setFavorites] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -40,6 +41,24 @@ const FavouritesScreen = () => {
   const [loadingMore, setLoadingMore] = useState(false);
   const [shareModalVisible, setShareModalVisible] = useState(false);
   const [itemToShare, setItemToShare] = useState(null);
+  
+  // Reset scroll position when tab is focused
+  useFocusEffect(
+    useCallback(() => {
+      console.log('[FavouritesScreen] Focus effect: scrolling to top');
+      if (flatListRef.current) {
+        flatListRef.current.scrollToOffset({ offset: 0, animated: false });
+      }
+      
+      // Reset data state
+      setPage(0);
+      setSelectedCategory('All');
+      setSearchTerm('');
+      
+      // Refresh data
+      fetchFavorites(0, true);
+    }, [])
+  );
 
   const categories = ['All', 'Services', 'Events', 'Housing', 'Groups', 'Housing Groups']; 
   const PAGE_SIZE = 10;
@@ -800,6 +819,7 @@ const FavouritesScreen = () => {
         </View>
       ) : (
         <FlatList
+          ref={flatListRef}
           data={favorites}
           renderItem={renderItem}
           keyExtractor={(item, index) => `${item.item_id}-${item.item_type}-${index}`}

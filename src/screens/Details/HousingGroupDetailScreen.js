@@ -326,6 +326,11 @@ const HousingGroupDetailScreen = ({ route }) => {
 
   return (
     <View style={styles.container}>
+      {/* Indicator text to identify which screen is shown */}
+      <View style={{backgroundColor: 'red', padding: 10, alignItems: 'center'}}>
+        <Text style={{color: 'white', fontSize: 24, fontWeight: 'bold'}}>DETAILS</Text>
+      </View>
+      
       <AppHeader 
         title={housingGroup.name} 
         navigation={navigation} 

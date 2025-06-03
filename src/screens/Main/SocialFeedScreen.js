@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import { 
   View, 
   Text, 
@@ -50,11 +51,25 @@ const dummyHousingGroups = [
 
 const SocialFeedScreen = () => {
   const navigation = useNavigation();
+  const flatListRef = useRef(null);
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [housingModalVisible, setHousingModalVisible] = useState(false);
   const [showCreatePostModal, setShowCreatePostModal] = useState(false);
+
+  // Reset scroll position when tab is focused
+  useFocusEffect(
+    useCallback(() => {
+      console.log('[SocialFeedScreen] Focus effect: scrolling to top');
+      if (flatListRef.current) {
+        flatListRef.current.scrollToOffset({ offset: 0, animated: false });
+      }
+      
+      // Refresh data
+      fetchPosts();
+    }, [])
+  );
 
   // Navigate back to dashboard
   const handleBackToDashboard = () => {
@@ -172,6 +187,7 @@ const SocialFeedScreen = () => {
         </View>
       ) : (
         <FlatList
+          ref={flatListRef}
           data={posts}
           renderItem={renderPost}
           keyExtractor={item => item.post_id}

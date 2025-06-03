@@ -45,6 +45,16 @@ const TabNavigator = () => {
       <Tab.Screen 
         name="Home" 
         component={DashboardScreen} 
+        listeners={({ navigation }) => ({
+          tabPress: (e) => {
+            // Prevent default behavior
+            e.preventDefault();
+            // Navigate to Home and ensure it's at the top
+            navigation.navigate('Home', {
+              screen: 'DashboardScreen'
+            });
+          },
+        })}
       />
       <Tab.Screen 
         name="Explore" 
@@ -60,7 +70,20 @@ const TabNavigator = () => {
           },
         })}
       />
-      <Tab.Screen name="Social" component={SocialStackNavigator} />
+      <Tab.Screen 
+        name="Social" 
+        component={SocialStackNavigator} 
+        listeners={({ navigation }) => ({
+          tabPress: (e) => {
+            // Prevent default behavior
+            e.preventDefault();
+            // Reset to the first screen in the Social stack
+            navigation.navigate('Social', {
+              screen: 'SocialFeedScreen'
+            });
+          },
+        })}
+      />
       <Tab.Screen 
         name="Wallet" 
         component={WalletStackNavigator} 
@@ -75,8 +98,32 @@ const TabNavigator = () => {
           },
         })}
       />
-      <Tab.Screen name="Favourites" component={FavouritesScreen} />
-      <Tab.Screen name="Profile" component={ProfileStackNavigator} />
+      <Tab.Screen 
+        name="Favourites" 
+        component={FavouritesScreen} 
+        listeners={({ navigation }) => ({
+          tabPress: (e) => {
+            // Prevent default behavior
+            e.preventDefault();
+            // Navigate to Favourites screen and reset scroll position
+            navigation.navigate('Favourites');
+          },
+        })}
+      />
+      <Tab.Screen 
+        name="Profile" 
+        component={ProfileStackNavigator} 
+        listeners={({ navigation }) => ({
+          tabPress: (e) => {
+            // Prevent default behavior
+            e.preventDefault();
+            // Reset to the first screen in the Profile stack
+            navigation.navigate('Profile', {
+              screen: 'ProfileScreen'
+            });
+          },
+        })}
+      />
     </Tab.Navigator>
   );
 };

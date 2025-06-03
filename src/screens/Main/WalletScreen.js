@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator, Alert, Image } from 'react-native';
 import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -16,12 +17,27 @@ const CATEGORY_LABELS = {
 
 const WalletScreen = () => {
   const navigation = useNavigation();
+  const scrollViewRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [wallet, setWallet] = useState(null);
   const [allUserClaims, setAllUserClaims] = useState([]);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
+  
+  // Reset scroll position when tab is focused
+  useFocusEffect(
+    useCallback(() => {
+      console.log('[WalletScreen] Focus effect: scrolling to top');
+      if (scrollViewRef.current) {
+        scrollViewRef.current.scrollTo({ y: 0, animated: false });
+      }
+      
+      // Refresh data
+      fetchWalletAndClaims();
+      setActiveTab('overview');
+    }, [])
+  );
   
   // Original AppHeader approach
 
@@ -175,6 +191,7 @@ const WalletScreen = () => {
         </TouchableOpacity>
       </View>
       <ScrollView
+        ref={scrollViewRef}
         style={styles.contentScrollView}
         contentContainerStyle={styles.scrollContentContainer}
         refreshControl={<RefreshControl refreshing={refreshing} colors={[COLORS.primary]} onRefresh={onRefresh} />}

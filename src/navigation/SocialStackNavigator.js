@@ -5,7 +5,7 @@ import HousingGroupsScreen from '../screens/Main/HousingGroupsScreen';
 import EventsListScreen from '../screens/Main/EventsListScreen';
 import UserPostsFeedScreen from '../screens/Social/UserPostsFeedScreen';
 import PostDetailScreen from '../screens/Social/PostDetailScreen';
-import HousingGroupDetailScreen from '../screens/Details/HousingGroupDetailScreen';
+import HousingGroupDetailScreen from '../screens/Main/HousingGroupDetailScreen';
 import GroupDetailScreen from '../screens/Main/GroupDetailScreen';
 
 const Stack = createStackNavigator();

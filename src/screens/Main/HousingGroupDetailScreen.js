@@ -1,15 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, Alert, ActivityIndicator, Share, Platform } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import AppHeader from '../../components/layout/AppHeader';
 import { COLORS, FONTS, SIZES } from '../../constants/theme';
 import { supabase } from '../../lib/supabaseClient';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import FontAwesome from 'react-native-vector-icons/FontAwesome';
 import { getUserProfile } from '../../utils/authUtils';
 
 const HousingGroupDetailScreen = ({ route }) => {
   const { groupId, fromJoinButton } = route.params || {};
   const navigation = useNavigation();
+  const scrollViewRef = useRef(null);
+  
+  // Scroll to top when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      if (scrollViewRef.current) {
+        scrollViewRef.current.scrollTo({ x: 0, y: 0, animated: false });
+      }
+    }, [])
+  );
   
   // Progressive loading states for different sections
   const [loadingGroupDetails, setLoadingGroupDetails] = useState(true);
@@ -172,7 +183,7 @@ const HousingGroupDetailScreen = ({ route }) => {
         
         const { data: profiles, error: profilesError } = await supabase
           .from('user_profiles')
-          .select('id, full_name, avatar_url, bio')
+          .select('id, full_name, avatar_url, bio, age')
           .in('id', userIds);
           
         if (profilesError) {
@@ -416,6 +427,12 @@ const HousingGroupDetailScreen = ({ route }) => {
           <View style={styles.memberInfo}>
             <Text style={styles.memberName}>{profile?.full_name || 'Anonymous'}</Text>
             <View style={styles.ageGenderContainer}>
+              {profile?.age && (
+                <View style={styles.ageBadge}>
+                  <FontAwesome name="birthday-cake" size={10} color="#00838F" style={{marginRight: 4}} />
+                  <Text style={styles.ageText}>{profile.age}</Text>
+                </View>
+              )}
               {member.age_range && <Text style={styles.ageGender}>{member.age_range}</Text>}
               {member.gender && <Text style={styles.ageGender}>{member.gender}</Text>}
               <View style={[styles.supportBadge, 
@@ -496,7 +513,7 @@ const HousingGroupDetailScreen = ({ route }) => {
   return (
     <View style={styles.container}>
       <AppHeader title="Housing Group" showBackButton={true} navigation={navigation} />
-      <ScrollView style={styles.scrollContainer}>
+      <ScrollView ref={scrollViewRef} style={styles.scrollContainer}>
         {/* Action buttons (Share and Favorite) */}
         <View style={styles.actionButtonsContainer}>
           <TouchableOpacity 
@@ -923,9 +940,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   ageGender: {
-    fontSize: 14,
+    fontSize: 12,
     color: COLORS.darkGray,
     marginRight: 8,
+  },
+  ageBadge: {
+    backgroundColor: '#E0F7FA',
+    paddingVertical: 2,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    marginRight: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  ageText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#00838F',
   },
   supportBadge: {
     paddingHorizontal: 8,
