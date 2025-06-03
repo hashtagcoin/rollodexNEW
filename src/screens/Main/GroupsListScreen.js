@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity, Animated, ActivityIndicator, Alert } from 'react-native';
 import ActionButton from '../../components/common/ActionButton';
 import { Feather, Ionicons } from '@expo/vector-icons';
@@ -10,13 +10,10 @@ import { getValidImageUrl } from '../../utils/imageHelper';
 
 const FILTERS = [
   { key: 'all', label: 'All' },
-  { key: 'sda', label: 'SDA' },
-  { key: 'pet', label: 'Pet' },
-  { key: 'accessible', label: 'Accessible' },
-  { key: 'wheelchair', label: 'Wheelchair' },
-  { key: 'smoking', label: 'Smoking' },
-  { key: 'support', label: 'Support' },
-  { key: 'parking', label: 'Parking' },
+  { key: 'groups', label: 'Groups' },
+  { key: 'housing_groups', label: 'Housing Groups' },
+  { key: 'social', label: 'Social' },
+  { key: 'interest', label: 'Interest' },
 ];
 
 const GroupsListScreen = () => {
@@ -193,11 +190,22 @@ const GroupsListScreen = () => {
     }, [])
   );
 
-  const filteredGroups = filter === 'all' 
-    ? groupsData 
-    : filter === 'housing'
-      ? groupsData.filter(g => g.is_housing_group)
-      : groupsData.filter(g => !g.is_housing_group && g.category === filter);
+  const filteredGroups = useMemo(() => {
+    switch(filter) {
+      case 'all':
+        return groupsData;
+      case 'groups':
+        return groupsData.filter(g => !g.is_housing_group);
+      case 'housing_groups':
+        return groupsData.filter(g => g.is_housing_group);
+      case 'social':
+        return groupsData.filter(g => g.category === 'social');
+      case 'interest':
+        return groupsData.filter(g => g.category === 'interest');
+      default:
+        return groupsData;
+    }
+  }, [groupsData, filter]);
 
   const GroupCard = React.memo(({ item, navigation }) => {
     const [isFavorited, setIsFavorited] = useState(false);
@@ -231,15 +239,21 @@ const GroupsListScreen = () => {
       checkIfFavorited();
     }, [userId, item.id]);
 
-    const toggleFavorite = useCallback(async () => {
+    const toggleFavorite = useCallback(async (e) => {
+      e.stopPropagation(); // Prevent card navigation when clicking favorite
+      console.log('Toggling favorite for group:', item.id, item.name);
+      
       // Use the userId from state for consistency
       if (!userId) {
+        console.log('No user ID available, cannot toggle favorite');
+        Alert.alert('Error', 'Please sign in to favorite groups');
         return;
       }
       
       setFavoriteLoading(true);
       try {
         if (isFavorited) {
+          console.log('Removing from favorites...');
           // Remove from favorites
           const { error } = await supabase
             .from('favorites')
@@ -249,11 +263,14 @@ const GroupsListScreen = () => {
             .eq('item_type', 'group');
           
           if (error) {
+            console.error('Error removing favorite:', error);
             throw error;
           }
           
+          console.log('Successfully removed from favorites');
           setIsFavorited(false);
         } else {
+          console.log('Adding to favorites...');
           // Add to favorites
           const favoriteData = {
             user_id: userId,
@@ -262,20 +279,22 @@ const GroupsListScreen = () => {
             created_at: new Date().toISOString()
           };
           
-
           const { data, error } = await supabase
             .from('favorites')
             .insert(favoriteData)
             .select();
           
           if (error) {
+            console.error('Error adding favorite:', error);
             throw error;
           }
           
+          console.log('Successfully added to favorites');
           setIsFavorited(true);
         }
       } catch (error) {
-        // Error handling
+        console.error('Error in toggleFavorite:', error);
+        Alert.alert('Error', 'Failed to update favorite status');
       } finally {
         setFavoriteLoading(false);
       }
@@ -355,14 +374,14 @@ const GroupsListScreen = () => {
         <View style={styles.cardContent}>
           <View style={styles.cardHeader}>
             <Text style={styles.cardTitle} numberOfLines={1}>{item.name}</Text>
-            <TouchableOpacity onPress={toggleFavorite} style={styles.favoriteIconContainer} disabled={favoriteLoading}>
+            <TouchableOpacity onPress={(e) => toggleFavorite(e)} style={styles.favoriteIconContainer} disabled={favoriteLoading}>
               {favoriteLoading ? (
                 <ActivityIndicator size="small" color="#007AFF" />
               ) : (
                 <Ionicons 
                   name={isFavorited ? 'heart' : 'heart-outline'} 
                   size={24} 
-                  color={isFavorited ? 'red' : '#888'} 
+                  color={isFavorited ? COLORS.RED : '#888'} 
                 />
               )}
             </TouchableOpacity>
@@ -432,54 +451,15 @@ const GroupsListScreen = () => {
       <AppHeader title="Groups" navigation={navigation} canGoBack={true} />
       <View style={styles.filterSection}>
         <View style={styles.filterRow}>
-          <TouchableOpacity
-            style={[styles.filterBtn, filter === 'all' && styles.filterBtnActive]}
-            onPress={() => setFilter('all')}
-          >
-            <Text style={[styles.filterBtnText, filter === 'all' && styles.filterBtnTextActive]}>All</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.filterBtn, filter === 'sda' && styles.filterBtnActive]}
-            onPress={() => setFilter('sda')}
-          >
-            <Text style={[styles.filterBtnText, filter === 'sda' && styles.filterBtnTextActive]}>SDA</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.filterBtn, filter === 'pet' && styles.filterBtnActive]}
-            onPress={() => setFilter('pet')}
-          >
-            <Text style={[styles.filterBtnText, filter === 'pet' && styles.filterBtnTextActive]}>Pet</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.filterBtn, filter === 'accessible' && styles.filterBtnActive]}
-            onPress={() => setFilter('accessible')}
-          >
-            <Text style={[styles.filterBtnText, filter === 'accessible' && styles.filterBtnTextActive]}>Accessible</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.filterBtn, filter === 'wheelchair' && styles.filterBtnActive]}
-            onPress={() => setFilter('wheelchair')}
-          >
-            <Text style={[styles.filterBtnText, filter === 'wheelchair' && styles.filterBtnTextActive]}>Wheelchair</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.filterBtn, filter === 'smoking' && styles.filterBtnActive]}
-            onPress={() => setFilter('smoking')}
-          >
-            <Text style={[styles.filterBtnText, filter === 'smoking' && styles.filterBtnTextActive]}>Smoking</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.filterBtn, filter === 'support' && styles.filterBtnActive]}
-            onPress={() => setFilter('support')}
-          >
-            <Text style={[styles.filterBtnText, filter === 'support' && styles.filterBtnTextActive]}>Support</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.filterBtn, filter === 'parking' && styles.filterBtnActive]}
-            onPress={() => setFilter('parking')}
-          >
-            <Text style={[styles.filterBtnText, filter === 'parking' && styles.filterBtnTextActive]}>Parking</Text>
-          </TouchableOpacity>
+          {FILTERS.map((filterItem) => (
+            <TouchableOpacity
+              key={filterItem.key}
+              style={[styles.filterBtn, filter === filterItem.key && styles.filterBtnActive]}
+              onPress={() => setFilter(filterItem.key)}
+            >
+              <Text style={[styles.filterBtnText, filter === filterItem.key && styles.filterBtnTextActive]}>{filterItem.label}</Text>
+            </TouchableOpacity>
+          ))}
         </View>
       </View>
       <Animated.FlatList
@@ -656,7 +636,10 @@ const styles = StyleSheet.create({
     flex: 1, 
   },
   favoriteIconContainer: { 
-    paddingLeft: 8, 
+    paddingLeft: 10,
+    paddingRight: 5,
+    paddingVertical: 5,
+    marginLeft: 5,
   },
   cardDesc: {
     fontSize: 13,

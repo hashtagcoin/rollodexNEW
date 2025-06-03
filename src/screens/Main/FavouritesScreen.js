@@ -430,7 +430,7 @@ const FavouritesScreen = () => {
                   
                   <View style={{padding: 10}}>
                     <ConsistentHeightTitle 
-                      title={item.item_title} 
+                      title={item.item_title || 'Unnamed Group'} 
                       style={[CardStyles.title, {marginBottom: 0}]} 
                       numberOfLines={1} 
                     />
@@ -527,7 +527,7 @@ const FavouritesScreen = () => {
                 <View style={CardStyles.listContentContainer}> 
                   <View style={[CardStyles.topSection, {marginBottom: 0, justifyContent: 'space-between'}]}> 
                     <ConsistentHeightTitle 
-                      title={item.item_title} 
+                      title={item.item_title || 'Unnamed Group'} 
                       style={[CardStyles.title, {flex: 1, paddingRight: 5, marginBottom: 0}]} 
                       numberOfLines={1} 
                     />
@@ -591,37 +591,188 @@ const FavouritesScreen = () => {
         }
       case 'group':
         console.log('[FavouritesScreen] Rendering local GroupCard for item:', JSON.stringify(item, null, 2));
-        return (
-          <View style={styles.cardContainer}>
-            <Image source={{ uri: item.item_image_url || 'https://via.placeholder.com/150' }} style={styles.cardImage} />
-            <Text style={styles.cardTitle}>{item.item_title || 'Group'}</Text>
-            <Text numberOfLines={2}>{item.item_description || 'No description'}</Text>
-            <View style={styles.actionsContainer}>
-              <TouchableOpacity onPress={() => toggleFavorite(item.item_id, item.item_type)} style={styles.favButton}>
-                <Ionicons name="heart" size={24} color={COLORS.RED} />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => handleOpenShareTray(item)} style={styles.shareButton}>
-                <Ionicons name="share-social-outline" size={24} color={COLORS.primary} />
+        // Check if any essential data is missing
+        if (!item.item_title) {
+          console.warn('[FavouritesScreen] Group missing title:', item.item_id);
+        }
+        if (!item.item_description) {
+          console.warn('[FavouritesScreen] Group missing description:', item.item_id);
+        }
+        if (!item.item_image_url) {
+          console.warn('[FavouritesScreen] Group missing image URL:', item.item_id);
+        }
+        if (viewMode === 'Grid') {
+          return (
+            <View style={CardStyles.gridCardWrapper}>
+              <TouchableOpacity 
+                style={CardStyles.gridCardContainer} 
+                onPress={commonCardProps.onPress} 
+                activeOpacity={0.8}
+              >
+                <View style={CardStyles.gridCardInner}>
+                  <View style={CardStyles.gridImageContainer}>
+                    {!item.item_image_url ? (
+                      <View style={{alignItems: 'center', justifyContent: 'center', height: '100%'}}>
+                        <Ionicons name="people-outline" size={60} color={COLORS.darkGray} />
+                      </View>
+                    ) : (
+                      <Image 
+                        source={{ uri: item.item_image_url }} 
+                        style={CardStyles.gridImage}
+                        onError={() => console.log('Group Image Error')} 
+                      />
+                    )}
+                    <TouchableOpacity 
+                      style={CardStyles.iconContainer} 
+                      onPress={() => toggleFavorite(item.item_id, item.item_type)}
+                    >
+                      <View style={CardStyles.iconCircleActive}> 
+                        <Ionicons name="heart" style={CardStyles.favoriteIconActive} />
+                      </View>
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      style={[CardStyles.iconContainer, { top: 48 }]}
+                      onPress={() => handleOpenShareTray(item)}
+                    >
+                      <View style={CardStyles.iconCircle}> 
+                        <Ionicons name="share-social-outline" style={CardStyles.favoriteIcon} />
+                      </View>
+                    </TouchableOpacity>
+                  </View>
+                  
+                  <View style={{padding: 10}}>
+                    <ConsistentHeightTitle 
+                      title={item.item_title || 'Unnamed Group'} 
+                      style={[CardStyles.title, {marginBottom: 0}]} 
+                      numberOfLines={1} 
+                    />
+                    <Text style={[CardStyles.subtitle, {marginTop: 0, marginBottom: 2}]} numberOfLines={2}>{item.item_description || 'No description'}</Text>
+                  </View>
+                </View>
               </TouchableOpacity>
             </View>
-          </View>
-        );
+          );
+        } else {
+          return (
+            <TouchableOpacity 
+              style={CardStyles.listCardContainer} 
+              onPress={commonCardProps.onPress} 
+              activeOpacity={0.8}
+            >
+              <View style={CardStyles.listCardInner}> 
+                <View style={CardStyles.listImageContainer}> 
+                  {!item.item_image_url ? (
+                    <Ionicons name="people-outline" size={40} color={COLORS.darkGray} />
+                  ) : (
+                    <Image 
+                      source={{ uri: item.item_image_url }} 
+                      style={CardStyles.listImage}
+                      onError={() => console.log('Group Image Error')} 
+                    />
+                  )}
+                  <TouchableOpacity 
+                    style={CardStyles.iconContainer} 
+                    onPress={() => toggleFavorite(item.item_id, item.item_type)}
+                  >
+                    <View style={CardStyles.iconCircleActive}> 
+                      <Ionicons name="heart" style={CardStyles.favoriteIconActive} />
+                    </View>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[CardStyles.iconContainer, { top: 48 }]}
+                    onPress={() => handleOpenShareTray(item)}
+                  >
+                    <View style={CardStyles.iconCircle}> 
+                      <Ionicons name="share-social-outline" style={CardStyles.favoriteIcon} />
+                    </View>
+                  </TouchableOpacity>
+                </View>
+                
+                <View style={CardStyles.listContentContainer}> 
+                  <View style={[CardStyles.topSection, {marginBottom: 0}]}> 
+                    <ConsistentHeightTitle 
+                      title={item.item_title || 'Unnamed Group'} 
+                      style={[CardStyles.title, {flex: 1, paddingRight: 5, marginBottom: 0}]} 
+                      numberOfLines={1} 
+                    />
+                  </View>
+                  <Text style={[CardStyles.subtitle, {marginTop: 0, marginBottom: 0}]} numberOfLines={2}>{item.item_description || 'No description available'}</Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+          );
+        }
       default:
         console.warn(`[FavouritesScreen] Unknown item_type: ${item.item_type} for item ID: ${item.item_id}`);
-        return (
-          <View style={styles.cardContainer}>
-            <Text>Unsupported favorite type: {item.item_type}</Text>
-            <Text>{item.item_title}</Text>
-            <View style={styles.actionsContainer}>
-              <TouchableOpacity onPress={() => toggleFavorite(item.item_id, item.item_type)} style={styles.favButton}>
-                <Ionicons name="heart" size={24} color={COLORS.RED} />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => handleOpenShareTray(item)} style={styles.shareButton}>
-                <Ionicons name="share-social-outline" size={24} color={COLORS.primary} />
+        if (viewMode === 'Grid') {
+          return (
+            <View style={CardStyles.gridCardWrapper}>
+              <TouchableOpacity 
+                style={CardStyles.gridCardContainer} 
+                onPress={commonCardProps.onPress} 
+                activeOpacity={0.8}
+              >
+                <View style={CardStyles.gridCardInner}>
+                  <View style={CardStyles.gridImageContainer}>
+                    <View style={{alignItems: 'center', justifyContent: 'center', height: '100%'}}>
+                      <Ionicons name="help-outline" size={60} color={COLORS.darkGray} />
+                    </View>
+                    <TouchableOpacity 
+                      style={CardStyles.iconContainer} 
+                      onPress={() => toggleFavorite(item.item_id, item.item_type)}
+                    >
+                      <View style={CardStyles.iconCircleActive}> 
+                        <Ionicons name="heart" style={CardStyles.favoriteIconActive} />
+                      </View>
+                    </TouchableOpacity>
+                  </View>
+                  
+                  <View style={{padding: 10}}>
+                    <Text style={{fontSize: SIZES.body5, color: COLORS.gray, marginBottom: 4}}>Unsupported type: {item.item_type}</Text>
+                    <ConsistentHeightTitle 
+                      title={item.item_title || 'Unnamed Group'} 
+                      style={[CardStyles.title, {marginBottom: 0}]} 
+                      numberOfLines={1} 
+                    />
+                  </View>
+                </View>
               </TouchableOpacity>
             </View>
-          </View>
-        );
+          );
+        } else {
+          return (
+            <TouchableOpacity 
+              style={CardStyles.listCardContainer} 
+              onPress={commonCardProps.onPress} 
+              activeOpacity={0.8}
+            >
+              <View style={CardStyles.listCardInner}> 
+                <View style={CardStyles.listImageContainer}> 
+                  <View style={{alignItems: 'center', justifyContent: 'center', height: '100%'}}>
+                    <Ionicons name="help-outline" size={40} color={COLORS.darkGray} />
+                  </View>
+                  <TouchableOpacity 
+                    style={CardStyles.iconContainer} 
+                    onPress={() => toggleFavorite(item.item_id, item.item_type)}
+                  >
+                    <View style={CardStyles.iconCircleActive}> 
+                      <Ionicons name="heart" style={CardStyles.favoriteIconActive} />
+                    </View>
+                  </TouchableOpacity>
+                </View>
+                
+                <View style={CardStyles.listContentContainer}> 
+                  <Text style={{fontSize: SIZES.body5, color: COLORS.gray, marginBottom: 4}}>Unsupported type: {item.item_type}</Text>
+                  <ConsistentHeightTitle 
+                    title={item.item_title} 
+                    style={[CardStyles.title, {marginBottom: 0}]} 
+                    numberOfLines={1} 
+                  />
+                </View>
+              </View>
+            </TouchableOpacity>
+          );
+        }
     }
   };
 
@@ -659,6 +810,7 @@ const FavouritesScreen = () => {
           numColumns={viewMode === 'Grid' ? 2 : 1}
           key={viewMode} // Important for re-rendering on viewMode change
           contentContainerStyle={viewMode === 'Grid' ? styles.gridContainer : styles.listContainer}
+          columnWrapperStyle={viewMode === 'Grid' ? styles.columnWrapper : null}
         />
       )}
       <ShareTrayModal 
@@ -699,16 +851,22 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
     paddingHorizontal: CARD_MARGIN,
   },
+  columnWrapper: {
+    justifyContent: 'space-between',
+  },
   cardContainer: {
     backgroundColor: COLORS.white,
     borderRadius: 12,
     marginBottom: 12,
     ...SHADOWS.small,
+    width: '100%',
   },
   cardImage: {
     width: '100%',
     height: 150,
     marginBottom: 8,
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
   },
   cardTitle: {
     fontSize: SIZES.h4,
