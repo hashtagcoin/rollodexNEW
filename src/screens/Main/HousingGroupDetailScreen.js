@@ -11,7 +11,12 @@ const HousingGroupDetailScreen = ({ route }) => {
   const { groupId } = route.params || {};
   const navigation = useNavigation();
   
-  const [loading, setLoading] = useState(true);
+  // Progressive loading states for different sections
+  const [loadingGroupDetails, setLoadingGroupDetails] = useState(true);
+  const [loadingHousingListing, setLoadingHousingListing] = useState(true);
+  const [loadingMembers, setLoadingMembers] = useState(true);
+  
+  // Data states
   const [groupDetails, setGroupDetails] = useState(null);
   const [housingListing, setHousingListing] = useState(null);
   const [members, setMembers] = useState([]);
@@ -21,129 +26,168 @@ const HousingGroupDetailScreen = ({ route }) => {
   const [isFavorited, setIsFavorited] = useState(false);
   const [favoriteId, setFavoriteId] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
+  
+  // Error states
+  const [groupDetailsError, setGroupDetailsError] = useState(null);
+  const [housingListingError, setHousingListingError] = useState(null);
+  const [membersError, setMembersError] = useState(null);
 
-  useEffect(() => {
-    const fetchUserProfile = async () => {
-      const user = await getUserProfile();
-      setCurrentUser(user);
-    };
-
-    fetchUserProfile();
-  }, []);
-
-  // Check if group is favorited
-  useEffect(() => {
-    if (!groupId || !currentUser) return;
-    
-    const checkIfFavorited = async () => {
-      try {
+  // Define fetch functions outside useEffect so they can be referenced elsewhere
+  const fetchUserProfile = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
         const { data, error } = await supabase
-          .from('favorites')
-          .select('favorite_id')
-          .eq('user_id', currentUser.id)
-          .eq('item_id', groupId)
-          .eq('item_type', 'housing_group')
-          .limit(1);
+          .from('user_profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
           
-        if (data && data.length > 0) {
-          setIsFavorited(true);
-          setFavoriteId(data[0].favorite_id);
-        } else {
-          setIsFavorited(false);
-          setFavoriteId(null);
-        }
-      } catch (error) {
-        console.error('Error checking favorite status:', error.message);
+        if (error) throw error;
+        
+        setCurrentUser(data);
       }
-    };
-    
-    checkIfFavorited();
-  }, [groupId, currentUser]);
-
-  useEffect(() => {
-    if (!groupId) return;
-    
-    const fetchGroupDetails = async () => {
-      try {
-        setLoading(true);
+    } catch (error) {
+      console.error('Error fetching user profile:', error.message);
+    }
+  };
+  
+  // Check if the group is in favorites
+  const checkFavoriteStatus = async () => {
+    try {
+      if (!currentUser || !groupId) return;
+      
+      const { data, error } = await supabase
+        .from('favorites')
+        .select('favorite_id')
+        .eq('user_id', currentUser.id)
+        .eq('item_id', groupId)
+        .eq('item_type', 'housing_group');
         
-        // Fetch group details
-        const { data: group, error: groupError } = await supabase
-          .from('housing_groups')
-          .select('*')
-          .eq('id', groupId);
+      if (error) throw error;
+      
+      setIsFavorited(data && data.length > 0);
+      if (data && data.length > 0) {
+        setFavoriteId(data[0].favorite_id);
+      }
+    } catch (error) {
+      console.error('Error checking favorite status:', error.message);
+    }
+  };
+  
+  // Define fetch functions for group details, housing listing, and members
+  const fetchGroupDetails = async () => {
+    // Reset error states
+    setGroupDetailsError(null);
+    setLoadingGroupDetails(true);
+    
+    try {
+      // Fetch group details
+      const { data: group, error: groupError } = await supabase
+        .from('housing_groups')
+        .select('*')
+        .eq('id', groupId);
+        
+      if (groupError) {
+        setGroupDetailsError('Could not load group details');
+        console.error('Error fetching group details:', groupError.message);
+        return;
+      }
+      
+      // Check if group was found
+      if (!group || group.length === 0) {
+        setGroupDetailsError('Group not found');
+        Alert.alert('Error', 'Group not found');
+        navigation.goBack();
+        return;
+      }
+      
+      setGroupDetails(group[0]);
+      return group[0]; // Return the group details for chaining
+    } catch (error) {
+      console.error('Error fetching group details:', error.message);
+      setGroupDetailsError('Could not load group details');
+    } finally {
+      setLoadingGroupDetails(false);
+    }
+  };
+  
+  const fetchHousingListing = async (listingId) => {
+    if (!listingId) {
+      setLoadingHousingListing(false);
+      return;
+    }
+    
+    setHousingListingError(null);
+    setLoadingHousingListing(true);
+    
+    try {
+      const { data: listing, error: listingError } = await supabase
+        .from('housing_listings')
+        .select('*')
+        .eq('id', listingId)
+        .limit(1);
+        
+      if (listingError) {
+        console.error('Error fetching listing:', listingError.message);
+        setHousingListingError('Could not load housing listing');
+        return;
+      }
+      
+      if (listing && listing.length > 0) {
+        setHousingListing(listing[0]);
+      } else {
+        console.warn('No listing found for group with listing ID:', listingId);
+        setHousingListingError('Housing listing not found');
+      }
+    } catch (error) {
+      console.error('Error fetching housing listing:', error.message);
+      setHousingListingError('Could not load housing listing');
+    } finally {
+      setLoadingHousingListing(false);
+    }
+  };
+  
+  const fetchMembers = async () => {
+    setMembersError(null);
+    setLoadingMembers(true);
+    
+    try {
+      // Fetch group members
+      const { data: memberData, error: membersError } = await supabase
+        .from('housing_group_members')
+        .select('*')
+        .eq('group_id', groupId)
+        .eq('status', 'approved');
+        
+      if (membersError) {
+        console.error('Error fetching members:', membersError.message);
+        setMembersError('Could not load group members');
+        return;
+      }
+      
+      // Fetch all relevant user profiles in one go to reduce API calls
+      if (memberData.length > 0) {
+        const userIds = memberData.map(member => member.user_id);
+        
+        const { data: profiles, error: profilesError } = await supabase
+          .from('user_profiles')
+          .select('id, full_name, avatar_url, bio')
+          .in('id', userIds);
           
-        if (groupError) throw groupError;
-        
-        // Check if group was found
-        if (!group || group.length === 0) {
-          Alert.alert('Error', 'Group not found');
-          navigation.goBack();
-          return;
+        if (profilesError) {
+          console.error('Error fetching profiles:', profilesError.message);
+          // Continue with members but without profiles
         }
         
-        setGroupDetails(group[0]);
-        
-        // Fetch housing listing details
-        if (group[0].listing_id) {
-          const { data: listing, error: listingError } = await supabase
-            .from('housing_listings')
-            .select('*')
-            .eq('id', group[0].listing_id);
-            
-          if (listingError) throw listingError;
-          
-          if (listing && listing.length > 0) {
-            setHousingListing(listing[0]);
-          } else {
-            console.warn('No listing found for group:', group[0].id);
-          }
-        }
-        
-        // Fetch group members
-        const { data: memberData, error: membersError } = await supabase
-          .from('housing_group_members')
-          .select('*')
-          .eq('group_id', groupId)
-          .eq('status', 'approved');
-          
-        if (membersError) throw membersError;
-        
-        // For each member, fetch their user profile
-        const membersWithProfiles = await Promise.all(
-          memberData.map(async (member) => {
-            try {
-              // Changed to use .limit(1) instead of .single() to avoid errors
-              const { data: profiles, error: profileError } = await supabase
-                .from('user_profiles')
-                .select('id, full_name, avatar_url, bio')
-                .eq('id', member.user_id)
-                .limit(1);
-                
-              if (profileError) {
-                console.error('Error fetching profile:', profileError.message);
-                return {
-                  ...member,
-                  user_profiles: null
-                };
-              }
-              
-              // Use the first profile if available, or null if no profiles found
-              const profile = profiles && profiles.length > 0 ? profiles[0] : null;
-              
-              return {
-                ...member,
-                user_profiles: profile
-              };
-            } catch (error) {
-              console.error('Error in profile fetch:', error.message);
-              return {
-                ...member,
-                user_profiles: null
-              };
-            }
-          })
-        );
+        // Match profiles to members
+        const membersWithProfiles = memberData.map(member => {
+          const profile = profiles?.find(p => p.id === member.user_id) || null;
+          return {
+            ...member,
+            user_profiles: profile
+          };
+        });
         
         setMembers(membersWithProfiles);
         
@@ -151,27 +195,81 @@ const HousingGroupDetailScreen = ({ route }) => {
         if (currentUser) {
           const isMember = memberData.some(member => member.user_id === currentUser.id);
           setIsCurrentUserMember(isMember);
-          
-          // Check if user has a pending join request
-          const { data: pendingRequests, error: pendingError } = await supabase
-            .from('housing_group_members')
-            .select('*')
-            .eq('group_id', groupId)
-            .eq('user_id', currentUser.id)
-            .eq('status', 'pending')
-            .limit(1);
-            
-          setIsJoinRequestPending(pendingRequests && pendingRequests.length > 0);
+        }
+      } else {
+        setMembers([]);
+      }
+    } catch (error) {
+      console.error('Error fetching members:', error.message);
+      setMembersError('Could not load group members');
+    } finally {
+      setLoadingMembers(false);
+    }
+  };
+  
+  const checkJoinRequestStatus = async () => {
+    if (!currentUser) return;
+    
+    try {
+      const { data: pendingRequests, error: pendingError } = await supabase
+        .from('housing_group_members')
+        .select('*')
+        .eq('group_id', groupId)
+        .eq('user_id', currentUser.id)
+        .eq('status', 'pending')
+        .limit(1);
+        
+      if (pendingError) {
+        console.error('Error checking join request:', pendingError.message);
+        return;
+      }
+      
+      setIsJoinRequestPending(pendingRequests && pendingRequests.length > 0);
+    } catch (error) {
+      console.error('Error checking join request:', error.message);
+    }
+  };
+  
+  // Use effects to fetch data
+  useEffect(() => {
+    fetchUserProfile();
+  }, []);
+  
+  useEffect(() => {
+    if (currentUser) {
+      checkFavoriteStatus();
+    }
+  }, [currentUser, groupId]);
+
+  // Initialize data loading when component mounts or groupId changes
+  useEffect(() => {
+    if (!groupId) return;
+    
+    // Start loading all data
+    const initializeData = async () => {
+      try {
+        // Fetch group details first
+        const groupData = await fetchGroupDetails();
+        
+        // After group details are loaded, fetch housing listing if available
+        if (groupData?.listing_id) {
+          fetchHousingListing(groupData.listing_id);
+        } else {
+          setLoadingHousingListing(false);
+        }
+        
+        // These can be fetched in parallel
+        fetchMembers();
+        if (currentUser) {
+          checkJoinRequestStatus();
         }
       } catch (error) {
-        console.error('Error fetching group details:', error.message);
-        Alert.alert('Error', 'Could not load group details');
-      } finally {
-        setLoading(false);
+        console.error('Error initializing data:', error);
       }
     };
     
-    fetchGroupDetails();
+    initializeData();
+    
   }, [groupId, currentUser]);
 
   const handleJoinRequest = async () => {
@@ -327,14 +425,65 @@ const HousingGroupDetailScreen = ({ route }) => {
     );
   };
 
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-        <Text style={styles.loadingText}>Loading group details...</Text>
+  // Render skeleton placeholders for group details
+  const renderGroupDetailsSkeleton = () => (
+    <View style={styles.groupDetailsContainer}>
+      <View style={styles.skeletonTitle} />
+      <View style={styles.skeletonText} />
+      <View style={styles.skeletonText} />
+      <View style={[styles.skeletonText, { width: '60%' }]} />
+      
+      <View style={styles.detailsRow}>
+        <View style={styles.detailItem}>
+          <View style={[styles.skeletonText, { width: '40%' }]} />
+          <View style={[styles.skeletonText, { width: '30%' }]} />
+        </View>
+        <View style={styles.detailItem}>
+          <View style={[styles.skeletonText, { width: '40%' }]} />
+          <View style={[styles.skeletonText, { width: '50%' }]} />
+        </View>
       </View>
-    );
-  }
+    </View>
+  );
+  
+  // Render skeleton placeholders for housing listing
+  const renderHousingListingSkeleton = () => (
+    <View style={styles.housingCard}>
+      <View style={styles.skeletonImage} />
+      <View style={styles.housingInfo}>
+        <View style={[styles.skeletonText, { width: '70%' }]} />
+        <View style={[styles.skeletonText, { width: '90%' }]} />
+        <View style={[styles.skeletonText, { width: '60%' }]} />
+      </View>
+    </View>
+  );
+  
+  // Render skeleton placeholders for members
+  const renderMembersSkeleton = () => (
+    <View style={styles.membersSection}>
+      <View style={[styles.skeletonText, { width: '80%', height: 24 }]} />
+      <View style={[styles.skeletonText, { width: '60%' }]} />
+      
+      {[1, 2].map(i => (
+        <View key={`skeleton-member-${i}`} style={styles.memberCard}>
+          <View style={styles.memberHeader}>
+            <View style={[styles.avatar, styles.skeletonAvatar]} />
+            <View style={styles.memberInfo}>
+              <View style={[styles.skeletonText, { width: '60%' }]} />
+              <View style={styles.ageGenderContainer}>
+                <View style={[styles.skeletonText, { width: '20%', marginRight: 8 }]} />
+                <View style={[styles.skeletonText, { width: '20%', marginRight: 8 }]} />
+                <View style={[styles.skeletonBadge]} />
+              </View>
+            </View>
+          </View>
+          <View style={[styles.skeletonText]} />
+          <View style={[styles.skeletonText, { width: '90%' }]} />
+          <View style={[styles.skeletonText, { width: '70%' }]} />
+        </View>
+      ))}
+    </View>
+  );
 
   return (
     <View style={styles.container}>
@@ -364,34 +513,25 @@ const HousingGroupDetailScreen = ({ route }) => {
             <Text style={styles.actionButtonText}>{isFavorited ? 'Favorited' : 'Favorite'}</Text>
           </TouchableOpacity>
         </View>
-        {/* Housing Listing Card */}
-        {housingListing && (
-          <View style={styles.housingCard}>
+
+        {/* Group Details Section */}
+        {loadingGroupDetails ? (
+          // Skeleton loader for group details
+          renderGroupDetailsSkeleton()
+        ) : groupDetailsError ? (
+          // Error state for group details
+          <View style={styles.errorContainer}>
+            <Ionicons name="alert-circle-outline" size={24} color="#FF4B4B" />
+            <Text style={styles.errorText}>{groupDetailsError}</Text>
             <TouchableOpacity 
-              style={styles.housingImageContainer}
-              onPress={() => navigation.navigate('HousingDetail', { item: housingListing })}
+              style={styles.retryButton}
+              onPress={() => fetchGroupDetails()}
             >
-              {housingListing.media_urls?.[0] ? (
-                <Image 
-                  source={{ uri: housingListing.media_urls[0] }} 
-                  style={styles.housingImage} 
-                />
-              ) : (
-                <View style={styles.defaultHousingImage}>
-                  <Text style={styles.defaultImageText}>No Image Available</Text>
-                </View>
-              )}
+              <Text style={styles.retryButtonText}>Retry</Text>
             </TouchableOpacity>
-            <View style={styles.housingInfo}>
-              <Text style={styles.housingTitle}>{housingListing.title}</Text>
-              <Text style={styles.housingAddress}>{housingListing.address}</Text>
-              <Text style={styles.housingPrice}>${housingListing.weekly_rent}/wk | Available from {new Date(housingListing.available_from).toLocaleDateString()}</Text>
-            </View>
           </View>
-        )}
-        
-        {/* Group Details */}
-        {groupDetails && (
+        ) : groupDetails && (
+          // Group details content
           <View style={styles.groupDetailsContainer}>
             <Text style={styles.groupName}>{groupDetails.name}</Text>
             <Text style={styles.description}>{groupDetails.description}</Text>
@@ -412,19 +552,92 @@ const HousingGroupDetailScreen = ({ route }) => {
           </View>
         )}
         
+        {/* Housing Listing Section */}
+        {loadingHousingListing ? (
+          // Skeleton loader for housing listing
+          renderHousingListingSkeleton()
+        ) : housingListingError ? (
+          // Error state for housing listing
+          <View style={styles.errorCard}>
+            <Text style={styles.errorCardText}>{housingListingError}</Text>
+          </View>
+        ) : housingListing && (
+          // Housing listing content
+          <View style={styles.housingCard}>
+            <TouchableOpacity 
+              style={styles.housingImageContainer}
+              onPress={() => navigation.navigate('HousingDetail', { item: housingListing })}
+            >
+              {housingListing.media_urls?.[0] ? (
+                <Image 
+                  source={{ uri: housingListing.media_urls[0] }} 
+                  style={styles.housingImage} 
+                  // Add fade-in animation
+                  onLoadStart={() => {}}
+                  onLoadEnd={() => {}}
+                  // Add fallback for image loading errors
+                  onError={(e) => console.log('Image loading error:', e.nativeEvent.error)}
+                />
+              ) : (
+                <View style={styles.defaultHousingImage}>
+                  <Text style={styles.defaultImageText}>No Image Available</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            <View style={styles.housingInfo}>
+              <Text style={styles.housingTitle}>{housingListing.title}</Text>
+              <Text style={styles.housingAddress}>{housingListing.address}</Text>
+              <Text style={styles.housingPrice}>${housingListing.weekly_rent}/wk | Available from {new Date(housingListing.available_from).toLocaleDateString()}</Text>
+            </View>
+          </View>
+        )}
+        
         {/* Members Section */}
-        <View style={styles.membersSection}>
-          <Text style={styles.sectionTitle}>Looking for {groupDetails?.max_members - groupDetails?.current_members} more {(groupDetails?.max_members - groupDetails?.current_members) === 1 ? 'person' : 'people'}</Text>
-          <Text style={styles.moveInBy}>Hoping to move in by {groupDetails?.move_in_date ? new Date(groupDetails.move_in_date).toLocaleDateString() : 'flexible date'}</Text>
-          
-          {/* Member Cards */}
-          {members.map(member => renderMemberItem(member))}
-        </View>
+        {loadingMembers ? (
+          // Skeleton loader for members
+          renderMembersSkeleton()
+        ) : membersError ? (
+          // Error state for members
+          <View style={styles.errorContainer}>
+            <Ionicons name="alert-circle-outline" size={24} color="#FF4B4B" />
+            <Text style={styles.errorText}>{membersError}</Text>
+            <TouchableOpacity 
+              style={styles.retryButton}
+              onPress={() => fetchMembers()}
+            >
+              <Text style={styles.retryButtonText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        ) : members.length > 0 && groupDetails ? (
+          // Members content
+          <View style={styles.membersSection}>
+            <Text style={styles.sectionTitle}>
+              Looking for {groupDetails.max_members - groupDetails.current_members} more 
+              {(groupDetails.max_members - groupDetails.current_members) === 1 ? ' person' : ' people'}
+            </Text>
+            <Text style={styles.moveInBy}>
+              Hoping to move in by {groupDetails.move_in_date ? new Date(groupDetails.move_in_date).toLocaleDateString() : 'flexible date'}
+            </Text>
+            
+            {/* Member Cards */}
+            {members.map(member => renderMemberItem(member))}
+          </View>
+        ) : groupDetails && (
+          // No members state
+          <View style={styles.noMembersContainer}>
+            <Text style={styles.noMembersText}>No members in this group yet</Text>
+            <Text style={styles.noMembersSubtext}>Be the first to join!</Text>
+          </View>
+        )}
         
         {/* Join Request Button */}
-        {!isCurrentUserMember && !isJoinRequestPending && (
-          <TouchableOpacity style={styles.joinButton} onPress={handleJoinRequest}>
-            <Text style={styles.joinButtonText}>Request to Join Group</Text>
+        {!isCurrentUserMember && !isJoinRequestPending && groupDetails && (
+          <TouchableOpacity style={styles.joinButton} onPress={handleJoinRequest} disabled={actionLoading}>
+            {actionLoading ? (
+              <ActivityIndicator size="small" color={COLORS.white} />
+            ) : (
+              <Text style={styles.joinButtonText}>Request to Join Group</Text>
+            )}
           </TouchableOpacity>
         )}
         
@@ -436,14 +649,17 @@ const HousingGroupDetailScreen = ({ route }) => {
               onPress={handleCancelJoinRequest}
               disabled={actionLoading}
             >
-              <Text style={styles.cancelButtonText}>Cancel Join Request</Text>
+              {actionLoading ? (
+                <ActivityIndicator size="small" color="#FF4B4B" />
+              ) : (
+                <Text style={styles.cancelButtonText}>Cancel Join Request</Text>
+              )}
             </TouchableOpacity>
           </View>
         )}
         
         <View style={styles.bottomSpace} />
       </ScrollView>
-      {/* BottomNavBar removed as requested */}
     </View>
   );
 };
@@ -463,6 +679,88 @@ const styles = StyleSheet.create({
     marginTop: 10,
     fontSize: 16,
     color: COLORS.darkGray,
+  },
+  // Skeleton styles
+  skeletonTitle: {
+    height: 24,
+    width: '70%',
+    backgroundColor: '#EEEEEE',
+    borderRadius: 4,
+    marginBottom: 12,
+  },
+  skeletonText: {
+    height: 16,
+    width: '100%',
+    backgroundColor: '#EEEEEE',
+    borderRadius: 4,
+    marginBottom: 8,
+  },
+  skeletonImage: {
+    width: '100%',
+    height: 150,
+    backgroundColor: '#EEEEEE',
+  },
+  skeletonAvatar: {
+    backgroundColor: '#EEEEEE',
+  },
+  skeletonBadge: {
+    width: 80,
+    height: 20,
+    backgroundColor: '#EEEEEE',
+    borderRadius: 12,
+  },
+  // Error styles
+  errorContainer: {
+    padding: 16,
+    margin: 16,
+    backgroundColor: '#FFF0F0',
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  errorText: {
+    fontSize: 14,
+    color: '#FF4B4B',
+    textAlign: 'center',
+    marginVertical: 8,
+  },
+  retryButton: {
+    backgroundColor: '#FF4B4B',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  retryButtonText: {
+    color: COLORS.white,
+    fontWeight: '500',
+  },
+  errorCard: {
+    margin: 16,
+    padding: 12,
+    backgroundColor: '#FFF0F0',
+    borderRadius: 8,
+  },
+  errorCardText: {
+    color: '#FF4B4B',
+    textAlign: 'center',
+  },
+  // No members state
+  noMembersContainer: {
+    padding: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 16,
+  },
+  noMembersText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: COLORS.darkGray,
+    marginBottom: 8,
+  },
+  noMembersSubtext: {
+    fontSize: 14,
+    color: COLORS.gray,
   },
   scrollContainer: {
     flex: 1,

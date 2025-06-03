@@ -306,16 +306,37 @@ const HousingGroupsScreen = ({ navigation }) => {
   };
 
   // Render item for FlatList
-  const renderHousingGroup = ({ item }) => (
-    <View style={viewMode === 'Grid' ? styles.gridCardWrapper : styles.listCardWrapper}>
-      <HousingGroupCard 
-        item={item}
-        onPress={() => navigation.navigate('HousingGroupDetailScreen', { groupId: item.id })}
-        onActionPress={() => navigation.navigate('HousingGroupDetailScreen', { groupId: item.id })} // Navigate to detail screen on button press
-        gridMode={viewMode === 'Grid'}
-      />
-    </View>
-  );
+  const renderHousingGroup = ({ item }) => {
+    // Calculate how many more members are needed
+    const spotsNeeded = item.max_members - item.current_members;
+    
+    // Create a modified item with needsLabel if not a member or pending
+    const modifiedItem = {
+      ...item,
+      needsLabel: (!item.membershipStatus || (item.membershipStatus !== 'approved' && item.membershipStatus !== 'pending')) 
+        ? `Need ${spotsNeeded > 0 ? spotsNeeded : 'more'}` 
+        : null
+    };
+    
+    return (
+      <View style={viewMode === 'Grid' ? styles.gridCardWrapper : styles.listCardWrapper}>
+        <HousingGroupCard 
+          item={modifiedItem}
+          onPress={() => navigation.navigate('HousingGroupDetailScreen', { groupId: item.id })}
+          onActionPress={() => {
+            // If the button is showing "Leave", handle it here without navigation
+            if (item.membershipStatus === 'approved' || item.membershipStatus === 'pending') {
+              handleCardAction(item);
+            } else {
+              // Otherwise, for "Join", navigate to detail screen
+              navigation.navigate('HousingGroupDetailScreen', { groupId: item.id });
+            }
+          }}
+          gridMode={viewMode === 'Grid'}
+        />
+      </View>
+    );
+  };
 
   // Empty list component
   const EmptyListComponent = () => (

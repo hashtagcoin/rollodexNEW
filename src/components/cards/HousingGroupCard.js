@@ -145,6 +145,10 @@ const HousingGroupCard = ({
     statusLabel = 'Declined';
     statusLabelStyle = styles.declinedLabel;
     disabled = true;
+  } else if (item.needsLabel) {
+    // Show the 'Need X' label when provided
+    statusLabel = item.needsLabel;
+    statusLabelStyle = styles.needsLabel;
   }
   
   // Format move-in date if available
@@ -175,8 +179,10 @@ const HousingGroupCard = ({
     >
       {/* Status label for list view - outside of image container */}
       {!gridMode && statusLabel && (
-        <View style={[styles.statusLabelContainer, styles.cardStatusLabel]}>
-          <Text style={styles.statusLabelText}>{statusLabel}</Text>
+        <View style={[styles.cardStatusLabel]}>
+          <View style={[statusLabelStyle, styles.compactLabel]}>
+            <Text style={styles.statusLabelText}>{statusLabel}</Text>
+          </View>
         </View>
       )}
       
@@ -368,15 +374,17 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
   },
-  cardStatusLabel: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    zIndex: 10,
+  compactLabel: {
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 4,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    alignSelf: 'flex-start',
+  },
+  cardStatusLabel: {
+    position: 'absolute',
+    top: -4, // Move label up above the card content
+    right: 8,
+    zIndex: 10,
   },
   statusLabelText: {
     color: '#FFFFFF',
@@ -388,6 +396,9 @@ const styles = StyleSheet.create({
   },
   pendingLabel: {
     backgroundColor: '#FF9800', // Orange
+  },
+  needsLabel: {
+    backgroundColor: '#3F51B5', // Indigo blue for 'Need X' label
   },
   declinedLabel: {
     backgroundColor: '#F44336', // Red
@@ -447,13 +458,13 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   actionButton: {
-    paddingVertical: 8, // Taller button
-    paddingHorizontal: 16, // Wider button
-    borderRadius: 24, // More rounded button
+    paddingVertical: 6, // Reduced vertical padding
+    paddingHorizontal: 12, // Reduced horizontal padding
+    borderRadius: 20, // More rounded button
     alignItems: 'center',
     justifyContent: 'center',
     alignSelf: 'flex-start',
-    minWidth: 80, // Minimum width for better appearance
+    minWidth: 70, // Reduced minimum width
   },
   imageButton: {
     position: 'absolute',
@@ -471,7 +482,7 @@ const styles = StyleSheet.create({
   },
   joinButtonText: {
     color: '#FFFFFF',
-    fontSize: 13,
+    fontSize: 12, // Reduced font size
     fontWeight: '600',
   },
   leaveButton: {
@@ -481,7 +492,7 @@ const styles = StyleSheet.create({
   },
   leaveButtonText: {
     color: '#666',
-    fontSize: 13,
+    fontSize: 12, // Reduced font size
     fontWeight: '600',
   },
   pendingButton: {
@@ -491,7 +502,7 @@ const styles = StyleSheet.create({
   },
   pendingButtonText: {
     color: COLORS.primary,
-    fontSize: 13,
+    fontSize: 12, // Reduced font size
     fontWeight: '600',
   },
   declinedButton: {
@@ -501,7 +512,7 @@ const styles = StyleSheet.create({
   },
   declinedButtonText: {
     color: '#ff6b6b',
-    fontSize: 13,
+    fontSize: 12, // Reduced font size
     fontWeight: '600',
   },
 });
