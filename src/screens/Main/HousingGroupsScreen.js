@@ -300,8 +300,8 @@ const HousingGroupsScreen = ({ navigation }) => {
       // If user is a member or has a pending request, allow them to leave/cancel
       handleLeaveGroup(item.id);
     } else {
-      // If user is not a member, allow them to join
-      handleJoinGroup(item.id);
+      // If user is not a member, navigate to the detail screen to join
+      navigation.navigate('HousingGroupDetailScreen', { groupId: item.id, fromJoinButton: true });
     }
   };
 
@@ -322,16 +322,10 @@ const HousingGroupsScreen = ({ navigation }) => {
       <View style={viewMode === 'Grid' ? styles.gridCardWrapper : styles.listCardWrapper}>
         <HousingGroupCard 
           item={modifiedItem}
+          // Always navigate to the detail screen when tapping the card
           onPress={() => navigation.navigate('HousingGroupDetailScreen', { groupId: item.id })}
-          onActionPress={() => {
-            // If the button is showing "Leave", handle it here without navigation
-            if (item.membershipStatus === 'approved' || item.membershipStatus === 'pending') {
-              handleCardAction(item);
-            } else {
-              // Otherwise, for "Join", navigate to detail screen
-              navigation.navigate('HousingGroupDetailScreen', { groupId: item.id });
-            }
-          }}
+          // Use handleCardAction for the button press
+          onActionPress={() => handleCardAction(item)}
           gridMode={viewMode === 'Grid'}
         />
       </View>

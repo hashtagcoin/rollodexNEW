@@ -8,7 +8,7 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import { getUserProfile } from '../../utils/authUtils';
 
 const HousingGroupDetailScreen = ({ route }) => {
-  const { groupId } = route.params || {};
+  const { groupId, fromJoinButton } = route.params || {};
   const navigation = useNavigation();
   
   // Progressive loading states for different sections
@@ -271,6 +271,14 @@ const HousingGroupDetailScreen = ({ route }) => {
     initializeData();
     
   }, [groupId, currentUser]);
+  
+  // Auto-join the group if coming from join button
+  useEffect(() => {
+    if (fromJoinButton && currentUser && groupId && !isJoinRequestPending && !isCurrentUserMember) {
+      // Only execute if we know the user is not already a member and doesn't have a pending request
+      handleJoinRequest();
+    }
+  }, [fromJoinButton, currentUser, groupId, isJoinRequestPending, isCurrentUserMember]);
 
   const handleJoinRequest = async () => {
     if (!currentUser) {
