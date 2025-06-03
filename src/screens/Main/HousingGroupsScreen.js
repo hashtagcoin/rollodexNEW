@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { 
   View, 
   Text, 
@@ -62,7 +62,7 @@ const HousingGroupsScreen = ({ navigation }) => {
     fetchUserId();
   }, []);
 
-  // Fetch housing groups data from Supabase
+  // Fetch housing groups data from Supabase - optimized version
   const fetchHousingGroups = useCallback(async (isRefreshing = false) => {
     if (isRefreshing) {
       setRefreshing(true);
@@ -75,65 +75,97 @@ const HousingGroupsScreen = ({ navigation }) => {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) throw userError || new Error('No authenticated user');
 
-      // Fetch all active housing groups
+      // Single query to fetch housing groups with related listing data and membership status
+      // This uses Supabase's nested selection to avoid multiple round trips
       const { data: groups, error: groupsError } = await supabase
         .from('housing_groups')
-        .select('*')
+        .select(`
+          *,
+          housing_listings:listing_id (*),
+          housing_group_members!group_id(status)
+        `)
         .eq('is_active', true)
+        .eq('housing_group_members.user_id', user.id)
         .order('created_at', { ascending: false });
 
-      if (groupsError) throw groupsError;
+      if (groupsError) {
+        // If the join query fails (possibly due to no member records), try basic query
+        const { data: basicGroups, error: basicError } = await supabase
+          .from('housing_groups')
+          .select(`
+            *,
+            housing_listings:listing_id (*)
+          `)
+          .eq('is_active', true)
+          .order('created_at', { ascending: false });
 
-      // For each group, check user's membership status and get housing listing data
-      const groupsWithStatus = await Promise.all(groups.map(async (group) => {
-        // Get associated housing listing data if available
-        let housingListingData = null;
-        if (group.listing_id) {
-          const { data: listing, error: listingError } = await supabase
-            .from('housing_listings')
-            .select('*')
-            .eq('id', group.listing_id)
-            .single();
-
-          if (!listingError && listing) {
-            housingListingData = listing;
-          }
-        }
-
-        // Check if user is a member of this group
-        const { data: membership, error: membershipError } = await supabase
-          .from('housing_group_members')
-          .select('status')
-          .eq('group_id', group.id)
-          .eq('user_id', user.id)
-          .single();
-
-        // Check if user has applied to the related housing listing
-        let applicationStatus = null;
-        if (group.listing_id) {
-          const { data: application, error: appError } = await supabase
-            .from('housing_applications')
-            .select('status')
-            .eq('user_id', user.id)
-            .eq('listing_id', group.listing_id)
-            .single();
-          
-          if (!appError && application) {
-            applicationStatus = application.status;
-          }
-        }
-
-        return {
+        if (basicError) throw basicError;
+        
+        // Process the results
+        const processedGroups = basicGroups.map(group => ({
           ...group,
-          housing_listing_data: housingListingData,
-          membershipStatus: membership?.status || null,
-          applicationStatus
-        };
-      }));
+          housing_listing_data: group.housing_listings || null,
+          membershipStatus: null, // User is not a member of any groups
+          applicationStatus: null // Will be checked separately if needed
+        }));
+        
+        setHousingGroups(processedGroups);
+      } else {
+        // Process the joined results
+        const processedGroups = groups.map(group => {
+          // Extract membership status from the nested data
+          let membershipStatus = null;
+          if (group.housing_group_members && group.housing_group_members.length > 0) {
+            membershipStatus = group.housing_group_members[0].status;
+          }
+          
+          return {
+            ...group,
+            housing_listing_data: group.housing_listings || null,
+            membershipStatus,
+            applicationStatus: null // Will be checked separately if needed for UI updates
+          };
+        });
+        
+        setHousingGroups(processedGroups);
+      }
 
-      setHousingGroups(groupsWithStatus);
+      // Optional: If we absolutely need application status and can't modify the UI,
+      // we could fetch it in a separate bulk query instead of one per group
+      // This would run after initial display to avoid blocking the UI
+      /*
+      if (user && housingGroups.length > 0) {
+        const listingIds = housingGroups
+          .filter(g => g.listing_id)
+          .map(g => g.listing_id);
+          
+        if (listingIds.length > 0) {
+          const { data: applications } = await supabase
+            .from('housing_applications')
+            .select('listing_id, status')
+            .eq('user_id', user.id)
+            .in('listing_id', listingIds);
+            
+          if (applications?.length > 0) {
+            // Create a map for quick lookup
+            const appStatusMap = {};
+            applications.forEach(app => {
+              appStatusMap[app.listing_id] = app.status;
+            });
+            
+            // Update the groups with application status
+            setHousingGroups(current => 
+              current.map(group => ({
+                ...group,
+                applicationStatus: group.listing_id ? appStatusMap[group.listing_id] : null
+              }))
+            );
+          }
+        }
+      }
+      */
     } catch (error) {
-      console.error('Error fetching housing groups:', error);
+      // Error fetching housing groups
       // We could show an error message to the user here
     } finally {
       setLoading(false);
@@ -141,11 +173,7 @@ const HousingGroupsScreen = ({ navigation }) => {
     }
   }, [refreshing]);
 
-  // Initial data fetch and refresh on focus
-  useEffect(() => {
-    fetchHousingGroups();
-  }, [fetchHousingGroups]);
-
+  // Only fetch on focus, not on both mount and focus
   useFocusEffect(
     useCallback(() => {
       fetchHousingGroups();
@@ -164,59 +192,64 @@ const HousingGroupsScreen = ({ navigation }) => {
     );
   };
 
-  // Filter groups based on search term and active filters
-  const filteredGroups = housingGroups.filter(group => {
-    // First, apply search term filter
-    const matchesSearch = 
-      group.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (group.description && group.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (group.housing_listing_data?.suburb && 
-       group.housing_listing_data.suburb.toLowerCase().includes(searchTerm.toLowerCase()));
+  // Filter groups based on search term and active filters - optimized with useMemo
+  const filteredGroups = useMemo(() => {
+    return housingGroups.filter(group => {
+      // First, apply search term filter
+      if (searchTerm) {
+        const lowerSearchTerm = searchTerm.toLowerCase();
+        const matchesSearch = 
+          group.name?.toLowerCase().includes(lowerSearchTerm) ||
+          (group.description && group.description.toLowerCase().includes(lowerSearchTerm)) ||
+          (group.housing_listing_data?.suburb && 
+           group.housing_listing_data.suburb.toLowerCase().includes(lowerSearchTerm));
 
-    if (!matchesSearch) return false;
-    
-    // If no filters are active, return all matches
-    if (activeFilters.length === 0) return true;
-
-    // Apply filters
-    return activeFilters.some(filter => {
-      switch(filter) {
-        case 'sda':
-          return group.housing_listing_data?.is_sda_certified === true;
-        case 'pets':
-          return group.housing_listing_data?.pet_friendly === true || 
-                 group.housing_listing_data?.features?.includes('pet friendly');
-        case 'accessible':
-          return (group.housing_listing_data?.accessibility_rating || 0) >= 3;
-        case 'wheelchair':
-          return group.housing_listing_data?.accessibility_features?.includes('wheelchair') || 
-                 group.housing_listing_data?.features?.includes('wheelchair access');
-        case 'supportsOnsite':
-          return group.housing_listing_data?.features?.includes('onsite support') || 
-                 group.housing_listing_data?.supports_onsite === true;
-        case 'sensory':
-          return group.housing_listing_data?.features?.includes('sensory friendly') || 
-                 group.housing_listing_data?.accessibility_features?.includes('sensory');
-        case 'smoking':
-          return group.housing_listing_data?.smoking_allowed === true || 
-                 group.housing_listing_data?.features?.includes('smoking allowed');
-        case 'parking':
-          return group.housing_listing_data?.parking_available === true || 
-                 group.housing_listing_data?.features?.includes('parking');
-        case 'female':
-          return group.gender_preference === 'female' || 
-                 group.housing_listing_data?.gender_preference === 'female';
-        case 'male':
-          return group.gender_preference === 'male' || 
-                 group.housing_listing_data?.gender_preference === 'male';
-        case 'sil':
-          return group.support_needs?.includes('SIL') || 
-                 group.housing_listing_data?.features?.includes('SIL');
-        default:
-          return true;
+        if (!matchesSearch) return false;
       }
+      
+      // If no filters are active, return all matches
+      if (activeFilters.length === 0) return true;
+
+      // Apply filters
+      return activeFilters.some(filter => {
+        switch(filter) {
+          case 'sda':
+            return group.housing_listing_data?.is_sda_certified === true;
+          case 'pets':
+            return group.housing_listing_data?.pet_friendly === true || 
+                   group.housing_listing_data?.features?.includes('pet friendly');
+          case 'accessible':
+            return (group.housing_listing_data?.accessibility_rating || 0) >= 3;
+          case 'wheelchair':
+            return group.housing_listing_data?.accessibility_features?.includes('wheelchair') || 
+                   group.housing_listing_data?.features?.includes('wheelchair access');
+          case 'supportsOnsite':
+            return group.housing_listing_data?.features?.includes('onsite support') || 
+                   group.housing_listing_data?.supports_onsite === true;
+          case 'sensory':
+            return group.housing_listing_data?.features?.includes('sensory friendly') || 
+                   group.housing_listing_data?.accessibility_features?.includes('sensory');
+          case 'smoking':
+            return group.housing_listing_data?.smoking_allowed === true || 
+                   group.housing_listing_data?.features?.includes('smoking allowed');
+          case 'parking':
+            return group.housing_listing_data?.parking_available === true || 
+                   group.housing_listing_data?.features?.includes('parking');
+          case 'female':
+            return group.gender_preference === 'female' || 
+                   group.housing_listing_data?.gender_preference === 'female';
+          case 'male':
+            return group.gender_preference === 'male' || 
+                   group.housing_listing_data?.gender_preference === 'male';
+          case 'sil':
+            return group.support_needs?.includes('SIL') || 
+                   group.housing_listing_data?.features?.includes('SIL');
+          default:
+            return true;
+        }
+      });
     });
-  });
+  }, [housingGroups, searchTerm, activeFilters]); // Only recalculate when these dependencies change
 
   // Handle join group action
   const handleJoinGroup = async (groupId) => {
@@ -262,7 +295,7 @@ const HousingGroupsScreen = ({ navigation }) => {
       // Refresh the groups list to update status
       fetchHousingGroups();
     } catch (error) {
-      console.error('Error joining group:', error);
+      // Error joining group
     }
   };
 
@@ -286,7 +319,7 @@ const HousingGroupsScreen = ({ navigation }) => {
       // Refresh the groups list to update status
       fetchHousingGroups();
     } catch (error) {
-      console.error('Error leaving group:', error);
+      // Error leaving group
     }
   };
 

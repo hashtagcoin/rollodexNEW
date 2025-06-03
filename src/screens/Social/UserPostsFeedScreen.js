@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -19,7 +19,8 @@ import PostCard from '../../components/social/PostCard';
 const { width } = Dimensions.get('window');
 
 const UserPostsFeedScreen = ({ route, navigation }) => {
-  const { userId, username } = route.params;
+  const { userId, username, postId } = route.params;
+  const flatListRef = useRef(null);
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -27,6 +28,23 @@ const UserPostsFeedScreen = ({ route, navigation }) => {
   useEffect(() => {
     fetchPosts();
   }, [userId]);
+
+  // Scroll to the specific post if postId is provided
+  useEffect(() => {
+    if (postId && !loading && posts.length > 0) {
+      const postIndex = posts.findIndex(post => post.post_id === postId);
+      if (postIndex !== -1 && flatListRef.current) {
+        // Small delay to ensure FlatList is fully rendered
+        setTimeout(() => {
+          flatListRef.current.scrollToIndex({
+            index: postIndex,
+            animated: true,
+            viewPosition: 0
+          });
+        }, 300);
+      }
+    }
+  }, [postId, posts, loading]);
 
   const fetchPosts = async () => {
     try {
@@ -73,8 +91,21 @@ const UserPostsFeedScreen = ({ route, navigation }) => {
         </View>
       ) : (
         <FlatList
+          ref={flatListRef}
           data={posts}
           keyExtractor={(item) => item.post_id}
+          onScrollToIndexFailed={info => {
+            console.warn('Failed to scroll to post: ', info);
+            // Fallback scrolling implementation for when the scroll fails
+            setTimeout(() => {
+              if (flatListRef.current) {
+                flatListRef.current.scrollToOffset({
+                  offset: info.averageItemLength * info.index,
+                  animated: true
+                });
+              }
+            }, 100);
+          }}
           renderItem={({ item }) => (
             <PostCard
               post={item}

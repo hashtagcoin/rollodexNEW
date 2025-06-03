@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, Animated, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity, Animated, ActivityIndicator, Alert, ScrollView } from 'react-native';
 import ActionButton from '../../components/common/ActionButton';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import AppHeader from '../../components/layout/AppHeader';
@@ -17,6 +17,7 @@ const FILTERS = [
 ];
 
 const GroupsListScreen = () => {
+  console.log('[GroupsListScreen] --- Component Mounting/Rendering ---');
   const navigation = useNavigation();
   const [filter, setFilter] = useState('all');
   const [groupsData, setGroupsData] = useState([]);
@@ -24,6 +25,7 @@ const GroupsListScreen = () => {
   const [error, setError] = useState(null);
   const [userId, setUserId] = useState(null);
   const [membershipStatus, setMembershipStatus] = useState({});
+  const [userGroupRoles, setUserGroupRoles] = useState({}); // Stores { groupId: role }
 
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const scrollY = useRef(new Animated.Value(0)).current;
@@ -33,17 +35,69 @@ const GroupsListScreen = () => {
   // Get current user's ID
   useEffect(() => {
     const fetchCurrentUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
+      console.log('[GroupsListScreen] fetchCurrentUser: Attempting to get user...');
+      try {
+        const { data: { user }, error: authError } = await supabase.auth.getUser();
+        
+        if (authError) {
+          console.error('[GroupsListScreen] fetchCurrentUser: Auth error while getting user:', authError.message);
+          setUserId(null); // Ensure userId is null on error
+          return;
+        }
 
-        setUserId(user.id);
-      } else {
-
+        if (user) {
+          console.log('[GroupsListScreen] fetchCurrentUser: User found, ID:', user.id);
+          setUserId(user.id);
+        } else {
+          console.log('[GroupsListScreen] fetchCurrentUser: No user object returned (user is null/undefined). Session might be invalid or expired.');
+          setUserId(null); // Ensure userId is null
+        }
+      } catch (e) {
+        console.error('[GroupsListScreen] fetchCurrentUser: Exception caught while trying to get user:', e.message);
+        setUserId(null); // Ensure userId is null on exception
       }
     };
     
     fetchCurrentUser();
   }, []);
+
+  // Fetch user's roles in different groups
+  const fetchUserGroupRoles = useCallback(async () => {
+    if (!userId) {
+      setUserGroupRoles({}); // Clear roles if no user
+      return;
+    }
+    console.log('[GroupsListScreen] fetchUserGroupRoles: Fetching roles for user:', userId);
+    try {
+      const { data, error } = await supabase
+        .from('group_members')
+        .select('group_id, role')
+        .eq('user_id', userId);
+
+      if (error) {
+        console.error('[GroupsListScreen] fetchUserGroupRoles: Error fetching group roles:', error.message);
+        setUserGroupRoles({});
+        return;
+      }
+
+      const rolesMap = {};
+      if (data) {
+        data.forEach(membership => {
+          rolesMap[membership.group_id] = membership.role;
+        });
+      }
+      console.log('[GroupsListScreen] fetchUserGroupRoles: Roles map:', rolesMap);
+      setUserGroupRoles(rolesMap);
+    } catch (e) {
+      console.error('[GroupsListScreen] fetchUserGroupRoles: Exception fetching group roles:', e.message);
+      setUserGroupRoles({});
+    }
+  }, [userId]);
+
+  // Effect to fetch group roles when userId changes
+  useEffect(() => {
+    fetchUserGroupRoles();
+  }, [userId, fetchUserGroupRoles]);
   
 
 
@@ -129,7 +183,7 @@ const GroupsListScreen = () => {
           imageUrl = 'https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/housing/exterior/alejandra-cifre-gonzalez-ylyn5r4vxcA-unsplash.jpg';
         }
         
-        console.log('Housing group image URL:', imageUrl); // Debug log
+        // Housing group image URL debug
         
         return {
           ...group,
@@ -152,7 +206,7 @@ const GroupsListScreen = () => {
         fetchUserMembershipStatus(housingGroups.map(g => g.id));
       }
     } catch (e) {
-      console.error('Error fetching groups:', e);
+      // Error fetching groups
       setError(e.message || 'Failed to fetch groups.');
     } finally {
       setLoading(false);
@@ -180,7 +234,7 @@ const GroupsListScreen = () => {
       
       setMembershipStatus(statusMap);
     } catch (e) {
-      console.error('Error fetching membership status:', e);
+      // Error fetching membership status
     }
   };
 
@@ -207,7 +261,7 @@ const GroupsListScreen = () => {
     }
   }, [groupsData, filter]);
 
-  const GroupCard = React.memo(({ item, navigation }) => {
+  const GroupCard = React.memo(({ item, navigation, userId, userRole }) => {
     const [isFavorited, setIsFavorited] = useState(false);
     const [favoriteLoading, setFavoriteLoading] = useState(false);
     
@@ -226,26 +280,26 @@ const GroupsListScreen = () => {
             .maybeSingle(); // Use maybeSingle to avoid PGRST116 error
           
           if (error) {
-            console.error('Error checking favorite status:', error);
+            // Error checking favorite status
             return;
           }
           
           setIsFavorited(!!data);
         } catch (error) {
-          console.error('Error in favorite check:', error);
+          // Error in favorite check
         }
       };
       
       checkIfFavorited();
-    }, [userId, item.id]);
+    }, [userId, item.id]); // Now correctly depends on the userId prop
 
     const toggleFavorite = useCallback(async (e) => {
       e.stopPropagation(); // Prevent card navigation when clicking favorite
-      console.log('Toggling favorite for group:', item.id, item.name);
+      // Toggling favorite for group
       
       // Use the userId from state for consistency
       if (!userId) {
-        console.log('No user ID available, cannot toggle favorite');
+        // No user ID available, cannot toggle favorite
         Alert.alert('Error', 'Please sign in to favorite groups');
         return;
       }
@@ -253,7 +307,7 @@ const GroupsListScreen = () => {
       setFavoriteLoading(true);
       try {
         if (isFavorited) {
-          console.log('Removing from favorites...');
+          // Removing from favorites...
           // Remove from favorites
           const { error } = await supabase
             .from('favorites')
@@ -263,14 +317,14 @@ const GroupsListScreen = () => {
             .eq('item_type', 'group');
           
           if (error) {
-            console.error('Error removing favorite:', error);
+            // Error removing favorite
             throw error;
           }
           
-          console.log('Successfully removed from favorites');
+          // Successfully removed from favorites
           setIsFavorited(false);
         } else {
-          console.log('Adding to favorites...');
+          // Adding to favorites...
           // Add to favorites
           const favoriteData = {
             user_id: userId,
@@ -285,24 +339,40 @@ const GroupsListScreen = () => {
             .select();
           
           if (error) {
-            console.error('Error adding favorite:', error);
+            // Error adding favorite
             throw error;
           }
           
-          console.log('Successfully added to favorites');
+          // Successfully added to favorites
           setIsFavorited(true);
         }
       } catch (error) {
-        console.error('Error in toggleFavorite:', error);
-        Alert.alert('Error', 'Failed to update favorite status');
+        // Error in favorite check
       } finally {
-        setFavoriteLoading(false);
+        // It's good practice to handle loading state in a finally for checkIfFavorited too, if it had one.
+        // For now, this is primarily for toggleFavorite's loading state.
+        setFavoriteLoading(false); // Ensure loading is set to false in finally
       }
-    }, [isFavorited, item.id, item.name, userId]);
-    
-    // Get membership button text and style based on status
+    }, [isFavorited, item.id, userId]); // Correctly close useCallback and add dependencies
+
     const getMembershipButtonInfo = () => {
       if (!item.is_housing_group) {
+        if (userRole === 'admin') {
+          return {
+            text: 'Admin',
+            buttonStyle: styles.adminBtn, // New style
+            textStyle: styles.adminBtnText, // New style
+            disabled: false // Admin should be able to navigate
+          };
+        } else if (userRole === 'member') {
+          return {
+            text: 'Member',
+            buttonStyle: styles.memberBtn, // New style
+            textStyle: styles.memberBtnText, // New style
+            disabled: false // Member should be able to navigate (or true if just an indicator)
+          };
+        }
+        // Default for non-member, non-housing group
         return {
           text: 'Join',
           buttonStyle: styles.joinBtn,
@@ -345,12 +415,18 @@ const GroupsListScreen = () => {
     };
     
     const handleJoinGroup = () => {
-      if (!item.is_housing_group) {
-        return;
+      if (item.is_housing_group) {
+        // Navigate to the housing group detail screen for housing groups
+        navigation.navigate('HousingGroupDetailScreen', { groupId: item.id });
+      } else {
+        // For regular groups, navigate to GroupDetailScreen with joinFlow parameters
+        navigation.navigate('GroupDetail', {
+          groupId: item.id,
+          joinFlow: true, // Indicate that the user is coming from the 'Join' button
+          groupName: item.name, // Pass group name for the popup message
+          userRole: userRole // Pass user's role
+        });
       }
-      
-      // Navigate to the housing group detail screen
-      navigation.navigate('HousingGroupDetailScreen', { groupId: item.id });
     };
     
     const { text: membershipButtonText, buttonStyle, textStyle, disabled } = getMembershipButtonInfo();
@@ -361,7 +437,7 @@ const GroupsListScreen = () => {
           if (item.is_housing_group) {
             navigation.navigate('HousingGroupDetailScreen', { groupId: item.id });
           } else {
-            navigation.navigate('GroupDetail', { groupId: item.id });
+            navigation.navigate('GroupDetail', { groupId: item.id, userRole: userRole });
           }
         }} 
         style={styles.card}
@@ -369,11 +445,16 @@ const GroupsListScreen = () => {
         <Image 
           source={{ uri: item.image || 'https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/housing/exterior/alejandra-cifre-gonzalez-ylyn5r4vxcA-unsplash.jpg' }} 
           style={styles.cardImage}
-          onError={(e) => console.log('Image load error for:', item.image, e.nativeEvent.error)}
+          onError={(e) => {/* Image load error handling */}}
         />
         <View style={styles.cardContent}>
           <View style={styles.cardHeader}>
             <Text style={styles.cardTitle} numberOfLines={1}>{item.name}</Text>
+            {userRole === 'admin' && !item.is_housing_group && (
+              <View style={styles.adminBadgeContainer}>
+                <Text style={styles.adminBadgeText}>Admin</Text>
+              </View>
+            )}
             <TouchableOpacity onPress={(e) => toggleFavorite(e)} style={styles.favoriteIconContainer} disabled={favoriteLoading}>
               {favoriteLoading ? (
                 <ActivityIndicator size="small" color="#007AFF" />
@@ -412,9 +493,10 @@ const GroupsListScreen = () => {
     );
   });
 
-  const renderGroupCard = useCallback(({ item }) => (
-    <GroupCard item={item} navigation={navigation} />
-  ), [navigation]);
+  const renderGroupCard = useCallback(({ item }) => {
+    const userRole = userGroupRoles[item.id]; // Get role for this specific group
+    return <GroupCard item={item} navigation={navigation} userId={userId} userRole={userRole} />;
+  }, [navigation, userId, userGroupRoles]);
 
   if (loading) {
     return (
@@ -441,16 +523,10 @@ const GroupsListScreen = () => {
       <Animated.View style={[styles.floatingActionButton, {
         opacity: fadeAnim
       }]}>
-        <ActionButton
-          onPress={() => {}}
-          iconName="add"
-          color="#007AFF"
-          size={56}
-        />
       </Animated.View>
       <AppHeader title="Groups" navigation={navigation} canGoBack={true} />
       <View style={styles.filterSection}>
-        <View style={styles.filterRow}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
           {FILTERS.map((filterItem) => (
             <TouchableOpacity
               key={filterItem.key}
@@ -460,50 +536,75 @@ const GroupsListScreen = () => {
               <Text style={[styles.filterBtnText, filter === filterItem.key && styles.filterBtnTextActive]}>{filterItem.label}</Text>
             </TouchableOpacity>
           ))}
-        </View>
+        </ScrollView>
       </View>
       <Animated.FlatList
         data={filteredGroups}
+        keyExtractor={(item) => item.id}
         renderItem={renderGroupCard}
-        keyExtractor={item => item.id}
-        contentContainerStyle={styles.listContainer}
+        contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          { 
-            useNativeDriver: true,
-            listener: () => {
+          {
+            useNativeDriver: false,
+            listener: (event) => {
+              setIsScrolling(true);
+              // Fade out quickly to 30%
+              Animated.timing(fadeAnim, {
+                toValue: 0.3,
+                duration: 120,
+                useNativeDriver: false,
+              }).start();
               if (scrollEndTimer.current) {
                 clearTimeout(scrollEndTimer.current);
               }
-              
-              if (!isScrolling) {
-                setIsScrolling(true);
-                Animated.timing(fadeAnim, {
-                  toValue: 0,
-                  duration: 200,
-                  useNativeDriver: true,
-                }).start();
-              }
-              
               scrollEndTimer.current = setTimeout(() => {
                 setIsScrolling(false);
+                // Fade back in gradually to 100%
                 Animated.timing(fadeAnim, {
                   toValue: 1,
-                  duration: 500, 
-                  useNativeDriver: true,
+                  duration: 500,
+                  useNativeDriver: false,
                 }).start();
-              }, 200);
+              }, 180);
             }
           }
         )}
         scrollEventThrottle={16}
+      />
+      {/* Floating Create Group FAB */}
+      <ActionButton
+        onPress={() => navigation.navigate('CreateSocialGroup')}
+        iconName="add"
+        color="#007AFF"
+        size={56}
+        style={styles.fab}
+        accessibilityLabel="Create Group"
+        opacity={fadeAnim}
       />
     </View>
   );
 };
 
 const styles = StyleSheet.create({
+  fab: {
+    position: 'absolute',
+    right: 24,
+    bottom: 32,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#007AFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    zIndex: 100,
+  },
   floatingActionButton: {
     position: 'absolute',
     bottom: 20, 
@@ -556,9 +657,44 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   housingBadgeText: {
-    color: '#00b894',
-    fontSize: 9,
+    color: '#fff',
+    fontSize: 10,
     fontWeight: 'bold',
+  },
+  adminBadgeContainer: {
+    backgroundColor: COLORS.PRIMARY, // Or a distinct admin color
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: 8,
+    alignSelf: 'flex-start',
+  },
+  adminBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  adminBtn: {
+    backgroundColor: COLORS.PRIMARY, // Example admin button style
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 15,
+  },
+  adminBtnText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  memberBtn: {
+    backgroundColor: COLORS.LIGHT_GREY, // Example member button style
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 15,
+  },
+  memberBtnText: {
+    color: COLORS.DARK_GREY,
+    fontSize: 12,
+    fontWeight: '500',
   },
   screenContainer: {
     flex: 1,

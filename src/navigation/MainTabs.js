@@ -13,7 +13,6 @@ import WalletStackNavigator from './WalletStackNavigator';
 import SocialStackNavigator from './SocialStackNavigator';
 import FavouritesScreen from '../screens/Main/FavouritesScreen';
 import ProfileStackNavigator from './ProfileStackNavigator';
-import GroupsListScreen from '../screens/Main/GroupsListScreen';
 import GroupDetailScreen from '../screens/Main/GroupDetailScreen';
 import CreateGroupPostScreen from '../screens/Main/CreateGroupPostScreen';
 import BookingConfirmationScreen from '../screens/Main/BookingConfirmationScreen';
@@ -131,7 +130,7 @@ const TabNavigator = () => {
 const MainTabs = () => (
   <Stack.Navigator screenOptions={{ headerShown: false }}>
     <Stack.Screen name="MainTabs" component={TabNavigator} />
-    <Stack.Screen name="GroupsListScreen" component={GroupsListScreen} />
+    {/* Removed GroupsListScreen from Stack, now handled by SocialStackNavigator in TabNavigator */}
     <Stack.Screen 
       name="CreateGroupPostScreen" 
       component={CreateGroupPostScreen}

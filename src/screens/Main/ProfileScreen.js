@@ -567,7 +567,11 @@ const ProfileScreen = () => {
                   return (
                     <TouchableOpacity 
                       style={styles.postImageContainer}
-                      onPress={() => navigation.navigate('UserPostsFeedScreen', { userId: currentUser?.id, username: 'My Posts' })}
+                      onPress={() => navigation.navigate('UserPostsFeedScreen', { 
+                        userId: currentUser?.id, 
+                        username: 'My Posts',
+                        postId: item.post_id // Pass the specific post_id to navigate to
+                      })}
                     >
                       <Image source={{ uri: imageUrl }} style={styles.postImage} />
                     </TouchableOpacity>

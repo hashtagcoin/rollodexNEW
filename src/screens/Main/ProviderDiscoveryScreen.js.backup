@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { 
   View, 
   Text, 
@@ -54,6 +54,10 @@ const ProviderDiscoveryScreen = ({ route }) => {
   // State variables
   const [selectedCategory, setSelectedCategory] = useState(CATEGORIES[0]);
   const listViewRef = useRef(null);
+  const gridViewRef = useRef(null);
+  const swipeViewRef = useRef(null);
+  const lastFetchRef = useRef(null); // Track when we last fetched data
+  const categoryDataCache = useRef({}); // Cache data by category
   
   // Handle initial category from params
   useEffect(() => {
@@ -65,13 +69,36 @@ const ProviderDiscoveryScreen = ({ route }) => {
   // Reset scroll position when tab is focused
   useFocusEffect(
     useCallback(() => {
-      console.log('[ProviderDiscovery] Focus effect: scrolling to top if list view.');
-      if (viewMode === 'List' && listViewRef.current) {
+      // Reset scroll for all view modes regardless of which is active
+      // For List view
+      if (listViewRef.current) {
         listViewRef.current.scrollToOffset({ offset: 0, animated: false });
       }
-      // Optionally, trigger a data refresh on focus if needed, though current setup relies on deps for useEffect
-      // fetchData(false); // Example: if you want to refresh on every focus
-    }, [viewMode]) // Dependency: viewMode to ensure ref is current for list
+      
+      // For Grid view
+      if (gridViewRef.current) {
+        gridViewRef.current.scrollToOffset({ offset: 0, animated: false });
+      }
+      
+      // Always reset to first view mode
+      setViewMode(VIEW_MODES[0]);
+      
+      // Reset data to initial state
+      if (initialParams.initialCategory && CATEGORIES.includes(initialParams.initialCategory)) {
+        setSelectedCategory(initialParams.initialCategory);
+      } else {
+        setSelectedCategory(CATEGORIES[0]);
+      }
+      
+      // Only refresh data if we don't already have items or if it's been more than 2 minutes
+      const shouldRefresh = items.length === 0 || 
+        (lastFetchRef.current && (Date.now() - lastFetchRef.current) > 120000);
+      
+      if (shouldRefresh) {
+        // Force refresh data on tab focus only if needed
+        fetchData(true); // Pass true to force refresh
+      }
+    }, [items.length]) // Add items.length as dependency to avoid unnecessary refreshes
   );
   const [viewMode, setViewMode] = useState(VIEW_MODES[0]);
   const [items, setItems] = useState([]);
@@ -99,7 +126,7 @@ const ProviderDiscoveryScreen = ({ route }) => {
   // Reset items and scroll position when category changes (primarily for non-swipe views)
   useEffect(() => {
     if (isMounted.current && viewMode !== 'Swipe') {
-      console.log('[ProviderDiscovery] Category changed, resetting items for non-swipe view.');
+      // Category changed, resetting items for non-swipe view
       setItems([]); 
       if (listViewRef.current) {
         listViewRef.current.scrollToOffset({ offset: 0, animated: false });
@@ -110,30 +137,47 @@ const ProviderDiscoveryScreen = ({ route }) => {
   // Main data fetching logic as a useCallback
   const fetchData = useCallback(async (isRefreshing = false) => {
     if (!isMounted.current) return;
-    console.log('[ProviderDiscovery] fetchData called. Category:', selectedCategory, 'Search:', searchTerm, 'Refreshing:', isRefreshing);
-
+    
     try {
       if (!isRefreshing) setLoading(true);
       
+      // Check if we have cached data for this category and it's recent (less than 2 minutes old)
+      const categoryKey = `${selectedCategory}-${searchTerm}-${sortConfig.field}-${sortConfig.direction}-${viewMode}`;
+      const cachedData = categoryDataCache.current[categoryKey];
+      const now = Date.now();
+      
+      // Use cached data if available and recent (unless forced refresh)
+      if (!isRefreshing && cachedData && cachedData.timestamp && (now - cachedData.timestamp < 120000)) {
+        // Use cached data if it's less than 2 minutes old
+        setItems(cachedData.items || []);
+        setUserFavorites(new Set(cachedData.favorites || []));
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+      
+      // Get user data
       const { data: { user }, error: authError } = await supabase.auth.getUser();
+      
       if (authError || !user) {
-        console.error('[ProviderDiscovery] Auth error or no user:', authError);
+        // Auth error or no user
         if (isMounted.current) {
           setItems([]);
           setUserFavorites(new Set());
           if (!isRefreshing) setLoading(false);
           if (isRefreshing) setRefreshing(false);
-          // Alert.alert('Authentication Error', 'Could not retrieve user details. Please try logging in again.');
         }
         return;
       }
-      console.log('[ProviderDiscovery] User ID:', user.id);
 
       const isHousing = selectedCategory === 'Housing';
       const tableName = isHousing ? 'housing_listings' : 'services';
       const itemTypeForFavorites = isHousing ? 'housing_listing' : 'service_provider';
       
-      let query = supabase.from(tableName).select('*')
+      // OPTIMIZATION: Use a single query to get both items and favorites in one request
+      // This avoids the sequential queries problem
+      let query = supabase.from(tableName)
+        .select(`*, favorites!left(item_id, user_id).eq('user_id', '${user.id}').eq('item_type', '${itemTypeForFavorites}')`)
         .eq('available', true); // Only show available listings
       
       if (!isHousing) {
@@ -149,7 +193,7 @@ const ProviderDiscoveryScreen = ({ route }) => {
       const isAscending = direction === 'asc';
       if (field) query = query.order(field, { ascending: isAscending });
       
-      // Adjust limit based on view mode, swipe might want fewer initially
+      // OPTIMIZATION: Implement real pagination
       const limit = viewMode === 'Swipe' ? 10 : 20;
       query = query.limit(limit);
       
@@ -158,53 +202,136 @@ const ProviderDiscoveryScreen = ({ route }) => {
       if (!isMounted.current) return;
       
       if (error) {
-        console.error('[ProviderDiscovery] Fetch error:', error);
-        if (isMounted.current) setItems([]);
-      } else {
-        console.log(`[ProviderDiscovery] Fetched ${data ? data.length : 0} items for ${tableName}`);
-        if (isMounted.current) setItems(data || []);
+        // Try fallback approach if the joined query fails
+        // This can happen if the schema doesn't support the nested query
+        await fetchDataFallback(user.id, isHousing, itemTypeForFavorites);
+      } else if (data) {
+        // Process the joined data
+        const processedItems = data.map(item => {
+          // Remove the nested favorites array to clean up the data
+          const { favorites, ...itemData } = item;
+          return itemData;
+        });
         
-        if (user && data && data.length > 0) {
-          const itemIds = data.map(item => item.id);
-          console.log(`[ProviderDiscovery] Fetching favorites for ${itemTypeForFavorites} items:`, itemIds);
-          const { data: favoritesData, error: favoritesError } = await supabase
-            .from('favorites')
-            .select('item_id')
-            .eq('user_id', user.id)
-            .eq('item_type', itemTypeForFavorites)
-            .in('item_id', itemIds);
-
-          if (favoritesError) {
-            console.error('[ProviderDiscovery] Error fetching user favorites:', favoritesError);
-          } else if (favoritesData && isMounted.current) {
-            const favoritedIds = new Set(favoritesData.map(fav => fav.item_id));
-            console.log('[ProviderDiscovery] User favorited IDs:', favoritedIds);
-            setUserFavorites(favoritedIds);
-          }
-        } else if (isMounted.current) {
-          // No items fetched or no user, clear favorites for current view
-           setUserFavorites(new Set());
+        // Extract favorite IDs from the joined data
+        const favoritedIds = new Set(
+          data
+            .filter(item => item.favorites && item.favorites.length > 0)
+            .map(item => item.id)
+        );
+        
+        if (isMounted.current) {
+          setItems(processedItems);
+          setUserFavorites(favoritedIds);
+          
+          // Cache the results
+          categoryDataCache.current[categoryKey] = {
+            items: processedItems,
+            favorites: Array.from(favoritedIds),
+            timestamp: Date.now()
+          };
+          
+          // Update last fetch time
+          lastFetchRef.current = Date.now();
         }
       }
     } catch (error) {
       if (!isMounted.current) return;
-      console.error('[ProviderDiscovery] Exception in fetchData:', error);
-      if (isMounted.current) setItems([]);
+      // Exception in fetchData - try fallback approach
+      const isHousing = selectedCategory === 'Housing';
+      const itemTypeForFavorites = isHousing ? 'housing_listing' : 'service_provider';
+      
+      // Get user and try fallback approach
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await fetchDataFallback(user.id, isHousing, itemTypeForFavorites);
+      } else {
+        setItems([]);
+      }
     } finally {
       if (isMounted.current) {
         if (!isRefreshing) setLoading(false);
         if (isRefreshing) setRefreshing(false);
       }
     }
-  }, [selectedCategory, searchTerm, sortConfig, viewMode]); // Added viewMode as it affects limit
+  }, [selectedCategory, searchTerm, sortConfig, viewMode]);
+  
+  // Fallback method if the optimized query fails
+  const fetchDataFallback = async (userId, isHousing, itemTypeForFavorites) => {
+    if (!isMounted.current) return;
+    
+    try {
+      const tableName = isHousing ? 'housing_listings' : 'services';
+      
+      let query = supabase.from(tableName).select('*')
+        .eq('available', true);
+      
+      if (!isHousing) {
+        query = query.ilike('category', `%${selectedCategory}%`);
+        if (searchTerm) {
+          query = query.or(`title.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`);
+        }
+      } else if (searchTerm) {
+        query = query.or(`title.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`);
+      }
+      
+      const { field, direction } = sortConfig;
+      const isAscending = direction === 'asc';
+      if (field) query = query.order(field, { ascending: isAscending });
+      
+      const limit = viewMode === 'Swipe' ? 10 : 20;
+      query = query.limit(limit);
+      
+      const { data, error } = await query;
+      
+      if (error || !data) {
+        if (isMounted.current) setItems([]);
+        return;
+      }
+      
+      if (isMounted.current) setItems(data);
+      
+      if (userId && data && data.length > 0) {
+        const itemIds = data.map(item => item.id);
+        
+        const { data: favoritesData } = await supabase
+          .from('favorites')
+          .select('item_id')
+          .eq('user_id', userId)
+          .eq('item_type', itemTypeForFavorites)
+          .in('item_id', itemIds);
+        
+        if (favoritesData && isMounted.current) {
+          const favoritedIds = new Set(favoritesData.map(fav => fav.item_id));
+          setUserFavorites(favoritedIds);
+          
+          // Cache the results even in fallback mode
+          const categoryKey = `${selectedCategory}-${searchTerm}-${sortConfig.field}-${sortConfig.direction}-${viewMode}`;
+          categoryDataCache.current[categoryKey] = {
+            items: data,
+            favorites: Array.from(favoritedIds),
+            timestamp: Date.now()
+          };
+          
+          // Update last fetch time
+          lastFetchRef.current = Date.now();
+        }
+      }
+    } catch (error) {
+      if (isMounted.current) setItems([]);
+    }
+  };
 
-  // useEffect to call fetchData
+  // useEffect to call fetchData - only on initial mount
   useEffect(() => {
-    fetchData(false); // Initial fetch, not a refresh
-  }, [fetchData]); // fetchData is now a stable useCallback
+    // Initial fetch, not a refresh, but only if we don't already have data
+    if (items.length === 0) {
+      fetchData(false);
+    }
+  }, []); // Empty dependency array - only run on mount
 
   const onRefresh = useCallback(() => {
-    console.log('[ProviderDiscovery] onRefresh called');
+
     setRefreshing(true);
     fetchData(true); // Call fetchData with isRefreshing = true
   }, [fetchData]);
@@ -212,7 +339,7 @@ const ProviderDiscoveryScreen = ({ route }) => {
   // Toggle Favorite Function
   const toggleFavorite = useCallback(async (item, itemType) => {
     if (!item || !item.id || !itemType) {
-      console.error('[ProviderDiscovery] toggleFavorite: Invalid item or itemType', item, itemType);
+      // Invalid item or itemType for toggling favorite
       Alert.alert('Error', 'Could not update favorite status.');
       return;
     }
@@ -220,14 +347,14 @@ const ProviderDiscoveryScreen = ({ route }) => {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
       Alert.alert('Authentication Error', 'You must be logged in to favorite items.');
-      console.error('[ProviderDiscovery] toggleFavorite: Auth error or no user', authError);
+      // Auth error or no user when toggling favorite
       return;
     }
 
     const itemId = item.id;
     const isCurrentlyFavorited = userFavorites.has(itemId);
 
-    console.log(`[ProviderDiscovery] toggleFavorite: Item ID: ${itemId}, Type: ${itemType}, Currently Favorited: ${isCurrentlyFavorited}, User: ${user.id}`);
+
 
     if (isCurrentlyFavorited) {
       // Unfavorite
@@ -239,13 +366,13 @@ const ProviderDiscoveryScreen = ({ route }) => {
         .eq('item_type', itemType);
 
       if (error) {
-        console.error('[ProviderDiscovery] Error unfavoriting item:', error);
+        // Error unfavoriting item
         Alert.alert('Error', 'Could not remove from favorites. Please try again.');
       } else {
         setUserFavorites(prevFavorites => {
           const newFavorites = new Set(prevFavorites);
           newFavorites.delete(itemId);
-          console.log('[ProviderDiscovery] Item unfavorited. New favorites set:', newFavorites);
+
           return newFavorites;
         });
       }
@@ -256,13 +383,13 @@ const ProviderDiscoveryScreen = ({ route }) => {
         .insert({ user_id: user.id, item_id: itemId, item_type: itemType });
 
       if (error) {
-        console.error('[ProviderDiscovery] Error favoriting item:', error);
+        // Error favoriting item
         Alert.alert('Error', 'Could not add to favorites. Please try again.');
       } else {
         setUserFavorites(prevFavorites => {
           const newFavorites = new Set(prevFavorites);
           newFavorites.add(itemId);
-          console.log('[ProviderDiscovery] Item favorited. New favorites set:', newFavorites);
+
           return newFavorites;
         });
       }
@@ -296,17 +423,17 @@ const ProviderDiscoveryScreen = ({ route }) => {
     const itemTypeForFavorites = isHousing ? 'housing_listing' : 'service_provider';
     
     try {
-      console.log(`[ProviderDiscovery] Swiped ${direction} on:`, cardData.title || cardData.name, 'ID:', cardData.id);
+
       
       if (direction === 'right') { // Liked
-        console.log('[ProviderDiscovery] Liked (swiped right):', cardData.title || cardData.name);
+
         await toggleFavorite(cardData, itemTypeForFavorites);
       } else if (direction === 'up') { // Super liked
-        console.log('[ProviderDiscovery] Super liked:', cardData.title || cardData.name);
+
         // Potentially a different action or also favorite
         await toggleFavorite(cardData, itemTypeForFavorites); // Example: super like also favorites
       } else if (direction === 'left') { // Disliked
-        console.log('[ProviderDiscovery] Disliked (swiped left):', cardData.title || cardData.name);
+
         // If it was favorited, a left swipe could unfavorite it, or do nothing
         // For simplicity, let's say left swipe does not change favorite status here
         // but you could add: if (userFavorites.has(cardData.id)) { await toggleFavorite(cardData, itemTypeForFavorites); }
@@ -325,7 +452,7 @@ const ProviderDiscoveryScreen = ({ route }) => {
       //     });
       // }
     } catch (error) {
-      console.error('Error handling swipe:', error);
+      // Error handling swipe
     }
   }, [selectedCategory]);
   
@@ -338,32 +465,62 @@ const ProviderDiscoveryScreen = ({ route }) => {
     }
   }, [navigation, selectedCategory]);
   
-  const handleAllCardsViewed = useCallback(() => {
-    // No alert when all cards are viewed
-    console.log('All cards viewed in this category');
-  }, []);
-  
   // Main content renderer based on view mode
   const renderContent = useCallback(() => {
-    // Loading state
-    if (loading && items.length === 0) {
-      return <ActivityIndicator size="large" color={DARK_GREEN} style={styles.loadingIndicator} />;
-    }
+    return renderViewComponent();
+  }, [filteredItems, viewMode, selectedCategory, loading]);
+
+  // ... (rest of the code remains the same)
+
+  // Grid view
+  const renderGridView = () => {
+    const isHousing = selectedCategory === 'Housing';
+    const CardComponent = isHousing ? HousingCard : ServiceCard;
+    const handlePress = isHousing ? handleHousingPress : handleServicePress;
     
-    // Empty state
-    if (!loading && items.length === 0) {
-      return <Text style={styles.emptyText}>No {selectedCategory.toLowerCase()} found.</Text>;
-    }
+    return (
+      <FlatList
+        ref={gridViewRef}
+        key={`${isHousing ? 'housing' : 'services'}-grid`}
+        data={filteredItems}
+        renderItem={({ item }) => (
+          <CardComponent 
+            item={item} 
+            onPress={handlePress}
+            displayAs="grid"
+            onImageLoaded={handleImageLoaded}
+            isFavorited={userFavorites.has(item.id)} 
+            onToggleFavorite={() => toggleFavorite(item, isHousing ? 'housing_listing' : 'service_provider')}
+          />
+        )}
+        keyExtractor={item => String(item.id)}
+        numColumns={2}
+        contentContainerStyle={styles.gridContainer}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={[DARK_GREEN]}
+          />
+        }
+      />
+    );
+  };
+
+  // List view
+  const renderListView = () => {
+    const isHousing = selectedCategory === 'Housing';
+    const CardComponent = isHousing ? HousingCard : ServiceCard;
+    const handlePress = isHousing ? handleHousingPress : handleServicePress;
     
-    // Grid view
-    if (viewMode === 'Grid') {
-      const isHousing = selectedCategory === 'Housing';
-      const CardComponent = isHousing ? HousingCard : ServiceCard;
-      const handlePress = isHousing ? handleHousingPress : handleServicePress;
-      
-      return (
-        <FlatList
-          key={`${isHousing ? 'housing' : 'services'}-grid`}
+    return (
+      <FlatList
+        ref={listViewRef}
+        key={`${isHousing ? 'housing' : 'services'}-list`}
+        data={filteredItems}
+        renderItem={({ item }) => (
+          <View style={styles.listItemContainer}>
           data={items}
           renderItem={({ item }) => (
             <CardComponent 
@@ -398,6 +555,7 @@ const ProviderDiscoveryScreen = ({ route }) => {
       
       return (
         <FlatList
+          ref={listViewRef}
           key={`${isHousing ? 'housing' : 'services'}-list`}
           data={items}
           renderItem={({ item }) => (
@@ -445,7 +603,7 @@ const ProviderDiscoveryScreen = ({ route }) => {
         ...item
       }));
       
-      console.log('Transformed items for SwipeCard:', transformedItems[0]);
+
       
       return (
         <SwipeCardDeck

@@ -14,7 +14,9 @@ const AppHeader = ({
   navigation,
   canGoBack = false,
   onBackPressOverride,
-  showBackButton = true, 
+  showBackButton = true,
+  style: customStyle, // allow header style override
+  paddingTop, // allow explicit top padding override
 }) => {
   // Get user profile from context
   const { profile } = useUser();
@@ -101,7 +103,13 @@ const AppHeader = ({
   };
 
   return (
-    <View style={styles.container}>
+    <View
+      style={[
+        styles.container,
+        customStyle,
+        typeof paddingTop === 'number' ? { paddingTop } : null
+      ]}
+    >
       <View style={styles.leftSection}>
         {/* Main navigation tabs use logoicon.png */}
         {['Explore', 'Social', 'Wallet', 'Favourites', 'Profile'].includes(title) ? (
@@ -176,12 +184,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 15,
-    paddingTop: Platform.OS === 'android' ? 35 : 50, 
-    paddingBottom: 12,
+    paddingTop: Platform.OS === 'android' ? 35 : 50, // restored to default
+    paddingBottom: 12, // restored to default
     backgroundColor: '#FFFFFF', 
     borderBottomWidth: 1,
     borderBottomColor: '#E0E0E0',
-    minHeight: Platform.OS === 'android' ? 90 : 110,
+    minHeight: Platform.OS === 'android' ? 90 : 110, // restored to default
   },
   leftSection: {
     flex: 1,

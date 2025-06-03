@@ -7,6 +7,8 @@ import { supabase } from '../../lib/supabaseClient';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import FontAwesome from 'react-native-vector-icons/FontAwesome';
 import { getUserProfile } from '../../utils/authUtils';
+import ApplicationsList from '../../components/HousingGroup/ApplicationsList';
+import { applyToHousingGroup, getUserApplicationStatus, cancelApplication } from '../../services/housingGroupApplicationService';
 
 const HousingGroupDetailScreen = ({ route }) => {
   const { groupId, fromJoinButton } = route.params || {};
@@ -33,15 +35,19 @@ const HousingGroupDetailScreen = ({ route }) => {
   const [members, setMembers] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
   const [isCurrentUserMember, setIsCurrentUserMember] = useState(false);
+  const [isCurrentUserAdmin, setIsCurrentUserAdmin] = useState(false);
   const [isJoinRequestPending, setIsJoinRequestPending] = useState(false);
   const [isFavorited, setIsFavorited] = useState(false);
   const [favoriteId, setFavoriteId] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [applicationStatus, setApplicationStatus] = useState(null);
+  const [loadingApplicationStatus, setLoadingApplicationStatus] = useState(false);
   
   // Error states
   const [groupDetailsError, setGroupDetailsError] = useState(null);
   const [housingListingError, setHousingListingError] = useState(null);
   const [membersError, setMembersError] = useState(null);
+  const [applicationError, setApplicationError] = useState(null);
 
   // Define fetch functions outside useEffect so they can be referenced elsewhere
   const fetchUserProfile = async () => {
@@ -202,10 +208,18 @@ const HousingGroupDetailScreen = ({ route }) => {
         
         setMembers(membersWithProfiles);
         
-        // Check if current user is a member
+        // Check if current user is a member and if they're an admin
         if (currentUser) {
-          const isMember = memberData.some(member => member.user_id === currentUser.id);
+          const userMembership = memberData.find(member => member.member_id === currentUser.id);
+          const isMember = !!userMembership;
           setIsCurrentUserMember(isMember);
+          
+          // Set admin status if the user is a member
+          if (isMember && userMembership) {
+            setIsCurrentUserAdmin(userMembership.is_admin === true);
+          } else {
+            setIsCurrentUserAdmin(false);
+          }
         }
       } else {
         setMembers([]);
@@ -218,6 +232,26 @@ const HousingGroupDetailScreen = ({ route }) => {
     }
   };
   
+  const checkApplicationStatus = async () => {
+    if (!currentUser || !groupId) return;
+    
+    setLoadingApplicationStatus(true);
+    setApplicationError(null);
+    
+    try {
+      const applicationData = await getUserApplicationStatus(groupId, currentUser.id);
+      
+      setApplicationStatus(applicationData);
+      setIsJoinRequestPending(applicationData && applicationData.status === 'pending');
+    } catch (error) {
+      console.error('Error checking application status:', error);
+      setApplicationError('Could not check application status');
+    } finally {
+      setLoadingApplicationStatus(false);
+    }
+  };
+  
+  // Legacy function - keeping for backward compatibility
   const checkJoinRequestStatus = async () => {
     if (!currentUser) return;
     
@@ -235,7 +269,13 @@ const HousingGroupDetailScreen = ({ route }) => {
         return;
       }
       
-      setIsJoinRequestPending(pendingRequests && pendingRequests.length > 0);
+      // Check if there's a pending request in the old system
+      const oldSystemPending = pendingRequests && pendingRequests.length > 0;
+      
+      // Only set pending from old system if we don't have application status from new system
+      if (!applicationStatus) {
+        setIsJoinRequestPending(oldSystemPending);
+      }
     } catch (error) {
       console.error('Error checking join request:', error.message);
     }
@@ -272,6 +312,9 @@ const HousingGroupDetailScreen = ({ route }) => {
         // These can be fetched in parallel
         fetchMembers();
         if (currentUser) {
+          // Check application status with our new system
+          checkApplicationStatus();
+          // Also check legacy system for backward compatibility
           checkJoinRequestStatus();
         }
       } catch (error) {
@@ -292,31 +335,30 @@ const HousingGroupDetailScreen = ({ route }) => {
   }, [fromJoinButton, currentUser, groupId, isJoinRequestPending, isCurrentUserMember]);
 
   const handleJoinRequest = async () => {
-    if (!currentUser) {
-      Alert.alert('Login Required', 'Please sign in to join this group');
+    if (!currentUser || !groupDetails) {
+      Alert.alert('Error', 'Please try again later');
       return;
     }
     
     setActionLoading(true);
+    
     try {
-      const { data, error } = await supabase
-        .from('housing_group_members')
-        .insert({
-          group_id: groupId,
-          user_id: currentUser.id,
-          status: 'pending',
-          bio: currentUser.bio || '',
-          support_level: 'moderate', // Default value
-          is_admin: false
-        });
+      // Create a join request using our new application system
+      const result = await applyToHousingGroup(groupId, currentUser.id);
         
-      if (error) throw error;
+      if (result.isExisting) {
+        Alert.alert('Application Exists', 'You have already applied to this housing group.');
+      } else if (result.isUpdate) {
+        Alert.alert('Application Updated', 'Your previous application has been updated to pending status.');
+      } else {
+        Alert.alert('Success', 'Your application has been submitted! You\'ll be notified when it\'s reviewed.');
+      }
       
-      setIsJoinRequestPending(true);
-      Alert.alert('Success', 'Your request to join this group has been sent!');
+      // Refresh application status
+      await checkApplicationStatus();
     } catch (error) {
-      console.error('Error sending join request:', error.message);
-      Alert.alert('Error', 'Could not send join request. Please try again.');
+      console.error('Error sending application:', error);
+      Alert.alert('Error', 'Failed to submit application. Please try again.');
     } finally {
       setActionLoading(false);
     }
@@ -327,21 +369,35 @@ const HousingGroupDetailScreen = ({ route }) => {
     
     setActionLoading(true);
     try {
-      // Delete the pending join request
-      const { error } = await supabase
-        .from('housing_group_members')
-        .delete()
-        .eq('group_id', groupId)
-        .eq('user_id', currentUser.id)
-        .eq('status', 'pending');
-        
-      if (error) throw error;
+      // Cancel the application using our new system
+      const result = await cancelApplication(groupId, currentUser.id);
       
-      setIsJoinRequestPending(false);
-      Alert.alert('Success', 'Your join request has been cancelled');
+      if (result.success) {
+        // Also check for legacy join requests and delete them if they exist
+        const { error } = await supabase
+          .from('housing_group_members')
+          .delete()
+          .eq('group_id', groupId)
+          .eq('user_id', currentUser.id)
+          .eq('status', 'pending');
+          
+        if (error) console.error('Error deleting legacy join request:', error.message);
+        
+        // Update UI state
+        setIsJoinRequestPending(false);
+        setApplicationStatus(null);
+        Alert.alert('Success', 'Your application has been withdrawn');
+      } else {
+        console.log('No pending application found to cancel:', result.message);
+        // Check if we need to clean up legacy requests
+        await checkJoinRequestStatus();
+      }
+
+      // Refresh application status
+      await checkApplicationStatus();
     } catch (error) {
-      console.error('Error cancelling join request:', error.message);
-      Alert.alert('Error', 'Could not cancel your request. Please try again.');
+      console.error('Error cancelling application:', error);
+      Alert.alert('Error', 'Could not cancel your application. Please try again.');
     } finally {
       setActionLoading(false);
     }
@@ -647,7 +703,7 @@ const HousingGroupDetailScreen = ({ route }) => {
             {/* Member Cards */}
             {members.map(member => renderMemberItem(member))}
           </View>
-        ) : groupDetails && (
+        ) : (
           // No members state
           <View style={styles.noMembersContainer}>
             <Text style={styles.noMembersText}>No members in this group yet</Text>
@@ -655,20 +711,33 @@ const HousingGroupDetailScreen = ({ route }) => {
           </View>
         )}
         
-        {/* Join Request Button */}
+        {/* Applications Section */}
+        {currentUser && (
+          <ApplicationsList
+            housingGroupId={groupId}
+            currentUserId={currentUser.id}
+            isAdmin={isCurrentUserAdmin}
+            isMember={isCurrentUserMember}
+          />
+        )}
+        
+        {/* Apply to Join Button */}
         {!isCurrentUserMember && !isJoinRequestPending && groupDetails && (
           <TouchableOpacity style={styles.joinButton} onPress={handleJoinRequest} disabled={actionLoading}>
             {actionLoading ? (
               <ActivityIndicator size="small" color={COLORS.white} />
             ) : (
-              <Text style={styles.joinButtonText}>Request to Join Group</Text>
+              <Text style={styles.joinButtonText}>Apply to Join Group</Text>
             )}
           </TouchableOpacity>
         )}
         
         {isJoinRequestPending && (
           <View style={styles.pendingContainer}>
-            <Text style={styles.pendingText}>Your join request is pending approval</Text>
+            <Text style={styles.pendingText}>Your application is pending approval</Text>
+            {applicationStatus && applicationStatus.applicant_message && (
+              <Text style={styles.applicationMessage}>Your message: "{applicationStatus.applicant_message}"</Text>
+            )}
             <TouchableOpacity 
               style={styles.cancelButton} 
               onPress={handleCancelJoinRequest}
@@ -677,7 +746,7 @@ const HousingGroupDetailScreen = ({ route }) => {
               {actionLoading ? (
                 <ActivityIndicator size="small" color="#FF4B4B" />
               ) : (
-                <Text style={styles.cancelButtonText}>Cancel Join Request</Text>
+                <Text style={styles.cancelButtonText}>Withdraw Application</Text>
               )}
             </TouchableOpacity>
           </View>
@@ -996,17 +1065,27 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   pendingContainer: {
-    padding: 16,
-    margin: 16,
-    backgroundColor: '#F0F0F0',
+    backgroundColor: '#F0F8FF',
     borderRadius: 8,
+    padding: 16,
+    marginHorizontal: 16,
+    marginVertical: 16,
     alignItems: 'center',
   },
   pendingText: {
+    fontSize: 16,
+    color: '#0066CC',
+    fontWeight: '500',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  applicationMessage: {
     fontSize: 14,
     color: COLORS.darkGray,
-    fontWeight: '500',
+    fontStyle: 'italic',
+    textAlign: 'center',
     marginBottom: 12,
+    paddingHorizontal: 10,
   },
   cancelButton: {
     backgroundColor: '#FFE5E5',

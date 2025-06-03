@@ -1,5 +1,19 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, ActivityIndicator, FlatList, RefreshControl, ScrollView, Dimensions, Alert, Platform, SafeAreaView } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Image,
+  TouchableOpacity,
+  ActivityIndicator,
+  RefreshControl,
+  ScrollView,
+  Alert,
+  SafeAreaView,
+  Platform,
+  // FlatList, // Not directly used in the final JSX, renderPostsTab/renderMembersTab use .map
+  // Dimensions, // windowWidth was unused
+} from 'react-native';
 import ShareTray from '../../components/common/ShareTray';
 import CommentTray from '../../components/common/CommentTray';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -9,35 +23,31 @@ import { COLORS } from '../../constants/theme';
 import AppHeader from '../../components/layout/AppHeader';
 import PostCreationModal from '../../components/social/PostCreationModal';
 import { useUser } from '../../context/UserContext';
-import ActionButton from '../../components/common/ActionButton';
+import ActionButton from '../../components/common/ActionButton'; // Assuming this is a FAB-capable button
 
 const TABS = ['Posts', 'Members'];
-const windowWidth = Dimensions.get('window').width;
 
 const GroupDetailScreen = () => {
   const navigation = useNavigation();
   const route = useRoute();
-  const { groupId } = route.params || {};
+  const params = route.params || {};
+  const { groupId, joinFlow, groupName, userRole: routeUserRole, groupType: routeGroupType } = params;
   const { user } = useUser();
-  
-  // Use ref to track mounting and prevent duplicate API calls
+
   const isMounted = useRef(false);
   const initialFetchDone = useRef(false);
-  
-  // Group state
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [group, setGroup] = useState(null);
   const [memberCount, setMemberCount] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
-  
-  // UI state
+
   const [selectedTab, setSelectedTab] = useState('Posts');
   const [showCreatePostModal, setShowCreatePostModal] = useState(false);
   const [isGroupMember, setIsGroupMember] = useState(false);
   const [isFavorite, setIsFavorite] = useState(false);
-  
-  // Posts & Members state
+
   const [posts, setPosts] = useState([]);
   const [postsLoading, setPostsLoading] = useState(true);
   const [postsError, setPostsError] = useState(null);
@@ -45,210 +55,149 @@ const GroupDetailScreen = () => {
   const [membersLoading, setMembersLoading] = useState(true);
   const [membersError, setMembersError] = useState(null);
 
-  // Fetch group data - supports both regular groups and housing groups
+  const [currentUserRole, setCurrentUserRole] = useState(null);
+  const [lastUpdateTimestamp, setLastUpdateTimestamp] = useState(null);
+
+  // Effect for managing component mount state
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+
+  // Effect to set the current user's role from route params
+  useEffect(() => {
+    if (routeUserRole) {
+      console.log('[GroupDetailScreen] User role passed via params:', routeUserRole);
+      setCurrentUserRole(routeUserRole);
+    } else {
+      setCurrentUserRole(null);
+      console.log('[GroupDetailScreen] User role not in params or undefined.');
+    }
+  }, [routeUserRole]);
+
+
+  // Fetch group data
   const fetchGroupData = useCallback(async () => {
     if (!groupId) return;
-    
+    console.log('[GroupDetailScreen] Fetching group data for:', groupId, 'Type hint:', routeGroupType);
     try {
-      setLoading(true);
+      setLoading(true); // For the main group shell
       setError(null);
       
-      // Get the group type from route params or default to 'group'
-      const groupType = route.params?.groupType || 'group';
+      const groupTypeToQuery = routeGroupType || (group?.type); // Prefer route param, then existing group type, then default
+      let data, errorResult;
       
-      // Determine which table to query based on group type
-      let data, error;
-      
-      if (groupType === 'housing_group') {
-        // Query housing_groups table for housing groups
+      if (groupTypeToQuery === 'housing_group') {
         const result = await supabase
           .from('housing_groups')
-          .select(`
-            *,
-            housing_group_members(count)
-          `)
+          .select('*, housing_group_members(count)')
           .eq('id', groupId)
           .maybeSingle();
-          
         data = result.data;
-        error = result.error;
-        
-        // If data exists, transform it to match the expected structure
-        if (data) {
-          data.group_members = data.housing_group_members;
-          data.type = 'housing_group';
-        }
+        errorResult = result.error;
+        if (data) data.type = 'housing_group';
       } else {
-        // Query regular groups table
         const result = await supabase
           .from('groups')
-          .select(`
-            *,
-            group_members(count)
-          `)
+          .select('*, group_members(count)')
           .eq('id', groupId)
           .maybeSingle();
-          
         data = result.data;
-        error = result.error;
-        
-        // Add null check before setting type
-        if (data) {
-          data.type = 'group';
-        }
+        errorResult = result.error;
+        if (data) data.type = 'group';
       }
       
-      if (error) throw error;
+      if (errorResult) throw errorResult;
       
       if (!data) {
-        // Instead of throwing an error, set a user-friendly error state
-        setError('Group not found or no longer available');
-        setLoading(false);
-        return; // Exit early
+        if (isMounted.current) setError('Group not found or no longer available.');
+        return;
       }
       
-      // Only update state if component is still mounted
-      if (isMounted.current && data) {
+      if (isMounted.current) {
         setGroup(data);
-        setMemberCount(data.group_members?.[0]?.count || 0);
+        // Adjust member count key based on actual table structure if different
+        const currentMemberCount = data.group_members?.[0]?.count || data.housing_group_members?.[0]?.count || 0;
+        setMemberCount(currentMemberCount);
       }
-    } catch (error) {
-      console.error('Error fetching group:', error);
-      if (isMounted.current) {
-        setError('Failed to load group details');
-      }
+    } catch (err) {
+      console.error('Error fetching group:', err);
+      if (isMounted.current) setError('Failed to load group details.');
     } finally {
-      if (isMounted.current) {
-        setLoading(false);
-      }
+      if (isMounted.current) setLoading(false);
     }
-  }, [groupId]);
+  }, [groupId, routeGroupType, group?.type]); // group.type helps if routeGroupType is not passed but group object already exists
 
   // Fetch group posts
   const fetchGroupPosts = useCallback(async () => {
     if (!groupId) return;
-    
+    console.log('[GroupDetailScreen] Fetching posts for:', groupId);
     try {
       setPostsLoading(true);
       setPostsError(null);
       
-      // Get the group type from route params or default to 'group'
-      const groupType = route.params?.groupType || 'group';
+      const groupTypeToQuery = routeGroupType || group?.type || 'group';
+      let postData, postError;
       
-      let data, error;
-      
-      // Fetch posts with author info based on group type
-      if (groupType === 'housing_group') {
-        // For housing groups, fetch from group_posts table with housing_group_id
-        const result = await supabase
-          .from('group_posts')
-          .select(`
-            *,
-            author:user_profiles(id, username, full_name, avatar_url)
-          `)
-          .eq('housing_group_id', groupId)
-          .order('created_at', { ascending: false });
-          
-        data = result.data;
-        error = result.error;
-      } else {
-        // For regular groups, fetch from group_posts table with group_id
-        const result = await supabase
-          .from('group_posts')
-          .select(`
-            *,
-            author:user_profiles(id, username, full_name, avatar_url)
-          `)
-          .eq('group_id', groupId)
-          .order('created_at', { ascending: false });
-          
-        data = result.data;
-        error = result.error;
-      }
-      
-      if (error) throw error;
-      
-      // Only update state if component is still mounted
-      if (isMounted.current) {
-        setPosts(data || []);
-      }
-      
-      // If user is logged in, fetch their likes from group_post_likes table
-      if (user && isMounted.current) {
-        const { data: likesData, error: likesError } = await supabase
-          .from('group_post_likes')
-          .select('group_post_id')
-          .eq('user_id', user.id)
-          .in(
-            'group_post_id', 
-            (data || []).map(post => post.id)
-          );
+      const query = supabase
+        .from('group_posts')
+        .select('*, author:user_profiles(id, username, full_name, avatar_url)')
+        .eq(groupTypeToQuery === 'housing_group' ? 'housing_group_id' : 'group_id', groupId)
+        .order('created_at', { ascending: false });
         
-        if (!likesError && likesData && isMounted.current) {
-          // Create a map of post_id -> true for liked posts
-          const newLikedPosts = {};
-          likesData.forEach(like => {
-            newLikedPosts[like.group_post_id] = true;
-          });
-          setLikedPosts(newLikedPosts);
+      const result = await query;
+      postData = result.data;
+      postError = result.error;
+            
+      if (postError) throw postError;
+      
+      if (isMounted.current) {
+        setPosts(postData || []);
+        if (user && postData?.length > 0) {
+          const { data: likesData, error: likesError } = await supabase
+            .from('group_post_likes')
+            .select('group_post_id')
+            .eq('user_id', user.id)
+            .in('group_post_id', postData.map(p => p.id));
+          
+          if (!likesError && likesData && isMounted.current) {
+            const newLikedPosts = {};
+            likesData.forEach(like => { newLikedPosts[like.group_post_id] = true; });
+            setLikedPosts(newLikedPosts);
+          }
+        } else if (isMounted.current) {
+            setLikedPosts({}); // Clear likes if no user or no posts
         }
       }
-    } catch (error) {
-      console.error('Error fetching posts:', error);
-      if (isMounted.current) {
-        setPostsError('Failed to load posts');
-      }
+    } catch (err) {
+      console.error('Error fetching posts:', err);
+      if (isMounted.current) setPostsError('Failed to load posts.');
     } finally {
-      if (isMounted.current) {
-        setPostsLoading(false);
-      }
+      if (isMounted.current) setPostsLoading(false);
     }
-  }, [groupId]); // Remove user from dependencies to prevent re-fetching when user changes
+  }, [groupId, user, routeGroupType, group?.type]);
 
   // Fetch group members
   const fetchGroupMembers = useCallback(async () => {
     if (!groupId) return;
-    
+    console.log('[GroupDetailScreen] Fetching members for:', groupId);
     try {
       setMembersLoading(true);
       setMembersError(null);
       
-      // Get the group type from route params or default to 'group'
-      const groupType = route.params?.groupType || 'group';
+      const groupTypeToQuery = routeGroupType || group?.type || 'group';
+      const memberTable = groupTypeToQuery === 'housing_group' ? 'housing_group_members' : 'group_members';
       
-      let data, error;
-      
-      if (groupType === 'housing_group') {
-        // For housing groups, fetch from housing_group_members table
-        const result = await supabase
-          .from('housing_group_members')
-          .select(`
-            *,
-            user_profiles(id, username, full_name, avatar_url, bio)
-          `)
-          .eq('group_id', groupId);
-          
-        data = result.data;
-        error = result.error;
-      } else {
-        // For regular groups, fetch from group_members table
-        const result = await supabase
-          .from('group_members')
-          .select(`
-            *,
-            user_profiles(id, username, full_name, avatar_url, bio)
-          `)
-          .eq('group_id', groupId);
-          
-        data = result.data;
-        error = result.error;
-      }
-      
+      const { data, error } = await supabase
+        .from(memberTable)
+        .select('*, user_profiles(id, username, full_name, avatar_url, bio)')
+        .eq('group_id', groupId); // Both tables use 'group_id' for the FK to the group
+            
       if (error) throw error;
       
-      // Only proceed if component is still mounted
       if (isMounted.current) {
-        // Transform the data to a more usable format
         const formattedMembers = (data || []).map(member => ({
           id: member.user_profiles.id,
           username: member.user_profiles.username,
@@ -258,366 +207,409 @@ const GroupDetailScreen = () => {
           role: member.role,
           joinedAt: member.created_at
         }));
-        
         setMembers(formattedMembers);
+
+        if (user) { // Update current user's role within this group
+          const currentUserMemberInfo = formattedMembers.find(m => m.id === user.id);
+          if (currentUserMemberInfo) {
+            setCurrentUserRole(currentUserMemberInfo.role);
+          } else if (isGroupMember) { // Was member, but not in list (e.g. removed)
+             setIsGroupMember(false); // Sync state
+             setCurrentUserRole(null);
+          } else {
+             setCurrentUserRole(null); // Not a member
+          }
+        }
       }
-    } catch (error) {
-      console.error('Error fetching members:', error);
-      if (isMounted.current) {
-        setMembersError('Failed to load members');
-      }
+    } catch (err) {
+      console.error('Error fetching members:', err);
+      if (isMounted.current) setMembersError('Failed to load members.');
     } finally {
-      if (isMounted.current) {
-        setMembersLoading(false);
-      }
+      if (isMounted.current) setMembersLoading(false);
     }
-  }, [groupId]);
+  }, [groupId, user, isGroupMember, routeGroupType, group?.type]);
 
-  // Handle refresh
-  const handleRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await Promise.all([
-      fetchGroupData(),
-      selectedTab === 'Posts' ? fetchGroupPosts() : fetchGroupMembers(),
-    ]);
-    setRefreshing(false);
-  }, [fetchGroupData, fetchGroupPosts, fetchGroupMembers, selectedTab]);
-
-  // Load initial data
-  // Check if user is a member of this group
+  // Check if user is a member
   const checkMembership = useCallback(async () => {
-    if (!user || !groupId) return;
-    
+    if (!user || !groupId || !group) return; // Ensure group is loaded to know its type
+    console.log('[GroupDetailScreen] Checking membership for user:', user.id, 'in group:', groupId);
     try {
+      const memberTable = group.type === 'housing_group' ? 'housing_group_members' : 'group_members';
       const { data, error } = await supabase
-        .from('group_members')
-        .select('id')
+        .from(memberTable)
+        .select('id, role') // Fetch role as well
         .eq('group_id', groupId)
         .eq('user_id', user.id)
-        .single();
+        .maybeSingle();
       
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error checking membership:', error);
-        return;
+      if (error && error.code !== 'PGRST116') throw error;
+      
+      if (isMounted.current) {
+        setIsGroupMember(!!data);
+        if (data) {
+          setCurrentUserRole(data.role); // Update role from direct check
+        } else {
+          setCurrentUserRole(null); // Not a member, no role
+        }
       }
-      
-      // If data exists, user is a member
-      setIsGroupMember(!!data);
-    } catch (error) {
-      console.error('Error checking group membership:', error);
+    } catch (err) {
+      console.error('Error checking group membership:', err);
     }
-  }, [user, groupId]);
-  
-  // Check if group is in user's favorites
+  }, [user, groupId, group]);
+
+  // Check favorite status
   const checkFavorite = useCallback(async () => {
     if (!user || !groupId) return;
-    
+    console.log('[GroupDetailScreen] Checking favorite status for user:', user.id, 'item:', groupId);
     try {
       const { data, error } = await supabase
         .from('favorites')
         .select('favorite_id')
         .eq('user_id', user.id)
         .eq('item_id', groupId)
-        .eq('item_type', 'group')
-        .single();
+        .eq('item_type', 'group') // Assuming item_type distinguishes between group and housing_group if necessary, or use group.type
+        .maybeSingle();
       
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error checking favorite status:', error);
-        return;
-      }
-      
-      // If data exists, group is a favorite
-      setIsFavorite(!!data);
-    } catch (error) {
-      console.error('Error checking favorite status:', error);
+      if (error && error.code !== 'PGRST116') throw error;
+      if (isMounted.current) setIsFavorite(!!data);
+    } catch (err) {
+      console.error('Error checking favorite status:', err);
     }
   }, [user, groupId]);
-  
-  // Toggle favorite status
-  const toggleFavorite = useCallback(async () => {
-    if (!user || !groupId) return;
-    
-    try {
-      if (isFavorite) {
-        // Remove from favorites
-        const { error } = await supabase
-          .from('favorites')
-          .delete()
-          .eq('user_id', user.id)
-          .eq('item_id', groupId)
-          .eq('item_type', 'group');
-          
-        if (error) throw error;
-        
-        setIsFavorite(false);
-        Alert.alert('Success', 'Removed from favorites');
-      } else {
-        // Add to favorites
-        const { error } = await supabase
-          .from('favorites')
-          .insert({
-            user_id: user.id,
-            item_id: groupId,
-            item_type: 'group',
-            created_at: new Date().toISOString()
-          });
-          
-        if (error) throw error;
-        
-        setIsFavorite(true);
-        Alert.alert('Success', 'Added to favorites');
-      }
-    } catch (error) {
-      console.error('Error toggling favorite:', error);
-      Alert.alert('Error', 'Failed to update favorite status. Please try again.');
-    }
-  }, [user, groupId, isFavorite]);
-  
+
+  // Effect to reset states when groupId changes
   useEffect(() => {
-    // Mark component as mounted
-    isMounted.current = true;
-    
-    // Only fetch data if it hasn't been fetched already
-    if (!initialFetchDone.current && groupId) {
-      fetchGroupData();
-      fetchGroupPosts();
-      fetchGroupMembers();
-      checkMembership();
-      checkFavorite();
-      initialFetchDone.current = true;
+    console.log('[GroupDetailScreen] GroupId changed to:', groupId, ". Resetting states.");
+    initialFetchDone.current = false;
+    setLastUpdateTimestamp(null);
+    setGroup(null);
+    setPosts([]);
+    setMembers([]);
+    setError(null);
+    setPostsError(null);
+    setMembersError(null);
+    setLoading(true); // Set loading true until new group data is fetched
+    setSelectedTab('Posts'); // Reset to default tab
+    setIsGroupMember(false);
+    setIsFavorite(false);
+    setCurrentUserRole(null);
+  }, [groupId]);
+
+  // Main data fetching effect (initial load for current groupId and on explicit update)
+  useEffect(() => {
+    if (!groupId) {
+      if (isMounted.current) {
+        setError('No Group ID provided.');
+        setLoading(false);
+      }
+      return;
     }
-    
-    // Cleanup function to mark component as unmounted
-    return () => {
-      isMounted.current = false;
+
+    const loadAllData = async () => {
+      console.log('[GroupDetailScreen] Loading all data for groupId:', groupId);
+      if (!isMounted.current) return; // Guard against unmounted updates
+      
+      // Fetch group data first to determine type if not passed by route
+      await fetchGroupData(); // Sets group, which checkMembership might use for type
+
+      // Subsequent fetches can run in parallel if group.type is now set or was passed
+      // Or fetchGroupData resolves and then these are called sequentially or based on group state.
+      // For simplicity, let's assume fetchGroupData finishes and sets group.type,
+      // or routeGroupType is reliable. The useCallback deps for fetchers handle this.
+      
+      // Await all critical initial loads
+      await Promise.all([
+        // fetchGroupData is already called
+        fetchGroupPosts(),
+        fetchGroupMembers(),
+        // checkMembership and checkFavorite depend on `group` being set by fetchGroupData
+        // so they are called after fetchGroupData resolves or in a separate effect depending on `group`
+      ]);
+      
+      if (isMounted.current) {
+        initialFetchDone.current = true;
+      }
     };
-  }, [groupId]); // Only depend on groupId to prevent infinite rerenders
+    
+    if (route.params?.updated && route.params.updated !== lastUpdateTimestamp) {
+      console.log('[GroupDetailScreen] Detected update, refreshing all data...');
+      if (isMounted.current) setLastUpdateTimestamp(route.params.updated);
+      loadAllData();
+    } else if (!initialFetchDone.current) {
+      console.log('[GroupDetailScreen] Initial data load for current groupId:', groupId);
+      loadAllData();
+    }
+  }, [groupId, route.params?.updated, lastUpdateTimestamp, fetchGroupData, fetchGroupPosts, fetchGroupMembers]);
+  
+  // Effect for checkMembership and checkFavorite, runs when group data is available
+  useEffect(() => {
+    if (group && user && initialFetchDone.current) { // Ensure group data is loaded and it's not part of initial chaos
+        checkMembership();
+        checkFavorite();
+    }
+  }, [group, user, checkMembership, checkFavorite, initialFetchDone.current]);
+
+
+  // Effect to handle the join flow popup
+  useEffect(() => {
+    if (joinFlow && groupName && user && groupId && group) { // Ensure group is loaded for context
+      Alert.alert(
+        `Join ${groupName}?`,
+        `Welcome to ${groupName}! This is a ${group.is_public ? 'public' : 'private'} group. To post comments and fully engage with other members, please join. We encourage respectful interaction. Enjoy your time here!`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Join Group', onPress: () => joinGroup(true) },
+        ],
+        { cancelable: true }
+      );
+    }
+  }, [joinFlow, groupName, user, groupId, group, joinGroup]); // Added group and joinGroup
 
   // Handle joining or leaving a group
   const joinGroup = useCallback(async (autoJoin = false) => {
-    if (!user || !groupId) return;
-    
+    if (!user || !groupId || !group) {
+      if (!autoJoin) Alert.alert("Error", "Cannot perform action: User or group data missing.");
+      return;
+    }
+    console.log(`[GroupDetailScreen] ${isGroupMember ? 'Leaving' : 'Joining'} group:`, groupId, 'AutoJoin:', autoJoin);
+
+    const memberTable = group.type === 'housing_group' ? 'housing_group_members' : 'group_members';
+
     try {
-      // Check if user is already a member
+      if (isGroupMember && !autoJoin) {
+        // Leave logic unchanged
+        Alert.alert('Leave Group', 'Are you sure you want to leave this group?', [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Leave', style: 'destructive',
+            onPress: async () => {
+              const { error: leaveError } = await supabase.from(memberTable).delete()
+                .eq('group_id', groupId).eq('user_id', user.id);
+              if (leaveError) throw leaveError;
+              if (isMounted.current) {
+                setIsGroupMember(false);
+                setCurrentUserRole(null);
+                Alert.alert('Success', 'You have left the group.');
+                fetchGroupData();
+                fetchGroupMembers();
+              }
+            },
+          },
+        ]);
+        return;
+      }
+
+      // Always check for existing membership before inserting
       const { data: existingMembership, error: checkError } = await supabase
-        .from('group_members')
+        .from(memberTable)
         .select('id')
         .eq('group_id', groupId)
         .eq('user_id', user.id)
-        .single();
-      
-      // If already a member and not an auto-join call, handle leave functionality
-      if (existingMembership && !autoJoin) {
-        // Show confirmation dialog
-        Alert.alert(
-          'Leave Group',
-          'Are you sure you want to leave this group?',
-          [
-            {
-              text: 'Cancel',
-              style: 'cancel'
-            },
-            {
-              text: 'Leave',
-              style: 'destructive',
-              onPress: async () => {
-                try {
-                  // Delete the membership
-                  const { error: leaveError } = await supabase
-                    .from('group_members')
-                    .delete()
-                    .eq('id', existingMembership.id);
-                    
-                  if (leaveError) throw leaveError;
-                  
-                  // Update membership status
-                  setIsGroupMember(false);
-                  
-                  // Show confirmation
-                  Alert.alert('Success', 'You have left the group');
-                  
-                  // Refresh member count and list
-                  fetchGroupData();
-                  fetchGroupMembers();
-                } catch (error) {
-                  console.error('Error leaving group:', error);
-                  Alert.alert('Error', 'Failed to leave group. Please try again.');
-                }
-              }
-            }
-          ]
-        );
+        .maybeSingle();
+
+      if (existingMembership) {
+        if (isMounted.current) {
+          setIsGroupMember(true);
+          setCurrentUserRole(existingMembership.role || 'member');
+          if (!autoJoin) Alert.alert('Info', 'You are already a member of this group');
+        }
         return;
       }
-      
-      // If not a member and either auto-join is enabled or user manually requested to join
-      if ((checkError && checkError.code === 'PGRST116') || !existingMembership) {
-        // Join the group
-        const { error: joinError } = await supabase
-          .from('group_members')
-          .insert({
-            group_id: groupId,
-            user_id: user.id,
-            role: 'member',
-            joined_at: new Date().toISOString()
-          });
-          
-        if (joinError) throw joinError;
-        
-        // Update membership status
-        setIsGroupMember(true);
-        
-        // Show confirmation if it was a manual join
-        if (!autoJoin) {
-          Alert.alert('Success', 'You have joined this group!');
+
+      // Not a member, try to insert
+      const { error: joinError } = await supabase.from(memberTable).insert({
+        group_id: groupId,
+        user_id: user.id,
+        role: 'member',
+        joined_at: new Date().toISOString(),
+      });
+      if (joinError) {
+        // If duplicate error (23505), treat as success
+        if (joinError.code === '23505') {
+          if (isMounted.current) {
+            setIsGroupMember(true);
+            setCurrentUserRole('member');
+            if (!autoJoin) Alert.alert('Info', 'You are already a member of this group');
+          }
+        } else {
+          throw joinError;
         }
-        
-        // Refresh member count and list
-        fetchGroupData();
-        fetchGroupMembers();
-      } else if (!autoJoin) {
-        // If already a member, update the state just to be sure
-        setIsGroupMember(true);
-        Alert.alert('Info', 'You are already a member of this group');
+      } else {
+        if (isMounted.current) {
+          setIsGroupMember(true);
+          setCurrentUserRole('member');
+          if (!autoJoin) Alert.alert('Success', 'You have joined this group!');
+        }
       }
-    } catch (error) {
-      console.error('Error handling group membership:', error);
-      if (!autoJoin) {
-        Alert.alert('Error', 'Failed to process your request. Please try again.');
-      }
+      // Always refresh
+      fetchGroupData();
+      fetchGroupMembers();
+    } catch (err) {
+      console.error('Error handling group membership:', err);
+      if (!autoJoin && isMounted.current) Alert.alert('Error', 'Failed to process your request. Please try again.');
     }
-  }, [user, groupId, fetchGroupData, fetchGroupMembers]);
-  
-  // Check for auto-join when group data is loaded
+  }, [user, groupId, group, isGroupMember, fetchGroupData, fetchGroupMembers]);
+
+  // Check for auto-join when group data (specifically auto_join flag) is loaded
   useEffect(() => {
-    if (group && group.auto_join && user) {
+    if (group && group.auto_join && user && !isGroupMember && initialFetchDone.current) {
+      console.log('[GroupDetailScreen] Auto-joining group:', group.name);
       joinGroup(true); // true indicates this is an auto-join
     }
-  }, [group, user, joinGroup]);
+  }, [group, user, isGroupMember, joinGroup, initialFetchDone.current]);
   
-  // Handle tab changes - only fetch initial data when tab is selected
+  // Track if we've already fetched posts/members for this tab in this group session
+  const [didFetchPosts, setDidFetchPosts] = useState(false);
+  const [didFetchMembers, setDidFetchMembers] = useState(false);
+
+  // Reset fetch flags when groupId changes
   useEffect(() => {
-    // Only fetch data if we've switched to this tab AND data isn't already loading
-    if (selectedTab === 'Posts' && posts.length === 0 && !postsLoading) {
+    setDidFetchPosts(false);
+    setDidFetchMembers(false);
+  }, [groupId]);
+
+  // Handle tab changes - only fetch once per tab per group session
+  useEffect(() => {
+    if (!initialFetchDone.current) return;
+
+    if (selectedTab === 'Posts' && !didFetchPosts) {
+      setDidFetchPosts(true);
       fetchGroupPosts();
-    } else if (selectedTab === 'Members' && members.length === 0 && !membersLoading) {
+    } else if (selectedTab === 'Members' && !didFetchMembers) {
+      setDidFetchMembers(true);
       fetchGroupMembers();
     }
-  }, [selectedTab]); // Only run when tab changes
+  }, [selectedTab, initialFetchDone.current, fetchGroupPosts, fetchGroupMembers, didFetchPosts, didFetchMembers]);
+
+  // Handle refresh
+  const handleRefresh = useCallback(async () => {
+    console.log('[GroupDetailScreen] Manual refresh triggered.');
+    setRefreshing(true);
+    // Re-fetch all primary data. fetchGroupData also updates member count.
+    await fetchGroupData(); 
+    if (selectedTab === 'Posts') {
+      await fetchGroupPosts();
+    } else {
+      await fetchGroupMembers();
+    }
+    // Membership and favorite status might also need refresh if relevant actions occurred outside.
+    if (user && group) { // only if user and group context exist
+        await checkMembership();
+        await checkFavorite();
+    }
+    setRefreshing(false);
+  }, [fetchGroupData, fetchGroupPosts, fetchGroupMembers, selectedTab, user, group, checkMembership, checkFavorite]);
+
 
   // Post interactions
   const [likedPosts, setLikedPosts] = useState({});
   
-  // Handle post creation
   const handlePostCreated = useCallback((newPost) => {
     setPosts(prevPosts => [newPost, ...prevPosts]);
+    // Optionally, could also increment a local post count if displayed
   }, []);
   
-  // Handle post like - now using group_post_likes table
   const handleLikePost = useCallback(async (postId) => {
     if (!user) return;
     
-    // Toggle liked status in UI immediately for responsive feel
-    setLikedPosts(prev => ({
-      ...prev,
-      [postId]: !prev[postId]
-    }));
+    const wasLiked = !!likedPosts[postId];
+    setLikedPosts(prev => ({ ...prev, [postId]: !wasLiked })); // Optimistic update
     
     try {
-      // Check if already liked
-      const { data: existingLike, error: checkError } = await supabase
-        .from('group_post_likes')
-        .select('*')
-        .eq('group_post_id', postId)
-        .eq('user_id', user.id)
-        .single();
-      
-      if (checkError && checkError.code !== 'PGRST116') {
-        throw checkError;
-      }
-      
-      if (existingLike) {
-        // Unlike - delete the like
-        const { error: deleteError } = await supabase
-          .from('group_post_likes')
-          .delete()
-          .eq('id', existingLike.id);
-          
-        if (deleteError) throw deleteError;
+      if (wasLiked) {
+        const { error } = await supabase.from('group_post_likes').delete()
+          .eq('group_post_id', postId).eq('user_id', user.id);
+        if (error) throw error;
       } else {
-        // Like - insert new like
-        const { error: insertError } = await supabase
-          .from('group_post_likes')
-          .insert({
-            group_post_id: postId,
-            user_id: user.id,
-            created_at: new Date().toISOString()
-          });
-          
-        if (insertError) throw insertError;
+        const { error } = await supabase.from('group_post_likes').insert({
+          group_post_id: postId, user_id: user.id, created_at: new Date().toISOString()
+        });
+        if (error) throw error;
       }
-      
-      // Fetch updated post likes count
-      fetchGroupPosts();
-      
-    } catch (error) {
-      console.error('Error toggling like:', error);
-      // Revert UI state on error
-      setLikedPosts(prev => ({
-        ...prev,
-        [postId]: !prev[postId]
-      }));
-      Alert.alert('Error', 'Failed to process like. Please try again.');
+      // fetchGroupPosts(); // Re-fetch all posts to update like counts from DB (can be heavy)
+      // Or, update post's like_count locally if available and API returns new count
+    } catch (err) {
+      console.error('Error toggling like:', err);
+      setLikedPosts(prev => ({ ...prev, [postId]: wasLiked })); // Revert on error
+      if (isMounted.current) Alert.alert('Error', 'Failed to process like. Please try again.');
     }
-  }, [user, fetchGroupPosts]);
+  }, [user, likedPosts]);
   
-  // Handle post comment
   const handleCommentPost = useCallback((post) => {
     setCommentItem(post);
     setCommentVisible(true);
   }, []);
   
-  // Handle when a comment is added
-  const handleCommentAdded = useCallback((newComment) => {
-    // Refresh posts to show updated comment count
-    fetchGroupPosts();
+  const handleCommentAdded = useCallback(() => {
+    fetchGroupPosts(); // Refresh posts to show updated comment count
   }, [fetchGroupPosts]);
   
-  // Share tray state
   const [shareVisible, setShareVisible] = useState(false);
   const [shareItem, setShareItem] = useState(null);
   const [shareItemType, setShareItemType] = useState('post');
   
-  // Comment tray state
-  const [commentVisible, setCommentVisible] = useState(false);
-  const [commentItem, setCommentItem] = useState(null);
-  
-  // Handle post share - now using ShareTray
   const handleSharePost = useCallback((post) => {
     setShareItem(post);
     setShareItemType('post');
     setShareVisible(true);
   }, []);
   
-  // Handle group share
+  const handleEditGroup = useCallback(() => {
+    if (!group) return;
+    console.log('[GroupDetailScreen] Navigating to EditGroupScreen for group ID:', group.id);
+    navigation.navigate('EditGroup', { 
+      groupId: group.id, 
+      initialData: {
+        name: group.name,
+        description: group.description,
+        imageurl: group.imageurl,
+        is_public: group.is_public, // Pass other relevant fields
+        // ... other group fields
+      },
+      groupType: group.type, // Pass group type
+    });
+  }, [group, navigation]);
+
   const handleShareGroup = useCallback(() => {
     if (!group) return;
-    
     setShareItem(group);
-    setShareItemType('group');
+    setShareItemType('group'); // Make sure ShareTray handles 'group' type
     setShareVisible(true);
   }, [group]);
 
-  // Render posts tab content
+  const toggleFavorite = useCallback(async () => {
+    if (!user || !groupId || !group) return;
+    
+    try {
+      const newIsFavorite = !isFavorite;
+      setIsFavorite(newIsFavorite); // Optimistic update
+
+      if (!newIsFavorite) { // Was favorite, now unfavoriting
+        const { error } = await supabase.from('favorites').delete()
+          .eq('user_id', user.id).eq('item_id', groupId).eq('item_type', 'group'); // or group.type
+        if (error) throw error;
+        if (isMounted.current) Alert.alert('Success', 'Removed from favorites');
+      } else { // Was not favorite, now favoriting
+        const { error } = await supabase.from('favorites').insert({
+          user_id: user.id, item_id: groupId, item_type: 'group', created_at: new Date().toISOString()
+        });
+        if (error) throw error;
+        if (isMounted.current) Alert.alert('Success', 'Added to favorites');
+      }
+    } catch (err) {
+      console.error('Error toggling favorite:', err);
+      if (isMounted.current) {
+        setIsFavorite(isFavorite); // Revert optimistic update
+        Alert.alert('Error', 'Failed to update favorite status.');
+      }
+    }
+  }, [user, groupId, group, isFavorite]);
+
+  // Render functions for tab content
   const renderPostsTab = () => {
     if (postsLoading && !refreshing && posts.length === 0) {
-      return (
-        <View style={styles.centeredContainer}>
-          <ActivityIndicator size="large" color={COLORS.DARK_GREEN} />
-        </View>
-      );
+      return <View style={styles.centeredContainer}><ActivityIndicator size="large" color={COLORS.DARK_GREEN} /></View>;
     }
-
     if (postsError && !refreshing) {
       return (
         <View style={styles.centeredContainer}>
@@ -628,17 +620,15 @@ const GroupDetailScreen = () => {
         </View>
       );
     }
-
     if (posts.length === 0) {
       return (
         <View style={styles.emptyContainer}>
           <Ionicons name="document-text-outline" size={48} color="#ccc" />
-          <Text style={styles.emptyText}>No posts yet</Text>
-          <Text style={styles.emptySubText}>Be the first to post in this group!</Text>
+          <Text style={styles.emptyText}>No posts yet in this group.</Text>
+          {isGroupMember && <Text style={styles.emptySubText}>Be the first to post!</Text>}
         </View>
       );
     }
-
     return (
       <View style={styles.postsContainer}>
         {posts.map(item => (
@@ -649,49 +639,22 @@ const GroupDetailScreen = () => {
                 style={styles.postAvatar}
               />
               <View style={styles.postAuthorInfo}>
-                <Text style={styles.postAuthorName}>
-                  {item.author?.full_name || item.author?.username || 'User'}
-                </Text>
-                <Text style={styles.postTime}>
-                  {new Date(item.created_at).toLocaleString()}
-                </Text>
+                <Text style={styles.postAuthorName}>{item.author?.full_name || item.author?.username || 'User'}</Text>
+                <Text style={styles.postTime}>{new Date(item.created_at).toLocaleString()}</Text>
               </View>
             </View>
             <Text style={styles.postContent}>{item.content}</Text>
-            {item.media_url && (
-              <Image 
-                source={{ uri: item.media_url }} 
-                style={styles.postImage}
-                resizeMode="cover"
-              />
-            )}
+            {item.media_url && <Image source={{ uri: item.media_url }} style={styles.postImage} resizeMode="cover" />}
             <View style={styles.postActions}>
-              <TouchableOpacity 
-                style={styles.postAction} 
-                onPress={() => handleLikePost(item.id)}
-              >
-                <Ionicons 
-                  name={likedPosts[item.id] ? "heart" : "heart-outline"} 
-                  size={20} 
-                  color={likedPosts[item.id] ? COLORS.DARK_GREEN : "#666"} 
-                />
-                <Text 
-                  style={[styles.postActionText, likedPosts[item.id] && styles.postActionTextActive]}
-                >
-                  Like
-                </Text>
+              <TouchableOpacity style={styles.postAction} onPress={() => handleLikePost(item.id)}>
+                <Ionicons name={likedPosts[item.id] ? "heart" : "heart-outline"} size={20} color={likedPosts[item.id] ? COLORS.DARK_GREEN : "#666"} />
+                <Text style={[styles.postActionText, likedPosts[item.id] && styles.postActionTextActive]}>Like</Text>
               </TouchableOpacity>
-              <TouchableOpacity 
-                style={styles.postAction}
-                onPress={() => handleCommentPost(item)}
-              >
+              <TouchableOpacity style={styles.postAction} onPress={() => handleCommentPost(item)}>
                 <Ionicons name="chatbubble-outline" size={20} color="#666" />
                 <Text style={styles.postActionText}>Comment</Text>
               </TouchableOpacity>
-              <TouchableOpacity 
-                style={styles.postAction}
-                onPress={() => handleSharePost(item)}
-              >
+              <TouchableOpacity style={styles.postAction} onPress={() => handleSharePost(item)}>
                 <Ionicons name="share-social-outline" size={20} color="#666" />
                 <Text style={styles.postActionText}>Share</Text>
               </TouchableOpacity>
@@ -702,16 +665,10 @@ const GroupDetailScreen = () => {
     );
   };
 
-  // Render members tab content
   const renderMembersTab = () => {
     if (membersLoading && !refreshing && members.length === 0) {
-      return (
-        <View style={styles.centeredContainer}>
-          <ActivityIndicator size="large" color={COLORS.DARK_GREEN} />
-        </View>
-      );
+      return <View style={styles.centeredContainer}><ActivityIndicator size="large" color={COLORS.DARK_GREEN} /></View>;
     }
-
     if (membersError && !refreshing) {
       return (
         <View style={styles.centeredContainer}>
@@ -722,23 +679,14 @@ const GroupDetailScreen = () => {
         </View>
       );
     }
-
     if (members.length === 0) {
-      return (
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>No members found</Text>
-        </View>
-      );
+      return <View style={styles.emptyContainer}><Text style={styles.emptyText}>No members found.</Text></View>;
     }
-    
     return (
       <View style={styles.membersContainer}>
         {members.map(item => (
           <View key={item.id} style={styles.memberItem}>
-            <Image
-              source={{ uri: item.avatarUrl || 'https://via.placeholder.com/50' }}
-              style={styles.memberAvatar}
-            />
+            <Image source={{ uri: item.avatarUrl || 'https://via.placeholder.com/50' }} style={styles.memberAvatar} />
             <View style={styles.memberInfo}>
               <View style={styles.memberNameRow}>
                 <Text style={styles.memberName}>{item.fullName || item.username}</Text>
@@ -749,9 +697,7 @@ const GroupDetailScreen = () => {
                   </View>
                 )}
               </View>
-              {item.bio && (
-                <Text style={styles.memberBio} numberOfLines={1}>{item.bio}</Text>
-              )}
+              {item.bio && <Text style={styles.memberBio} numberOfLines={1}>{item.bio}</Text>}
             </View>
           </View>
         ))}
@@ -759,203 +705,182 @@ const GroupDetailScreen = () => {
     );
   };
 
-  // Render tab content based on selected tab
   const renderTabContent = () => {
     switch (selectedTab) {
-      case 'Posts':
-        return renderPostsTab();
-      case 'Members':
-        return renderMembersTab();
-      default:
-        return null;
+      case 'Posts': return renderPostsTab();
+      case 'Members': return renderMembersTab();
+      default: return null;
     }
   };
 
-  // Render loading state
-  if (loading && !refreshing && !group) {
-    return (
-      <View style={styles.container}>
-        <AppHeader 
-          title="Group"
-          navigation={navigation}
-          canGoBack={true}
-        />
-        <View style={styles.centeredContainer}>
-          <ActivityIndicator size="large" color={COLORS.DARK_GREEN} />
-        </View>
-      </View>
-    );
-  }
+  // Comment tray state
+  const [commentVisible, setCommentVisible] = useState(false);
+  const [commentItem, setCommentItem] = useState(null);
 
-  // Render error state
-  if (error && !refreshing) {
-    return (
-      <View style={styles.container}>
-        <AppHeader 
-          title="Group"
-          navigation={navigation}
-          canGoBack={true}
-        />
-        <View style={styles.centeredContainer}>
-          <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity onPress={fetchGroupData} style={styles.retryButton}>
-            <Text style={styles.retryButtonText}>Try Again</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  }
-
-  // Single scrollable layout approach
+  // Main component render
   return (
-    <View style={styles.container}>
-      <AppHeader 
+    <SafeAreaView style={[styles.container, {paddingTop: 0, marginTop: 0}]}> 
+      <AppHeader
         title={group?.name || 'Group'}
         navigation={navigation}
         canGoBack={true}
+        style={{
+          paddingTop: Platform.OS === 'android' ? 9 : 12.5,
+          paddingBottom: 3,
+          minHeight: Platform.OS === 'android' ? 22.5 : 27.5,
+          marginTop: 0,
+          borderTopWidth: 0,
+        }}
       />
-      
-      {/* Floating Action Button for Post Creation - only shown for group members */}
-      {selectedTab === 'Posts' && isGroupMember && (
+      <ScrollView
+        style={styles.mainScrollView}
+        contentContainerStyle={styles.scrollViewContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+      >
+        {loading && !group && !error && (
+          <View style={styles.centeredContainer}><ActivityIndicator size="large" color={COLORS.DARK_GREEN} /></View>
+        )}
+        {error && !group && (
+          <View style={styles.centeredContainer}>
+            <Text style={styles.errorText}>{error}</Text>
+            <TouchableOpacity onPress={fetchGroupData} style={styles.retryButton}>
+               <Text style={styles.retryButtonText}>Try Again</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {group && (
+          <>
+            <View style={styles.heroContainer}>
+              <Image source={{ uri: group.imageurl || 'https://via.placeholder.com/400x180.png?text=Group+Cover' }} style={styles.coverImage} />
+              <View style={styles.groupInfoCard}>
+                <View style={styles.groupNameRow}>
+                  <Text style={styles.groupName}>{group.name}</Text>
+                  {(currentUserRole === 'admin' || user?.id === group.created_by) && (
+                    <TouchableOpacity onPress={handleEditGroup} style={styles.editIconContainer}>
+                      <Feather name="edit-2" size={20} color={COLORS.DARK_GRAY} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+                <View style={styles.groupTypeContainer}>
+                  <Ionicons name={group.is_public ? "lock-open-outline" : "lock-closed-outline"} size={16} color={COLORS.DARK_GREEN} />
+                  <Text style={styles.groupType}>{group.is_public ? 'Public Group' : 'Private Group'}</Text>
+                  {group.type === 'housing_group' && (
+                     <View style={styles.publicBadge}>
+                        <MaterialIcons name="house" size={12} color="#fff" />
+                        <Text style={styles.publicText}>Housing</Text>
+                     </View>
+                  )}
+                </View>
+                <Text style={styles.groupDescription} numberOfLines={3}>{group.description}</Text>
+                <View style={styles.groupMetaRow}>
+                  <View style={styles.metaItem}>
+                    <Ionicons name="people-outline" size={16} color="#666" />
+                    <Text style={styles.metaText}>{memberCount} Members</Text>
+                  </View>
+                </View>
+                <View style={styles.actionButtonsRow}>
+                  {user && (
+                    <TouchableOpacity
+                      style={isGroupMember ? styles.leaveButton : styles.joinButton}
+                      onPress={() => joinGroup(false)}
+                      disabled={!group} // Disable if group info not loaded
+                    >
+                      <Text style={isGroupMember ? styles.leaveButtonText : styles.joinButtonText}>
+                        {isGroupMember ? 'Leave Group' : 'Join Group'}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                  {user && (
+                     <ActionButton
+                        iconName={isFavorite ? "heart" : "heart-outline"}
+                        onPress={toggleFavorite}
+                        style={styles.iconButton} // Generic style for small icon buttons
+                        iconColor={isFavorite ? COLORS.RED : COLORS.DARK_GRAY}
+                        disabled={!group}
+                     />
+                  )}
+                   <ActionButton
+                        iconName="share-social-outline"
+                        onPress={handleShareGroup}
+                        style={styles.iconButton}
+                        iconColor={COLORS.DARK_GRAY}
+                        disabled={!group}
+                    />
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.tabBar}>
+              {TABS.map(tab => (
+                <TouchableOpacity
+                  key={tab}
+                  style={[styles.tabBtn, selectedTab === tab && styles.tabBtnActive]}
+                  onPress={() => setSelectedTab(tab)}
+                >
+                  <Text style={[styles.tabText, selectedTab === tab && styles.tabTextActive]}>{tab}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={styles.tabContentContainer}>{renderTabContent()}</View>
+          </>
+        )}
+      </ScrollView>
+
+      {showCreatePostModal && group && user && (
+        <PostCreationModal
+          isVisible={showCreatePostModal}
+          onClose={() => setShowCreatePostModal(false)}
+          onPostCreated={(newPostData) => {
+            const newPostWithAuthorInfo = {
+              ...newPostData, // newPostData should contain content, media_url, group_id etc.
+              id: newPostData.id || Date.now(), // Ensure it has an ID for key prop, DB will assign final one
+              author: {
+                id: user.id,
+                username: user.user_metadata?.username,
+                full_name: user.user_metadata?.full_name,
+                avatar_url: user.user_metadata?.avatar_url,
+              },
+              created_at: new Date().toISOString(),
+              // Ensure other necessary fields like like_count, comment_count are defaulted if needed
+              like_count: 0, 
+              comment_count: 0,
+            };
+            handlePostCreated(newPostWithAuthorInfo);
+            setShowCreatePostModal(false);
+          }}
+          groupId={groupId}
+          groupType={group.type}
+        />
+      )}
+      {shareVisible && shareItem && (
+        <ShareTray
+          isVisible={shareVisible}
+          item={shareItem}
+          itemType={shareItemType}
+          onClose={() => { setShareVisible(false); setShareItem(null); }}
+        />
+      )}
+      {commentVisible && commentItem && user && (
+        <CommentTray
+          isVisible={commentVisible}
+          itemType="group_post"
+          itemId={commentItem.id}
+          onClose={() => { setCommentVisible(false); setCommentItem(null); }}
+          onCommentAdded={handleCommentAdded}
+        />
+      )}
+      {isGroupMember && selectedTab === 'Posts' && user && group && (
         <View style={styles.fabContainer}>
           <ActionButton
-            onPress={() => setShowCreatePostModal(true)}
+            isFab={true} // Prop to style it as a FAB
             iconName="add"
-            color={COLORS.DARK_GREEN}
-            size={56}
+            onPress={() => setShowCreatePostModal(true)}
+            style={styles.fabStyle} // Apply specific FAB styling
           />
         </View>
-      )}  
-      
-      {/* Main ScrollView for the entire content */}
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={true}
-        scrollEnabled={true}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            colors={[COLORS.DARK_GREEN]}
-            tintColor={COLORS.DARK_GREEN}
-          />
-        }
-      >
-        {/* Group Header/Hero Section */}
-        <View style={styles.heroContainer}>
-          <Image
-            source={{ uri: group?.imageurl || 'https://picsum.photos/800/500' }}
-            style={styles.coverImage}
-            resizeMode="cover"
-          />
-          <View style={styles.groupInfoCard}>
-            <Text style={styles.groupName}>{group?.name || 'Group Name'}</Text>
-            <View style={styles.groupTypeContainer}>
-              <Ionicons name="pricetag-outline" size={14} color={COLORS.DARK_GREEN} />
-              <Text style={styles.groupType}>{group?.type || 'General'}</Text>
-              
-              {group?.is_public && (
-                <View style={styles.publicBadge}>
-                  <Ionicons name="earth" size={14} color="#fff" />
-                  <Text style={styles.publicText}>Public</Text>
-                </View>
-              )}
-            </View>
-            <Text style={styles.groupDescription}>{group?.description || 'No description provided'}</Text>
-            <View style={styles.groupMetaRow}>
-              <View style={styles.metaItem}>
-                <Ionicons name="people-outline" size={16} color="#666" />
-                <Text style={styles.metaText}>{memberCount} Members</Text>
-              </View>
-              <View style={styles.metaItem}>
-                <Ionicons name="calendar-outline" size={16} color="#666" />
-                <Text style={styles.metaText}>
-                  Created {new Date(group?.created_at).toLocaleDateString()}
-                </Text>
-              </View>
-            </View>
-            
-            <View style={styles.actionButtonsRow}>
-              <TouchableOpacity 
-                style={isGroupMember ? styles.leaveButton : styles.joinButton}
-                onPress={() => joinGroup(false)} // false indicates manual join
-              >
-                <Text style={isGroupMember ? styles.leaveButtonText : styles.joinButtonText}>
-                  {isGroupMember ? 'Leave Group' : 'Join Group'}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={styles.secondaryButton}
-                onPress={handleShareGroup}
-              >
-                <Ionicons name="share-social-outline" size={18} color={COLORS.DARK_GREEN} />
-                <Text style={styles.secondaryButtonText}>Share</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={styles.secondaryButton}
-                onPress={toggleFavorite}
-              >
-                <Ionicons 
-                  name={isFavorite ? "heart" : "heart-outline"} 
-                  size={18} 
-                  color={isFavorite ? '#e74c3c' : COLORS.DARK_GREEN} 
-                />
-                <Text style={styles.secondaryButtonText}>
-                  {isFavorite ? 'Favorited' : 'Favorite'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-        
-        {/* Tab Bar */}
-        <View style={styles.tabBar}>
-          {TABS.map(tab => (
-            <TouchableOpacity
-              key={tab}
-              style={[styles.tabBtn, selectedTab === tab && styles.tabBtnActive]}
-              onPress={() => setSelectedTab(tab)}
-            >
-              <Text style={[styles.tabText, selectedTab === tab && styles.tabTextActive]}>{tab}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-        
-        {/* Tab content */}
-        <View style={styles.tabContentContainer}>
-          {renderTabContent()}
-        </View>
-      </ScrollView>
-      
-      {/* Post Creation Modal */}
-      <PostCreationModal
-        visible={showCreatePostModal}
-        onClose={() => setShowCreatePostModal(false)}
-        onPostCreated={handlePostCreated}
-        groupId={groupId}
-      />
-      
-      {/* Share Tray */}
-      <ShareTray
-        visible={shareVisible}
-        onClose={() => setShareVisible(false)}
-        item={shareItem}
-        itemType={shareItemType}
-        additionalOptions={[
-          // Add any additional options specific to your app
-          // Example: { id: 'favorite', icon: 'star', label: 'Save', action: handleSave, iconType: 'ionicons' }
-        ]}
-      />
-      
-      {/* Comment Tray */}
-      <CommentTray
-        visible={commentVisible}
-        onClose={() => setCommentVisible(false)}
-        item={commentItem}
-        itemType="post"
-        onCommentAdded={handleCommentAdded}
-      />
-    </View>
+      )}
+    </SafeAreaView>
   );
 };
 
@@ -966,68 +891,68 @@ const styles = StyleSheet.create({
   },
   mainScrollView: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#f0f2f5', // Light gray background for scroll area
   },
   scrollViewContent: {
-    paddingBottom: 30, // Add padding at the bottom for better UX
-  },
-  tabContentContainer: {
-    paddingHorizontal: 16,
-    paddingBottom: 20,
-  },
-  postsContainer: {
-    paddingTop: 10,
-  },
-  membersContainer: {
-    paddingTop: 10,
+    paddingBottom: 80, // Space for FAB and content
   },
   centeredContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
+    minHeight: 200, // Ensure it takes some space
   },
   errorText: {
     fontSize: 16,
-    color: '#e74c3c',
+    color: COLORS.RED, // Use defined color
     textAlign: 'center',
     marginBottom: 16,
   },
   retryButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
     backgroundColor: COLORS.DARK_GREEN,
-    borderRadius: 4,
+    borderRadius: 20,
   },
   retryButtonText: {
     color: '#fff',
-    fontWeight: '500',
+    fontWeight: 'bold',
   },
-  // Hero Section
   heroContainer: {
-    position: 'relative',
     marginBottom: 16,
   },
   coverImage: {
     width: '100%',
     height: 180,
+    backgroundColor: '#e0e0e0', // Placeholder color
   },
   groupInfoCard: {
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 16,
     marginHorizontal: 16,
-    marginTop: -40,
+    marginTop: -50, // Overlap cover image
     elevation: 4,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
   },
-  groupName: {
-    fontSize: 20,
-    fontWeight: 'bold',
+  groupNameRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 8,
+  },
+  groupName: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#333',
+    flex: 1, // Allow text to take space before icon
+  },
+  editIconContainer: {
+    padding: 8, // Make tappable area larger
   },
   groupTypeContainer: {
     flexDirection: 'row',
@@ -1043,25 +968,27 @@ const styles = StyleSheet.create({
   publicBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.DARK_GREEN,
+    backgroundColor: COLORS.DARK_BLUE, // Different color for type badge
     borderRadius: 12,
     paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingVertical: 3,
     marginLeft: 8,
   },
   publicText: {
-    fontSize: 12,
-    color: '#fff',
     marginLeft: 4,
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: 'bold',
   },
   groupDescription: {
     fontSize: 14,
-    color: '#444',
+    color: '#555',
     marginBottom: 12,
     lineHeight: 20,
   },
   groupMetaRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: 16,
   },
   metaItem: {
@@ -1072,26 +999,22 @@ const styles = StyleSheet.create({
   metaText: {
     fontSize: 13,
     color: '#666',
-    marginLeft: 4,
+    marginLeft: 6,
   },
   actionButtonsRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'space-between', // Distribute space for 2-3 buttons
+    alignItems: 'center',
   },
   joinButton: {
     backgroundColor: COLORS.DARK_GREEN,
     paddingVertical: 10,
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    flex: 1,
+    flex: 1, // Take available space
     marginRight: 8,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
   },
   joinButtonText: {
     color: '#fff',
@@ -1099,49 +1022,32 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   leaveButton: {
-    backgroundColor: '#e0e0e0', // Gray color
+    backgroundColor: '#e0e0e0',
     paddingVertical: 10,
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
     flex: 1,
     marginRight: 8,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
   },
   leaveButtonText: {
-    color: '#000', // Black text
+    color: '#333',
     fontWeight: '600',
     fontSize: 14,
-    textAlign: 'center',
   },
-  secondaryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: COLORS.DARK_GREEN,
+  iconButton: { // Style for smaller icon buttons like Favorite, Share
+    padding: 8,
+    // No background, just icon, or minimal border/background
+    // Adjust margin as needed if they are too close or too far
     marginLeft: 8,
   },
-  secondaryButtonText: {
-    color: COLORS.DARK_GREEN,
-    marginLeft: 4,
-  },
-  // Tab Bar
   tabBar: {
     flexDirection: 'row',
     marginHorizontal: 16,
     marginBottom: 16,
-    marginTop: 8,
+    backgroundColor: '#e9e9e9',
     borderRadius: 8,
-    backgroundColor: '#f5f5f5',
     padding: 4,
   },
   tabBtn: {
@@ -1154,36 +1060,37 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 1,
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+    elevation: 2,
   },
   tabText: {
-    color: '#666',
+    color: '#555',
     fontWeight: '500',
   },
   tabTextActive: {
     color: COLORS.DARK_GREEN,
     fontWeight: 'bold',
   },
-  tabContent: {
-    flex: 1,
-    paddingHorizontal: 16,
+  tabContentContainer: {
+    paddingHorizontal: 0, // Posts/Members containers can have their own padding if needed
   },
-  // Posts Tab
-  postsList: {
-    paddingBottom: 20,
+  postsContainer: {
+    paddingHorizontal: 16, // Add padding here if not in tabContentContainer
+  },
+  membersContainer: {
+    paddingHorizontal: 0, // MemberItem has its own padding
   },
   postCard: {
     backgroundColor: '#fff',
-    borderRadius: 12,
+    borderRadius: 8,
     padding: 16,
-    marginBottom: 16,
-    elevation: 2,
+    marginBottom: 12,
+    elevation: 1,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
+    shadowOpacity: 0.05,
+    shadowRadius: 1,
   },
   postHeader: {
     flexDirection: 'row',
@@ -1195,68 +1102,69 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: 20,
     marginRight: 12,
+    backgroundColor: '#f0f0f0',
   },
   postAuthorInfo: {
     flex: 1,
   },
   postAuthorName: {
     fontWeight: 'bold',
-    fontSize: 14,
+    fontSize: 15,
+    color: '#333',
   },
   postTime: {
     fontSize: 12,
-    color: '#666',
+    color: '#777',
   },
   postContent: {
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 15,
+    lineHeight: 22,
+    color: '#444',
     marginBottom: 12,
   },
   postImage: {
     width: '100%',
-    height: 200,
+    height: 200, // Adjust as needed
     borderRadius: 8,
     marginBottom: 12,
+    backgroundColor: '#e0e0e0',
   },
   postActions: {
     flexDirection: 'row',
     borderTopWidth: 1,
     borderTopColor: '#eee',
     paddingTop: 12,
+    marginTop: 8,
   },
   postAction: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginRight: 16,
+    marginRight: 20, // More spacing
   },
   postActionText: {
-    marginLeft: 4,
+    marginLeft: 6,
     fontSize: 13,
-    color: '#666',
+    color: '#555',
   },
   postActionTextActive: {
     color: COLORS.DARK_GREEN,
-    fontWeight: '500',
-  },
-  // Members Tab
-  membersList: {
-    paddingBottom: 20,
-    paddingHorizontal: 16, // Add consistent horizontal padding
+    fontWeight: '600',
   },
   memberItem: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 12,
-    paddingHorizontal: 16, // Add consistent padding on both sides
+    paddingHorizontal: 16,
+    backgroundColor: '#fff', // Give items a background if overall container is colored
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-    marginHorizontal: -16, // Offset the container padding to allow border to extend fully
+    borderBottomColor: '#f0f0f0',
   },
   memberAvatar: {
     width: 50,
     height: 50,
     borderRadius: 25,
     marginRight: 16,
+    backgroundColor: '#f0f0f0',
   },
   memberInfo: {
     flex: 1,
@@ -1268,37 +1176,40 @@ const styles = StyleSheet.create({
   },
   memberName: {
     fontWeight: 'bold',
-    fontSize: 14,
+    fontSize: 15,
+    color: '#333',
     marginRight: 8,
   },
   adminBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.DARK_GREEN,
-    borderRadius: 12,
+    borderRadius: 10,
     paddingHorizontal: 6,
     paddingVertical: 2,
   },
   adminText: {
     fontSize: 10,
     color: '#fff',
-    marginLeft: 2,
+    marginLeft: 3,
+    fontWeight: 'bold',
   },
   memberBio: {
     fontSize: 13,
     color: '#666',
   },
-  // Empty States
   emptyContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 40,
+    paddingVertical: 50,
+    paddingHorizontal: 20,
   },
   emptyText: {
-    fontSize: 16,
+    fontSize: 17,
     color: '#888',
-    marginTop: 10,
+    marginTop: 12,
     textAlign: 'center',
+    fontWeight: '500',
   },
   emptySubText: {
     fontSize: 14,
@@ -1306,12 +1217,20 @@ const styles = StyleSheet.create({
     marginTop: 8,
     textAlign: 'center',
   },
-  // FAB
   fabContainer: {
     position: 'absolute',
     bottom: 20,
     right: 20,
     zIndex: 10,
+  },
+  fabStyle: { // Example style for ActionButton if isFab prop isn't enough
+    backgroundColor: COLORS.DARK_GREEN,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 8,
   },
 });
 

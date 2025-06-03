@@ -61,7 +61,7 @@ const SocialFeedScreen = () => {
   // Reset scroll position when tab is focused
   useFocusEffect(
     useCallback(() => {
-      console.log('[SocialFeedScreen] Focus effect: scrolling to top');
+      // Focus effect: scrolling to top
       if (flatListRef.current) {
         flatListRef.current.scrollToOffset({ offset: 0, animated: false });
       }
@@ -97,7 +97,7 @@ const SocialFeedScreen = () => {
       
       setPosts(data || []);
     } catch (error) {
-      console.error('Error fetching posts:', error.message);
+      // Error fetching posts
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -143,7 +143,7 @@ const SocialFeedScreen = () => {
   // Header component with sticky navigation buttons
   const HeaderComponent = () => (
     <View style={styles.stickyHeader}>
-      <TouchableOpacity style={styles.stickerBtn} onPress={() => navigation.navigate('GroupsListScreen')}>
+      <TouchableOpacity style={styles.stickerBtn} onPress={() => navigation.navigate('GroupsList')}>
         <Feather name="users" size={20} color="#000" />
         <Text style={styles.stickerBtnText}>Groups</Text>
       </TouchableOpacity>

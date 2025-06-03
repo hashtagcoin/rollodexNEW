@@ -1,5 +1,5 @@
 import React from 'react';
-import { TouchableOpacity, StyleSheet, View } from 'react-native';
+import { TouchableOpacity, StyleSheet, View, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 /**
@@ -20,31 +20,34 @@ const ActionButton = ({
   iconColor = '#FFFFFF', 
   style,
   size = 56,
-  absolute = true
+  absolute = true,
+  opacity = 1,
 }) => {
   // Calculate border radius and icon size based on button size
   const borderRadius = size / 2;
   const iconSize = size * 0.42; // ~24px for a 56px button
   
   return (
-    <TouchableOpacity 
-      style={[
-        styles.button, 
-        { 
-          backgroundColor: color,
-          width: size,
-          height: size,
-          borderRadius: borderRadius,
-          // Only apply absolute positioning if requested
-          ...(absolute ? styles.absolutePosition : {})
-        },
-        style
-      ]} 
-      onPress={onPress}
-      activeOpacity={0.8}
-    >
-      <Ionicons name={iconName} size={iconSize} color={iconColor} />
-    </TouchableOpacity>
+    <Animated.View style={{opacity}}>
+      <TouchableOpacity 
+        style={[
+          styles.button, 
+          { 
+            backgroundColor: color,
+            width: size,
+            height: size,
+            borderRadius: borderRadius,
+            // Only apply absolute positioning if requested
+            ...(absolute ? styles.absolutePosition : {})
+          },
+          style
+        ]} 
+        onPress={onPress}
+        activeOpacity={0.8}
+      >
+        <Ionicons name={iconName} size={iconSize} color={iconColor} />
+      </TouchableOpacity>
+    </Animated.View>
   );
 };
 
