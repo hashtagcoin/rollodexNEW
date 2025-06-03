@@ -1,16 +1,24 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, FlatList, ActivityIndicator, SafeAreaView } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import Feather from 'react-native-vector-icons/Feather'; 
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons'; 
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { AntDesign } from '@expo/vector-icons';
+import { AntDesign, Entypo, Octicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, FONTS } from '../../constants/theme';
 import { useUser } from '../../context/UserContext';
 import { supabase } from '../../lib/supabaseClient';
 import { formatDistanceToNow, format, parseISO, isValid } from 'date-fns';
 import { useNotifications, NotificationBadge } from '../../components/notifications';
+
+// Import screens for tab navigation
+import ExploreStackNavigator from '../../navigation/ExploreStackNavigator';
+import WalletStackNavigator from '../../navigation/WalletStackNavigator';
+import SocialStackNavigator from '../../navigation/SocialStackNavigator';
+import FavouritesScreen from '../Main/FavouritesScreen';
+import ProfileStackNavigator from '../../navigation/ProfileStackNavigator';
 
 // Safe date parser to handle potentially invalid date strings
 const safelyFormatDate = (dateString, formatStr = 'MMM d') => {
@@ -48,7 +56,11 @@ const safeTimeAgo = (dateString) => {
   }
 };
 
-const ProviderDashboardScreen = () => {
+// Create Tab Navigator
+const Tab = createBottomTabNavigator();
+
+// Provider Dashboard Content Component
+const ProviderDashboardContent = () => {
   const { profile, isProviderMode, toggleProviderMode } = useUser();
   const { showNotificationTray, unreadCount } = useNotifications();
   const navigation = useNavigation();
@@ -553,6 +565,109 @@ const ProviderDashboardScreen = () => {
         <View style={{ height: 20 }} />
       </ScrollView>
     </SafeAreaView>
+  );
+};
+
+// Main Provider Dashboard Screen with Tab Navigator
+const ProviderDashboardScreen = () => {
+  return (
+    <Tab.Navigator
+      screenOptions={({ route }) => ({
+        tabBarIcon: ({ color, size }) => {
+          if (route.name === 'Home') return <Feather name="home" size={size} color={color} />;
+          if (route.name === 'Explore') return <Feather name="search" size={size} color={color} />;
+          if (route.name === 'Wallet') return <Entypo name="wallet" size={size} color={color} />;
+          if (route.name === 'Social') return <Feather name="message-square" size={size} color={color} />;
+          if (route.name === 'Favourites') return <AntDesign name="hearto" size={size} color={color} />;
+          if (route.name === 'Profile') return <Octicons name="person" size={size} color={color} />;
+          return null;
+        },
+        tabBarActiveTintColor: 'tomato',
+        tabBarInactiveTintColor: 'gray',
+        headerShown: false,
+      })}
+    >
+      <Tab.Screen 
+        name="Home" 
+        component={ProviderDashboardContent}
+        listeners={({ navigation }) => ({
+          tabPress: (e) => {
+            // Prevent default behavior
+            e.preventDefault();
+            // Navigate to Provider Dashboard
+            navigation.navigate('Home');
+          },
+        })}
+      />
+      <Tab.Screen 
+        name="Explore" 
+        component={ExploreStackNavigator}
+        listeners={({ navigation }) => ({
+          tabPress: (e) => {
+            // Prevent default behavior
+            e.preventDefault();
+            // Reset the stack to first screen in the stack
+            navigation.navigate('Explore', {
+              screen: 'ProviderDiscovery'
+            });
+          },
+        })}
+      />
+      <Tab.Screen 
+        name="Social" 
+        component={SocialStackNavigator}
+        listeners={({ navigation }) => ({
+          tabPress: (e) => {
+            // Prevent default behavior
+            e.preventDefault();
+            // Reset to the first screen in the Social stack
+            navigation.navigate('Social', {
+              screen: 'SocialFeedScreen'
+            });
+          },
+        })}
+      />
+      <Tab.Screen 
+        name="Wallet" 
+        component={WalletStackNavigator}
+        listeners={({ navigation }) => ({
+          tabPress: (e) => {
+            // Prevent default behavior
+            e.preventDefault();
+            // Reset the stack to WalletMain screen
+            navigation.navigate('Wallet', {
+              screen: 'WalletMain'
+            });
+          },
+        })}
+      />
+      <Tab.Screen 
+        name="Favourites" 
+        component={FavouritesScreen}
+        listeners={({ navigation }) => ({
+          tabPress: (e) => {
+            // Prevent default behavior
+            e.preventDefault();
+            // Navigate to Favourites screen
+            navigation.navigate('Favourites');
+          },
+        })}
+      />
+      <Tab.Screen 
+        name="Profile" 
+        component={ProfileStackNavigator}
+        listeners={({ navigation }) => ({
+          tabPress: (e) => {
+            // Prevent default behavior
+            e.preventDefault();
+            // Reset to the first screen in the Profile stack
+            navigation.navigate('Profile', {
+              screen: 'ProfileScreen'
+            });
+          },
+        })}
+      />
+    </Tab.Navigator>
   );
 };
 

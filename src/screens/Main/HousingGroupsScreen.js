@@ -24,19 +24,17 @@ import HousingGroupCard from '../../components/cards/HousingGroupCard';
 
 const { width } = Dimensions.get('window');
 
-// NDIS-relevant filters for housing groups
+// Housing group filters
 const HOUSING_FILTERS = [
+  { key: 'all', label: 'All' },
   { key: 'sda', label: 'SDA' },
-  { key: 'pets', label: 'Pet Friendly' },
+  { key: 'wheelchair', label: 'Wheelchair' },
   { key: 'accessible', label: 'Accessible' },
-  { key: 'wheelchair', label: 'Wheelchair Friendly' },
-  { key: 'sil', label: 'SIL' },
-  { key: 'supportsOnsite', label: 'Supports Onsite' },
-  { key: 'sensory', label: 'Sensory Friendly' },
-  { key: 'smoking', label: 'Smoking Allowed' },
-  { key: 'parking', label: 'Parking Available' },
-  { key: 'female', label: 'Female Only' },
-  { key: 'male', label: 'Male Only' },
+  { key: 'under25', label: '<25' },
+  { key: 'under35', label: '<35' },
+  { key: 'pets', label: 'Pets' },
+  { key: 'support', label: 'Support' },
+  { key: 'lgbtplus', label: 'LGBT+' },
 ];
 
 const HousingGroupsScreen = ({ navigation }) => {
@@ -194,6 +192,9 @@ const HousingGroupsScreen = ({ navigation }) => {
 
   // Filter groups based on search term and active filters - optimized with useMemo
   const filteredGroups = useMemo(() => {
+    // If 'all' is selected or no filters active, don't filter by features
+    const shouldApplyFeatureFilters = activeFilters.length > 0 && !activeFilters.includes('all');
+    
     return housingGroups.filter(group => {
       // First, apply search term filter
       if (searchTerm) {
@@ -207,47 +208,34 @@ const HousingGroupsScreen = ({ navigation }) => {
         if (!matchesSearch) return false;
       }
       
-      // If no filters are active, return all matches
-      if (activeFilters.length === 0) return true;
-
-      // Apply filters
-      return activeFilters.some(filter => {
-        switch(filter) {
-          case 'sda':
-            return group.housing_listing_data?.is_sda_certified === true;
-          case 'pets':
-            return group.housing_listing_data?.pet_friendly === true || 
-                   group.housing_listing_data?.features?.includes('pet friendly');
-          case 'accessible':
-            return (group.housing_listing_data?.accessibility_rating || 0) >= 3;
-          case 'wheelchair':
-            return group.housing_listing_data?.accessibility_features?.includes('wheelchair') || 
-                   group.housing_listing_data?.features?.includes('wheelchair access');
-          case 'supportsOnsite':
-            return group.housing_listing_data?.features?.includes('onsite support') || 
-                   group.housing_listing_data?.supports_onsite === true;
-          case 'sensory':
-            return group.housing_listing_data?.features?.includes('sensory friendly') || 
-                   group.housing_listing_data?.accessibility_features?.includes('sensory');
-          case 'smoking':
-            return group.housing_listing_data?.smoking_allowed === true || 
-                   group.housing_listing_data?.features?.includes('smoking allowed');
-          case 'parking':
-            return group.housing_listing_data?.parking_available === true || 
-                   group.housing_listing_data?.features?.includes('parking');
-          case 'female':
-            return group.gender_preference === 'female' || 
-                   group.housing_listing_data?.gender_preference === 'female';
-          case 'male':
-            return group.gender_preference === 'male' || 
-                   group.housing_listing_data?.gender_preference === 'male';
-          case 'sil':
-            return group.support_needs?.includes('SIL') || 
-                   group.housing_listing_data?.features?.includes('SIL');
-          default:
-            return true;
-        }
-      });
+      // Then, apply feature filters if any are active (except 'all' which means no filtering)
+      if (shouldApplyFeatureFilters) {
+        return activeFilters.every(filter => {
+          switch(filter) {
+            case 'under25':
+              return group.average_age && group.average_age < 25;
+            case 'under35':
+              return group.average_age && group.average_age < 35;
+            case 'lgbtplus':
+              return group.lgbt_friendly === true;
+            case 'support':
+              return group.support_available === true || group.features?.includes('supportsOnsite');
+            case 'pets':
+              return group.pet_friendly === true || group.features?.includes('pets');
+            case 'sda':
+              return group.features?.includes('sda');
+            case 'wheelchair':
+              return group.features?.includes('wheelchair');
+            case 'accessible':
+              return group.features?.includes('accessible');
+            default:
+              return true;
+          }
+        });
+      }
+      
+      // If no filters or 'all' filter is active, include the group
+      return true;
     });
   }, [housingGroups, searchTerm, activeFilters]); // Only recalculate when these dependencies change
 
@@ -393,15 +381,27 @@ const HousingGroupsScreen = ({ navigation }) => {
       <SearchComponent
         searchTerm={searchTerm}
         onSearchChange={setSearchTerm}
-        selectedCategory="Housing Groups"
-        onCategoryChange={() => {}}
+        categories={HOUSING_FILTERS.map(filter => filter.label)}
+        selectedCategory={activeFilters.length > 0 ? 
+          HOUSING_FILTERS.find(f => activeFilters.includes(f.key))?.label || 'All' : 'All'}
+        onCategoryChange={(category) => {
+          // Find the corresponding filter key
+          const filter = HOUSING_FILTERS.find(f => f.label === category);
+          if (filter) {
+            if (filter.key === 'all') {
+              // Clear all filters when 'All' is selected
+              setActiveFilters([]);
+            } else {
+              // Set this as the only active filter
+              setActiveFilters([filter.key]);
+            }
+          }
+        }}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
         viewModes={['Grid', 'List']}
         contentType="housing_groups"
       />
-      
-      {/* Filters removed as requested */}
       
       {/* Listing count */}
       <Text style={styles.listingCount}>
@@ -452,12 +452,12 @@ const styles = StyleSheet.create({
   },
   gridCardWrapper: {
     width: '48%', // Using percentage for better responsiveness
-    marginBottom: 16,
+    marginBottom: 12, // Reduced margin between cards
   },
   listCardWrapper: {
     width: '100%',
-    marginBottom: 16,
-    paddingHorizontal: 16,
+    marginBottom: 10, // Reduced margin between cards
+    paddingHorizontal: 12, // Reduced horizontal padding
   },
   filterScroll: {
     flexGrow: 0,

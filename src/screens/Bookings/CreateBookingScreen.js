@@ -325,6 +325,18 @@ const CreateBookingScreen = ({ route, navigation }) => {
         Alert.alert('Error', 'Service information is missing. Please try again.');
         return;
       }
+      
+      // Hide the agreement modal
+      setAgreementModalVisible(false);
+      
+      // Navigate to the ServiceAgreementScreen
+      navigation.navigate('ServiceAgreementScreen', {
+        serviceId: serviceId,
+        providerId: service?.provider_id,
+        serviceName: service?.title,
+        providerName: provider?.name || service?.business_name,
+        fromBooking: true
+      });
 
       // Get the category from service data to maintain filter when returning to explore
       const category = service?.category || 'Therapy';

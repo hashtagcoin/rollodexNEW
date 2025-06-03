@@ -45,7 +45,7 @@ const FavouritesScreen = () => {
   // Reset scroll position when tab is focused
   useFocusEffect(
     useCallback(() => {
-      console.log('[FavouritesScreen] Focus effect: scrolling to top');
+      // Reset scroll position
       if (flatListRef.current) {
         flatListRef.current.scrollToOffset({ offset: 0, animated: false });
       }
@@ -98,10 +98,8 @@ const FavouritesScreen = () => {
 
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) {
-        console.error('[FavouritesScreen] fetchFavorites: User error or no user.', userError);
         throw userError || new Error('No authenticated user');
       }
-      console.log(`[FavouritesScreen] fetchFavorites: User ID: ${user.id}`);
 
       let query = supabase
         .from('user_favorites_detailed')
@@ -111,34 +109,25 @@ const FavouritesScreen = () => {
       const dbItemType = mapCategoryToItemType(selectedCategory);
       if (dbItemType) {
         query = query.eq('item_type', dbItemType);
-        console.log(`[FavouritesScreen] fetchFavorites: Applied category filter: ${selectedCategory} -> ${dbItemType}`);
-      } else {
-        console.log('[FavouritesScreen] fetchFavorites: No category filter (All selected).');
       }
 
       if (searchTerm) {
         query = query.ilike('item_title', `%${searchTerm}%`);
-        console.log(`[FavouritesScreen] fetchFavorites: Applied search term: ${searchTerm}`);
       }
 
       if (sortConfig.field) {
         query = query.order(sortConfig.field, { ascending: sortConfig.direction === 'asc' });
-        console.log(`[FavouritesScreen] fetchFavorites: Applied sort: ${sortConfig.field} ${sortConfig.direction}`);
       }
 
       const from = pageNum * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
       query = query.range(from, to);
-      console.log(`[FavouritesScreen] fetchFavorites: Applied range: ${from} to ${to}`);
 
       const { data, error, count } = await query;
-      console.log('[FavouritesScreen] fetchFavorites: Query executed.');
 
       if (error) {
-        console.error('[FavouritesScreen] fetchFavorites: Supabase query error:', error);
         throw error;
       }
-      console.log(`[FavouritesScreen] fetchFavorites: Received data (length: ${data ? data.length : 0}), Count: ${count}`);
 
       const favoritesWithAppStatus = await Promise.all(
         data.map(async (favorite) => {
@@ -203,17 +192,14 @@ const FavouritesScreen = () => {
 
       setFavorites(prev => {
         const newFavorites = isRefreshing || pageNum === 0 ? favoritesWithAppStatus : [...prev, ...favoritesWithAppStatus];
-        console.log(`[FavouritesScreen] fetchFavorites: Updating favorites state. Prev length: ${prev.length}, New data length: ${favoritesWithAppStatus.length}, Resulting length: ${newFavorites.length}`);
         return newFavorites;
       });
       setHasMore(data.length === PAGE_SIZE);
       setPage(pageNum);
-      console.log(`[FavouritesScreen] fetchFavorites: State updated. HasMore: ${data.length === PAGE_SIZE}, Page: ${pageNum}`);
 
     } catch (error) {
-      console.error('Error fetching favorites:', error);
+      // Error handled silently
     } finally {
-      console.log('[FavouritesScreen] fetchFavorites: Setting loading/refreshing/loadingMore to false.');
       setLoading(false);
       setRefreshing(false);
       setLoadingMore(false);
@@ -221,13 +207,11 @@ const FavouritesScreen = () => {
   };
 
   const onRefresh = useCallback(() => {
-    console.log('[FavouritesScreen] onRefresh called.');
     setRefreshing(true);
     fetchFavorites(0, true);
   }, [selectedCategory, searchTerm, sortConfig]);
 
   const loadMore = useCallback(() => {
-    console.log(`[FavouritesScreen] loadMore called. Loading: ${loading}, LoadingMore: ${loadingMore}, HasMore: ${hasMore}`);
     if (!loading && !loadingMore && hasMore) {
       fetchFavorites(page + 1);
     }
@@ -235,13 +219,9 @@ const FavouritesScreen = () => {
 
   useFocusEffect(
     useCallback(() => {
-      console.log('[FavouritesScreen] useFocusEffect triggered. Dependencies:');
-      console.log('  selectedCategory:', selectedCategory);
-      console.log('  searchTerm:', searchTerm);
-      console.log('  sortConfig:', sortConfig);
       fetchFavorites(0, true);
       return () => {
-        console.log('[FavouritesScreen] useFocusEffect cleanup.');
+        // Cleanup function
       };
     }, [selectedCategory, searchTerm, sortConfig])
   );
@@ -251,8 +231,7 @@ const FavouritesScreen = () => {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
 
       if (userError || !user) {
-        console.error('Error getting user for un-favorite:', userError || 'No user found');
-        // Optionally, show an alert to the user
+        // Cannot proceed without authenticated user
         return; 
       }
 
@@ -264,20 +243,16 @@ const FavouritesScreen = () => {
         .eq('item_type', itemType);
 
       if (error) {
-        console.error('Supabase error removing favorite:', error);
         throw error; 
       }
 
       setFavorites(prev => prev.filter(item => !(item.item_id === itemId && item.item_type === itemType)));
-      console.log(`[FavouritesScreen] Successfully removed favorite: ${itemType} - ${itemId}`);
     } catch (error) {
-      console.error('Error removing favorite (outer catch):', error);
-      // Optionally, show an alert to the user here
+      // Error handled silently
     }
   };
 
   const handleOpenShareTray = (item) => {
-    console.log("[FavouritesScreen] Opening share tray for item:", item);
     setItemToShare(item);
     setShareModalVisible(true);
   };
@@ -289,9 +264,7 @@ const FavouritesScreen = () => {
 
   const handleLeaveHousingGroup = async (groupId, membershipId) => {
     try {
-      console.log(`[FavouritesScreen] Attempting to leave housing group: ${groupId}, membership: ${membershipId}`);
       if (!membershipId) {
-        console.error('[FavouritesScreen] Cannot leave group: No membership ID provided');
         return;
       }
       
@@ -301,15 +274,13 @@ const FavouritesScreen = () => {
         .eq('id', membershipId);
         
       if (error) {
-        console.error('[FavouritesScreen] Error leaving housing group:', error);
         return;
       }
       
       // Refresh the favorites list
       fetchFavorites(0, true);
-      console.log(`[FavouritesScreen] Successfully left housing group: ${groupId}`);
     } catch (error) {
-      console.error('[FavouritesScreen] Error in handleLeaveHousingGroup:', error);
+      // Error handled silently
     }
   };
 

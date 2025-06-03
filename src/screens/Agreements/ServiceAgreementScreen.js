@@ -457,17 +457,31 @@ const ServiceAgreementScreen = ({ route, navigation }) => {
     // Get category from the serviceData or default to 'Therapy'
     const category = serviceData?.category || 'Therapy';
     
-    // Navigate back to the Explore stack and reset to ProviderDiscovery
+    // Always navigate back to the Explore stack via MainTabs
     navigation.reset({
-      index: 0,
-      routes: [{ 
-        name: 'ProviderDiscovery',
-        params: {
-          initialCategory: category,
-          ...(exploreParams || {}) // Include any additional params that might have been passed
-        }
-      }],
-    });
+        index: 0,
+        routes: [{
+          name: 'MainTabs',
+          state: {
+            routes: [
+              {
+                name: 'Explore',
+                state: {
+                  routes: [
+                    {
+                      name: 'ProviderDiscovery',
+                      params: {
+                        initialCategory: category,
+                        ...(exploreParams || {}) // Include any additional params
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }]
+      });
   };
 
   // Save agreement and booking using the admin function that bypasses RLS policies

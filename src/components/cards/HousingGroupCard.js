@@ -290,7 +290,7 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16, // More rounded corners like Airbnb
-    marginBottom: 20, // More space between cards
+    marginBottom: 12, // Reduced space between cards
     overflow: 'hidden',
     ...SHADOWS.medium,
     elevation: 4, // Add more depth on Android
@@ -298,12 +298,12 @@ const styles = StyleSheet.create({
   listCard: {
     flexDirection: 'row',
     width: '100%',
-    height: 160, // Slightly taller
+    height: 140, // Reduced height for more compact design
     position: 'relative',
   },
   gridCard: {
     width: CARD_WIDTH / 2 - 8,
-    height: 320, // Taller to accommodate modern layout and button
+    height: 280, // Reduced height for more compact design
     marginHorizontal: 4,
     position: 'relative',
   },
@@ -314,7 +314,7 @@ const styles = StyleSheet.create({
   },
   gridImageContainer: {
     width: '100%',
-    height: 160, // Taller images like Airbnb
+    height: 140, // Reduced height for more compact design
     position: 'relative',
   },
   loaderContainer: {
@@ -405,29 +405,29 @@ const styles = StyleSheet.create({
   },
   cardContent: {
     flex: 1,
-    padding: 16, // More padding for better content spacing
+    padding: 12, // Reduced padding for more compact spacing
     display: 'flex',
     flexDirection: 'column',
   },
   cardTitle: {
-    fontSize: 17, // Slightly larger title
+    fontSize: 16, // Slightly smaller title
     fontWeight: 'bold',
-    marginBottom: 4, // More space beneath title
+    marginBottom: 2, // Less space beneath title
     color: '#212121', // Darker for better contrast
     letterSpacing: 0.3, // Modern typography
   },
   locationText: {
     fontSize: 12,
     color: '#888',
-    marginBottom: 8,
+    marginBottom: 4, // Reduced margin
     flexDirection: 'row',
     alignItems: 'center',
   },
   cardDescription: {
-    fontSize: 14,
+    fontSize: 13, // Slightly smaller font
     color: '#666',
-    marginBottom: 8,
-    lineHeight: 20,
+    marginBottom: 4, // Reduced margin
+    lineHeight: 18, // Tighter line height
   },
   cardFooter: {
     marginTop: 'auto',

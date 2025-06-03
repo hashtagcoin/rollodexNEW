@@ -354,10 +354,30 @@ const DashboardScreen = () => {
                   style={styles.appointmentCard}
                   onPress={() => navigation.navigate('Wallet', { screen: 'BookingDetailScreen', params: { bookingId: item.booking_id } })}
                 >
+                  <View style={styles.appointmentHeader}>
+                    <View style={styles.appointmentColorTag} />
+                    <View style={styles.appointmentStatus}>
+                      <Text style={styles.appointmentStatusText}>Confirmed</Text>
+                    </View>
+                  </View>
+                  
+                  {/* Prominent Date Display */}
+                  <View style={styles.prominentDateContainer}>
+                    <Text style={styles.prominentDateText}>{formattedDate.date}</Text>
+                  </View>
+
                   <Text style={styles.appointmentService}>{item.service_title}</Text>
-                  <Text style={styles.appointmentDate}>{formattedDate.date} • {formattedDate.time}</Text>
-                  <Text style={styles.appointmentProvider}>{item.service_provider || 'Provider'}</Text>
-                  <Text style={styles.appointmentNote}>{item.booking_notes || 'No additional notes'}</Text>
+                  
+                  <View style={styles.appointmentDetails}>
+                    <View style={styles.appointmentDetailRow}>
+                      <Ionicons name="time-outline" size={16} color="#fff" style={styles.appointmentIcon} />
+                      <Text style={styles.appointmentDetailText}>{formattedDate.time}</Text>
+                    </View>
+                    <View style={styles.appointmentDetailRow}>
+                      <Ionicons name="person-outline" size={16} color="#fff" style={styles.appointmentIcon} />
+                      <Text style={styles.appointmentDetailText}>{item.service_provider || 'Provider'}</Text>
+                    </View>
+                  </View>
                 </TouchableOpacity>
               );
             }}
@@ -564,36 +584,78 @@ const styles = StyleSheet.create({
     paddingLeft: 4,
   },
   appointmentCard: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16,
-    marginRight: 14,
-    width: 220,
+    backgroundColor: '#2c3e50', // Dark background
+    borderRadius: 12,
+    padding: 0,
+    marginLeft: 12,
+    marginRight: 8,
+    width: 240,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.15,
     shadowRadius: 6,
     elevation: 3,
+    overflow: 'hidden',
+    borderWidth: 0,
+  },
+  appointmentHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingRight: 12,
+    height: 32,
+  },
+  appointmentColorTag: {
+    width: 4,
+    height: '100%',
+    backgroundColor: '#3498db', // Different accent color for dark theme
+  },
+  appointmentStatus: {
+    backgroundColor: 'rgba(52, 152, 219, 0.2)', // Semi-transparent blue
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  appointmentStatusText: {
+    color: '#3498db', // Blue text
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  prominentDateContainer: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  prominentDateText: {
+    fontSize: 28, // Extra large date
+    fontWeight: 'bold',
+    color: '#ffffff', // White text on dark background
+    letterSpacing: 0.5,
   },
   appointmentService: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#007AFF',
-    marginBottom: 2,
+    color: '#ffffff', // White text on dark background
+    marginTop: 4,
+    marginBottom: 8,
+    paddingHorizontal: 16,
   },
-  appointmentDate: {
-    fontSize: 14,
-    color: '#222',
-    marginBottom: 2,
+  appointmentDetails: {
+    backgroundColor: 'rgba(0, 0, 0, 0.15)', // Semi-transparent overlay
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
-  appointmentProvider: {
+  appointmentDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  appointmentIcon: {
+    marginRight: 8,
+  },
+  appointmentDetailText: {
     fontSize: 13,
-    color: '#555',
-    marginBottom: 2,
-  },
-  appointmentNote: {
-    fontSize: 13,
-    color: '#888',
+    color: '#e0e0e0', // Light gray text for contrast on dark background
   },
   screenContainer: {
     flex: 1,

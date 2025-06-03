@@ -464,8 +464,8 @@ const BookingDetailScreen = ({ navigation }) => {
               style={[styles.actionButton, styles.shareButton]}
               onPress={handleShare}
             >
-              <Ionicons name="share-social-outline" size={22} color="#fff" />
-              <Text style={styles.actionButtonText}>Share</Text>
+              <Ionicons name="share-social-outline" size={20} color="#fff" />
+              <Text numberOfLines={1} style={styles.actionButtonText}>Share</Text>
             </TouchableOpacity>
             
             {canReschedule && (
@@ -473,8 +473,8 @@ const BookingDetailScreen = ({ navigation }) => {
                 style={[styles.actionButton, styles.rescheduleButton]}
                 onPress={showRescheduleModal}
               >
-                <MaterialCommunityIcons name="calendar-clock" size={22} color="#fff" />
-                <Text style={styles.actionButtonText}>Reschedule</Text>
+                <MaterialCommunityIcons name="calendar-clock" size={20} color="#fff" />
+                <Text numberOfLines={1} style={styles.actionButtonText}>Reschedule</Text>
               </TouchableOpacity>
             )}
             
@@ -483,8 +483,8 @@ const BookingDetailScreen = ({ navigation }) => {
                 style={[styles.actionButton, styles.cancelButton]}
                 onPress={showCancelModal}
               >
-                <Ionicons name="close-circle-outline" size={22} color="#fff" />
-                <Text style={styles.actionButtonText}>Cancel</Text>
+                <Ionicons name="close-circle-outline" size={20} color="#fff" />
+                <Text numberOfLines={1} style={styles.actionButtonText}>Cancel</Text>
               </TouchableOpacity>
             )}
             
@@ -492,8 +492,8 @@ const BookingDetailScreen = ({ navigation }) => {
               style={[styles.actionButton, styles.historyButton]}
               onPress={() => setShowHistory(!showHistory)}
             >
-              <MaterialIcons name="history" size={22} color="#fff" />
-              <Text style={styles.actionButtonText}>{showHistory ? 'Hide History' : 'View History'}</Text>
+              <MaterialIcons name="history" size={20} color="#fff" />
+              <Text numberOfLines={1} style={styles.actionButtonText}>{showHistory ? 'Hide' : 'History'}</Text>
             </TouchableOpacity>
           </View>
         </>
@@ -946,22 +946,24 @@ const styles = StyleSheet.create({
   actionButtons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    marginTop: 8,
+    paddingHorizontal: 16,
+    marginTop: 16,
     marginBottom: 24,
-    flexWrap: 'wrap',
   },
   actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    flex: 1,
-    marginHorizontal: 4,
-    marginBottom: 8,
-    minWidth: 100,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
+    borderRadius: 12,
+    marginHorizontal: 5,
+    minWidth: 110,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 3,
   },
   shareButton: {
     backgroundColor: '#3A76F0',
@@ -977,9 +979,11 @@ const styles = StyleSheet.create({
   },
   actionButtonText: {
     color: '#fff',
-    fontWeight: '600',
+    fontWeight: '700',
     fontSize: 14,
-    marginLeft: 6,
+    marginLeft: 8,
+    flexShrink: 1,
+    flexWrap: 'nowrap',
   },
   cardStatusCompleted: {
     color: '#10B981',

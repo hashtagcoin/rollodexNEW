@@ -17,6 +17,7 @@ import GroupDetailScreen from '../screens/Main/GroupDetailScreen';
 import CreateGroupPostScreen from '../screens/Main/CreateGroupPostScreen';
 import BookingConfirmationScreen from '../screens/Main/BookingConfirmationScreen';
 import BookingsScreen from '../screens/Main/BookingsScreen';
+import ServiceAgreementScreen from '../screens/Agreements/ServiceAgreementScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -144,6 +145,11 @@ const MainTabs = () => (
     <Stack.Screen 
       name="BookingsScreen" 
       component={BookingsScreen} 
+      options={{ headerShown: false }}
+    />
+    <Stack.Screen 
+      name="ServiceAgreementScreen" 
+      component={ServiceAgreementScreen} 
       options={{ headerShown: false }}
     />
   </Stack.Navigator>
