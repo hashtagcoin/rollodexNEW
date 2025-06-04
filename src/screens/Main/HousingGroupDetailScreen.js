@@ -601,30 +601,7 @@ const HousingGroupDetailScreen = ({ route }) => {
         data={[{ key: 'content' }]}
         renderItem={() => (
           <>
-            {/* Action buttons (Share and Favorite) */}
-            <View style={styles.actionButtonsContainer}>
-              <TouchableOpacity 
-                style={styles.actionButton} 
-                onPress={handleShare}
-                disabled={actionLoading}
-              >
-                <Ionicons name="share-social-outline" size={24} color={COLORS.black} />
-                <Text style={styles.actionButtonText}>Share</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={styles.actionButton} 
-                onPress={handleToggleFavorite}
-                disabled={actionLoading}
-              >
-                <Ionicons 
-                  name={isFavorited ? "heart" : "heart-outline"} 
-                  size={24} 
-                  color={isFavorited ? "#FF4B4B" : COLORS.black} 
-                />
-                <Text style={styles.actionButtonText}>{isFavorited ? 'Favorited' : 'Favorite'}</Text>
-              </TouchableOpacity>
-            </View>
+
 
             {/* Group Details Section */}
             {loadingGroupDetails ? (
@@ -645,7 +622,30 @@ const HousingGroupDetailScreen = ({ route }) => {
             ) : groupDetails && (
               // Group details content
               <View style={styles.groupDetailsContainer}>
-                <Text style={styles.groupName}>{groupDetails.name}</Text>
+                <View style={styles.titleRow}>
+                  <Text style={styles.groupName}>{groupDetails.name}</Text>
+                  <View style={styles.titleActions}>
+                    <TouchableOpacity 
+                      style={styles.titleActionButton} 
+                      onPress={handleToggleFavorite}
+                      disabled={actionLoading}
+                    >
+                      <Ionicons 
+                        name={isFavorited ? "heart" : "heart-outline"} 
+                        size={24} 
+                        color={isFavorited ? "#FF4B4B" : COLORS.black} 
+                      />
+                    </TouchableOpacity>
+                    
+                    <TouchableOpacity 
+                      style={styles.titleActionButton} 
+                      onPress={handleShare}
+                      disabled={actionLoading}
+                    >
+                      <Ionicons name="share-social-outline" size={24} color={COLORS.black} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
                 <Text style={styles.description}>{groupDetails.description}</Text>
                 
                 <View style={styles.detailsRow}>
@@ -787,7 +787,10 @@ const HousingGroupDetailScreen = ({ route }) => {
           </>
         )}
         keyExtractor={(item) => item.key}
-        contentContainerStyle={styles.scrollContainer}
+        contentContainerStyle={{
+          ...styles.scrollContainer,
+          paddingBottom: 100 // Add bottom padding to ensure scrolling to the end
+        }}
         key={refreshKey}
       />
     </View>
@@ -893,7 +896,7 @@ const styles = StyleSheet.create({
     color: COLORS.gray,
   },
   scrollContainer: {
-    flex: 1,
+    // Removed flex: 1 to allow FlatList content to scroll naturally
   },
   housingCard: {
     margin: 16,
@@ -944,6 +947,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.darkGray,
     fontWeight: '500',
+  },
+  // Title row with action buttons
+  titleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  titleActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  titleActionButton: {
+    padding: 8,
+    marginLeft: 8,
   },
   groupDetailsContainer: {
     padding: 16,

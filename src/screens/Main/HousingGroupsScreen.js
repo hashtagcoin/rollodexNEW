@@ -102,12 +102,28 @@ const HousingGroupsScreen = ({ navigation }) => {
         if (basicError) throw basicError;
         
         // Process the results
-        const processedGroups = basicGroups.map(group => ({
-          ...group,
-          housing_listing_data: group.housing_listings || null,
-          membershipStatus: null, // User is not a member of any groups
-          applicationStatus: null // Will be checked separately if needed
-        }));
+        const processedGroups = basicGroups.map(group => {
+          // Build features array from group and housing_listing_data
+          const features = [];
+          if (group.features && Array.isArray(group.features)) {
+            features.push(...group.features);
+          }
+          if (group.is_sda || group.housing_listing_data?.is_sda) features.push('sda');
+          if (group.is_wheelchair_accessible || group.housing_listing_data?.is_wheelchair_accessible) features.push('wheelchair');
+          if (group.is_accessible || group.housing_listing_data?.is_accessible) features.push('accessible');
+          if (group.pet_friendly || group.housing_listing_data?.pet_friendly) features.push('pets');
+          if (group.support_available || group.housing_listing_data?.support_available) features.push('support');
+          if (group.lgbt_friendly || group.housing_listing_data?.lgbt_friendly) features.push('lgbtplus');
+          // Remove duplicates
+          const uniqueFeatures = [...new Set(features)];
+          return {
+            ...group,
+            housing_listing_data: group.housing_listings || null,
+            membershipStatus: null, // User is not a member of any groups
+            applicationStatus: null, // Will be checked separately if needed
+            features: uniqueFeatures,
+          };
+        });
         
         setHousingGroups(processedGroups);
       } else {
@@ -118,12 +134,25 @@ const HousingGroupsScreen = ({ navigation }) => {
           if (group.housing_group_members && group.housing_group_members.length > 0) {
             membershipStatus = group.housing_group_members[0].status;
           }
-          
+          // Build features array
+          const features = [];
+          if (group.features && Array.isArray(group.features)) {
+            features.push(...group.features);
+          }
+          if (group.is_sda || group.housing_listing_data?.is_sda) features.push('sda');
+          if (group.is_wheelchair_accessible || group.housing_listing_data?.is_wheelchair_accessible) features.push('wheelchair');
+          if (group.is_accessible || group.housing_listing_data?.is_accessible) features.push('accessible');
+          if (group.pet_friendly || group.housing_listing_data?.pet_friendly) features.push('pets');
+          if (group.support_available || group.housing_listing_data?.support_available) features.push('support');
+          if (group.lgbt_friendly || group.housing_listing_data?.lgbt_friendly) features.push('lgbtplus');
+          // Remove duplicates
+          const uniqueFeatures = [...new Set(features)];
           return {
             ...group,
             housing_listing_data: group.housing_listings || null,
             membershipStatus,
-            applicationStatus: null // Will be checked separately if needed for UI updates
+            applicationStatus: null, // Will be checked separately if needed for UI updates
+            features: uniqueFeatures,
           };
         });
         

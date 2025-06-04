@@ -20,8 +20,8 @@ const HousingGroupCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', is
   // Process housing group information
   const groupName = item.name || 'Housing Group';
   const description = item.description || 'No description available';
-  const memberCount = item.max_members ? `${item.current_members || 0}/${item.max_members} Members` : 'Open Group';
-  const moveInDate = item.move_in_date ? format(new Date(item.move_in_date), 'MMM d, yyyy') : 'Flexible';
+  const memberCount = item.max_members ? `${item.current_members || 0}/${item.max_members}` : 'Open';
+  const moveInDate = item.move_in_date ? format(new Date(item.move_in_date), 'MMM d') : 'Flexible';
   
   // Get location from housing listing if available
   const location = item.housing_listing_data?.suburb || 'Location N/A';
@@ -104,25 +104,26 @@ const HousingGroupCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', is
           <View style={CardStyles.listContentContainer}> 
             <View style={CardStyles.topSection}> 
               <Text style={[CardStyles.title, {flex: 1, paddingRight: 5}]} numberOfLines={1}>{groupName}</Text>
-              <View style={localStyles.memberBadge}>
-                <Ionicons name="people" size={14} color={COLORS.primary} />
-                <Text style={localStyles.memberText}>{memberCount}</Text>
-              </View>
             </View>
 
-            <Text style={CardStyles.subtitle} numberOfLines={1}>{location}</Text> 
-            <Text style={[CardStyles.subtitle, {marginVertical: 4}]} numberOfLines={2}>{description}</Text> 
-            <View style={CardStyles.labelsRow}>
-              {infoTags.slice(0, 2).map((tag, index) => (
-                <View key={`${tag.name}-${index}`} style={CardStyles.labelContainer}>
-                  <Text style={CardStyles.labelText}>{tag.name}</Text>
-                </View>
-              ))}
-              {infoTags.length > 2 && (
-                <View style={CardStyles.labelContainer}>
-                  <Text style={CardStyles.labelText}>+{infoTags.length - 2} more</Text>
-                </View>
-              )}
+            <View style={{flexDirection: 'row', alignItems: 'center', marginTop: 2}}>
+              <Ionicons name="location-outline" size={13} color={LABEL_COLORS.text} style={{marginRight: 4}} />
+              <Text style={CardStyles.subtitle} numberOfLines={1}>{location}</Text>
+            </View>
+            <Text style={[CardStyles.subtitle, {marginVertical: 4}]} numberOfLines={2}>{description}</Text>
+
+            {/* Bottom labels row: move-in date (left), member count (right) */}
+            <View style={{flexDirection: 'row', justifyContent: 'space-between', marginTop: 8}}>
+              {/* Move-in date */}
+              <View style={CardStyles.labelContainer}>
+                <Ionicons name="calendar-outline" size={13} color={LABEL_COLORS.text} style={{marginRight: 2}} />
+                <Text style={CardStyles.labelText}>{moveInDate}</Text>
+              </View>
+              {/* Member count */}
+              <View style={CardStyles.labelContainer}>
+                <Ionicons name="people" size={13} color={LABEL_COLORS.text} style={{marginRight: 2}} />
+                <Text style={CardStyles.labelText}>{memberCount}</Text>
+              </View>
             </View>
           </View>
         </View>
@@ -173,19 +174,25 @@ const HousingGroupCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', is
               )}
             </View>
             
-            <View style={{padding: 8}}> 
+            <View style={{padding: 8, paddingBottom: 32}}> 
               <Text style={[CardStyles.title, {marginBottom: 4}]} numberOfLines={2}>{groupName}</Text> 
               <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4}}> 
-                <Text style={CardStyles.subtitle} numberOfLines={1}>{location}</Text> 
-                <View style={CardStyles.labelContainer}>
-                  <Ionicons name="people" size={14} color={LABEL_COLORS.text} />
-                  <Text style={[CardStyles.labelText, {marginLeft: 3}]}>{memberCount}</Text>
-                </View>
+                <View style={{flexDirection: 'row', alignItems: 'center'}}>
+                  <Ionicons name="location-outline" size={13} color={LABEL_COLORS.text} style={{marginRight: 4}} />
+                  <Text style={CardStyles.subtitle} numberOfLines={1}>{location}</Text>
+                </View> 
               </View>
-              
-              <View style={CardStyles.labelsRow}>
+              {/* Bottom labels row */}
+              <View style={{position: 'absolute', left: 8, right: 8, bottom: 8, flexDirection: 'row', justifyContent: 'space-between'}}>
+                {/* Move-in date bottom left */}
                 <View style={CardStyles.labelContainer}>
-                  <Text style={CardStyles.labelText}>Move-in: {moveInDate}</Text>
+                  <Ionicons name="calendar-outline" size={13} color={LABEL_COLORS.text} style={{marginRight: 2}} />
+                  <Text style={CardStyles.labelText}>{moveInDate}</Text>
+                </View>
+                {/* Member count bottom right */}
+                <View style={CardStyles.labelContainer}>
+                  <Ionicons name="people" size={13} color={LABEL_COLORS.text} style={{marginRight: 2}} />
+                  <Text style={CardStyles.labelText}>{memberCount}</Text>
                 </View>
               </View>
             </View>

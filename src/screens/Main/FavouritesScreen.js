@@ -489,8 +489,13 @@ const FavouritesScreen = () => {
                   </View>
                   <View style={{padding: 8}}>
                     <Text style={[CardStyles.title, {marginBottom: 4}]} numberOfLines={1}>{groupName}</Text>
-                    <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4}}>
-                        {groupMembers ? <Text style={CardStyles.subtitle} numberOfLines={1}>{groupMembers}</Text> : <View/>}
+                    <View style={CardStyles.labelsRow}>
+                        {groupMembers ? (
+                          <View style={CardStyles.labelContainer}>
+                            <Ionicons name="people" size={14} color={COLORS.darkBlue} />
+                            <Text style={[CardStyles.labelText, {marginLeft: 3}]} numberOfLines={1}>{groupMembers}</Text>
+                          </View>
+                        ) : <View/>}
                     </View>
                     <Text style={CardStyles.subtitle} numberOfLines={2}>{groupDescription}</Text>
                   </View>
@@ -598,11 +603,19 @@ const FavouritesScreen = () => {
                   </View>
                   <View style={{padding: 8}}>
                     <Text style={[CardStyles.title, {marginBottom: 4}]} numberOfLines={titleIsSingleLine ? 1 : 2}>{hgTitle}</Text>
-                    <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 4}}>
-                        <Ionicons name="location-outline" size={16} color={COLORS.textSecondary} />
-                        <Text style={[CardStyles.subtitle, {marginLeft: 4}]} numberOfLines={1}>{hgLocationDisplayValue}</Text>
+                    <View style={CardStyles.labelsRow}>
+                      <View style={CardStyles.labelContainer}>
+                        <Ionicons name="location-outline" size={14} color={COLORS.darkBlue} />
+                        <Text style={[CardStyles.labelText, {marginLeft: 3}]} numberOfLines={1}>{hgLocationDisplayValue}</Text>
+                      </View>
+                      
+                      {hgMembers ? (
+                        <View style={CardStyles.labelContainer}>
+                          <Ionicons name="people" size={14} color={COLORS.darkBlue} />
+                          <Text style={[CardStyles.labelText, {marginLeft: 3}]} numberOfLines={1}>{hgMembers}</Text>
+                        </View>
+                      ) : null}
                     </View>
-                    {hgMembers ? <Text style={CardStyles.subtitle} numberOfLines={1}>{hgMembers}</Text> : null}
                   </View>
                 </View>
               </TouchableOpacity>
@@ -628,8 +641,19 @@ const FavouritesScreen = () => {
                     <View style={CardStyles.topSection}>
                         <Text style={[CardStyles.title, {flex:1}]} numberOfLines={1}>{hgTitle}</Text>
                     </View>
-                    <Text style={CardStyles.subtitle} numberOfLines={1}>{hgLocationDisplayValue}</Text>
-                    {hgMembers ? <Text style={[CardStyles.subtitle, {marginTop: 4}]} numberOfLines={1}>{hgMembers}</Text> : null}
+                    <View style={CardStyles.labelsRow}>
+                      <View style={CardStyles.labelContainer}>
+                        <Ionicons name="location-outline" size={14} color={COLORS.darkBlue} />
+                        <Text style={[CardStyles.labelText, {marginLeft: 3}]} numberOfLines={1}>{hgLocationDisplayValue}</Text>
+                      </View>
+                      
+                      {hgMembers ? (
+                        <View style={CardStyles.labelContainer}>
+                          <Ionicons name="people" size={14} color={COLORS.darkBlue} />
+                          <Text style={[CardStyles.labelText, {marginLeft: 3}]} numberOfLines={1}>{hgMembers}</Text>
+                        </View>
+                      ) : null}
+                    </View>
                 </View>
                 <View style={CardStyles.listIconContainer}>
                   <TouchableOpacity onPress={commonCardProps.onToggleFavorite} style={CardStyles.listIconWrapper}><Ionicons name="heart" size={24} color={COLORS.primary} /></TouchableOpacity>
