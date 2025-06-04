@@ -4,7 +4,7 @@ import { Dimensions, Text, View } from 'react-native';
 const { width } = Dimensions.get('window');
 
 // Calculate card dimensions
-const GRID_CARD_WIDTH = (width / 2) - (SIZES.base * 2); // Half width for 2-column grid, with increased margins
+const GRID_CARD_WIDTH = '100%'; // Full width of its container
 const LIST_CARD_WIDTH = width; // Full width for list view
 
 // Utility function to determine if title is likely single line based on length
@@ -27,12 +27,19 @@ export const ConsistentHeightTitle = ({ title, style, numberOfLines = 2 }) => {
   );
 };
 
+// Card label colors for consistent styling
+const LABEL_COLORS = {
+  background: '#E6F2FF', // Light blue
+  border: '#0066CC',    // Dark blue
+  text: '#003366',      // Dark blue text
+};
+
 export const CardStyles = {
   // ===== GRID VIEW STYLES =====
   gridCardWrapper: {
     width: '50%',
-    marginBottom: 8,
-    paddingHorizontal: 0.5, // Halved the padding between cards in the same row
+    marginBottom: 12,
+    paddingHorizontal: 7, // Equal padding for consistent spacing between cards
   },
   
   gridCardContainer: {
@@ -144,6 +151,33 @@ export const CardStyles = {
     color: COLORS.black,
   },
   
+  // ===== CARD LABELS =====
+  labelContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: LABEL_COLORS.background,
+    borderWidth: 1,
+    borderColor: LABEL_COLORS.border,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    marginRight: 6,
+    marginBottom: 4,
+  },
+  
+  labelText: {
+    fontSize: SIZES.body5,
+    fontWeight: '600',
+    color: LABEL_COLORS.text,
+  },
+  
+  labelsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 4,
+    marginBottom: 2,
+  },
+
   // ===== RATING =====
   ratingContainer: {
     flexDirection: 'row',

@@ -58,10 +58,11 @@ const FavouritesScreen = () => {
       case 'Housing':
         return 'housing_listing';
       case 'Groups':
-        return 'group';
+        return 'housing_group';
       case 'Housing Groups':
         return 'housing_group';
       default:
+        console.error(`[FavouritesScreen] Unknown category: ${category}`);
         return null;
     }
   };
@@ -160,7 +161,7 @@ const FavouritesScreen = () => {
                 else if (eventErr) console.warn(`[Enrichment] Group Event ${favorite.item_id}:`, eventErr.message);
                 break;
               }
-              case 'group': {
+              case 'housing_group': {
                 const { data: groupData, error: groupError } = await supabase
                   .from('groups')
                   .select('id, name, description, avatar_url, imageurl, category, is_public, group_members ( count )')
@@ -278,16 +279,8 @@ const FavouritesScreen = () => {
       }
       // Reset page state and filters
       setPage(0); // Reset page for new filter context
-      // The actual fetch will be triggered by the effect below due to state changes
-      // OR if state is already what we want, we fetch directly.
-      if (selectedCategory === 'All' && searchTerm === '') {
-        fetchFavorites(0, true); // Fetch if filters are already at default
-      } else {
-        // These will trigger the fetching effect if they cause a state change
-        setSelectedCategory('All');
-        setSearchTerm('');
-      }
-    }, []) // Runs once when screen focuses to reset
+      fetchFavorites(0, true); // Fetch on every focus event
+    }, []) // Runs on every focus event
   );
 
   // Fetch data when selectedCategory, searchTerm, or sortConfig change
@@ -379,7 +372,7 @@ const FavouritesScreen = () => {
           case 'housing_listing':
             navigation.navigate('HousingDetailScreen', { listingId: entityId });
             break;
-          case 'group':
+          case 'housing_group':
             navigation.navigate('GroupDetail', { groupId: entityId });
             break;
           case 'housing_group':
@@ -451,7 +444,7 @@ const FavouritesScreen = () => {
         };
         return <HousingCardComponent item={housingListingItem} {...commonCardProps} />;
 
-      case 'group':
+      case 'housing_group':
         console.log('[FavouritesScreen] Rendering Group:', item.item_id, 'ViewMode:', viewMode);
         const groupImageUrl = getValidImageUrl(item.image || item.avatar_url, 'groupavatars');
         const groupName = item.name || item.item_title || 'Unnamed Group';

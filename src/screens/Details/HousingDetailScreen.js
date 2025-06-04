@@ -42,7 +42,7 @@ const HousingDetailScreen = ({ route }) => {
   // Add a focus listener to refresh data when returning to this screen
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
-      console.log('HousingDetailScreen focused - refreshing groups');
+      console.log('HousingDetailScreen focused - refreshing groups and favorite status');
       setRefreshKey(prevKey => prevKey + 1); // Increment refresh key to trigger re-fetch
     });
     
@@ -157,6 +157,7 @@ const HousingDetailScreen = ({ route }) => {
     };
     
     fetchHousingGroups();
+    checkIfSaved();
   }, [housingData.id, refreshKey]); // Add refreshKey to dependency array to trigger refresh
   
   // Format price
@@ -182,48 +183,58 @@ const HousingDetailScreen = ({ route }) => {
   // Save listing to favorites
   const handleSave = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        // Notify user they need to log in
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) {
         alert('Please log in to save favorites');
         return;
       }
       
-      if (saved) {
+      const isCurrentlySaved = saved;
+      const itemId = housingData.id;
+      const itemType = 'housing_listing';
+      
+      console.log(`[HousingDetail] Toggling favorite: Item ID: ${itemId}, Currently saved: ${isCurrentlySaved}`);
+      
+      if (isCurrentlySaved) {
         // Remove from favorites
         const { error } = await supabase
           .from('favorites')
           .delete()
           .eq('user_id', user.id)
-          .eq('item_id', housingData.id)
-          .eq('item_type', 'housing_listing');
+          .eq('item_id', itemId)
+          .eq('item_type', itemType);
           
         if (error) {
-          console.error('Error removing from favorites:', error);
+          console.error('[HousingDetail] Error removing from favorites:', error);
           return;
         }
         
+        console.log('[HousingDetail] Successfully removed from favorites');
         setSaved(false);
       } else {
-        // Add to favorites
+        // Add to favorites with upsert to handle potential conflicts
         const { error } = await supabase
           .from('favorites')
-          .insert({
+          .upsert({
             user_id: user.id,
-            item_id: housingData.id,
-            item_type: 'housing_listing',
-            created_at: new Date()
+            item_id: itemId,
+            item_type: itemType,
+            created_at: new Date().toISOString()
+          }, {
+            onConflict: 'user_id,item_id,item_type',
+            ignoreDuplicates: true
           });
           
         if (error) {
-          console.error('Error adding to favorites:', error);
+          console.error('[HousingDetail] Error adding to favorites:', error);
           return;
         }
         
+        console.log('[HousingDetail] Successfully added to favorites');
         setSaved(true);
       }
     } catch (error) {
-      console.error('Error updating favorites:', error);
+      console.error('[HousingDetail] Error in handleSave:', error);
     }
   };
   
@@ -249,16 +260,19 @@ const HousingDetailScreen = ({ route }) => {
         return;
       }
       
-      // Add to favorites table
+      // Add to favorites table using upsert to avoid duplicates (favorites sync fix)
       const { error: favoriteError } = await supabase
         .from('favorites')
-        .insert({
+        .upsert({
           user_id: user.id,
           item_id: groupId,
           item_type: 'housing_group',
           created_at: new Date()
+        }, {
+          onConflict: 'user_id,item_id,item_type',
+          ignoreDuplicates: true
         });
-        
+      
       if (favoriteError) {
         console.error('Error favoriting housing group:', favoriteError);
         // Continue with navigation even if favoriting fails
@@ -601,7 +615,7 @@ const HousingDetailScreen = ({ route }) => {
                                       </View>
                                     )}
                                   </View>
-                              ))}
+                                ))}
                               
                               {item.housing_group_members && 
                                item.housing_group_members.filter(member => member.status === 'approved').length > 3 && (

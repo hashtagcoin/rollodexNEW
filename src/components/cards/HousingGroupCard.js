@@ -6,6 +6,13 @@ import { getValidImageUrl } from '../../utils/imageHelper';
 import { CardStyles } from '../../constants/CardStyles';
 import { COLORS, SIZES } from '../../constants/theme';
 
+// Card label colors for consistent styling
+const LABEL_COLORS = {
+  background: '#E6F2FF', // Light blue
+  border: '#0066CC',    // Dark blue
+  text: '#003366',      // Dark blue text
+};
+
 // Main component
 const HousingGroupCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', isFavorited, onToggleFavorite, onSharePress }) => { 
   const [imageLoaded, setImageLoaded] = useState(false);
@@ -105,15 +112,15 @@ const HousingGroupCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', is
 
             <Text style={CardStyles.subtitle} numberOfLines={1}>{location}</Text> 
             <Text style={[CardStyles.subtitle, {marginVertical: 4}]} numberOfLines={2}>{description}</Text> 
-            <View style={localStyles.listTagsContainer}>
+            <View style={CardStyles.labelsRow}>
               {infoTags.slice(0, 2).map((tag, index) => (
-                <View key={`${tag.name}-${index}`} style={[localStyles.listTagButton, {backgroundColor: tag.color || COLORS.lightGray}]}>
-                  <Text style={localStyles.listTagText}>{tag.name}</Text>
+                <View key={`${tag.name}-${index}`} style={CardStyles.labelContainer}>
+                  <Text style={CardStyles.labelText}>{tag.name}</Text>
                 </View>
               ))}
               {infoTags.length > 2 && (
-                <View style={[localStyles.listTagButton, {backgroundColor: COLORS.lightGray}]}>
-                  <Text style={localStyles.listTagText}>+{infoTags.length - 2} more</Text>
+                <View style={CardStyles.labelContainer}>
+                  <Text style={CardStyles.labelText}>+{infoTags.length - 2} more</Text>
                 </View>
               )}
             </View>
@@ -126,7 +133,7 @@ const HousingGroupCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', is
     return (
       <View style={CardStyles.gridCardWrapper}> 
         <TouchableOpacity 
-          style={CardStyles.gridCardContainer}  
+          style={[CardStyles.gridCardContainer, { alignSelf: 'stretch' }]}  
           onPress={onPress ? () => onPress(item) : undefined} 
           activeOpacity={0.8}
         >
@@ -170,12 +177,17 @@ const HousingGroupCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', is
               <Text style={[CardStyles.title, {marginBottom: 4}]} numberOfLines={2}>{groupName}</Text> 
               <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4}}> 
                 <Text style={CardStyles.subtitle} numberOfLines={1}>{location}</Text> 
-                <View style={localStyles.memberBadge}>
-                  <Ionicons name="people" size={14} color={COLORS.primary} />
-                  <Text style={localStyles.memberText}>{memberCount}</Text>
+                <View style={CardStyles.labelContainer}>
+                  <Ionicons name="people" size={14} color={LABEL_COLORS.text} />
+                  <Text style={[CardStyles.labelText, {marginLeft: 3}]}>{memberCount}</Text>
                 </View>
               </View>
-              <Text style={[CardStyles.subtitle, {marginTop: 4}]} numberOfLines={1}>{moveInDate}</Text>
+              
+              <View style={CardStyles.labelsRow}>
+                <View style={CardStyles.labelContainer}>
+                  <Text style={CardStyles.labelText}>Move-in: {moveInDate}</Text>
+                </View>
+              </View>
             </View>
           </View>
         </TouchableOpacity>
@@ -185,39 +197,6 @@ const HousingGroupCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', is
 };
 
 const localStyles = {
-  memberBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.lightGray,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 12,
-    marginLeft: 5,
-  },
-  memberText: {
-    fontSize: 12,
-    color: COLORS.primary,
-    marginLeft: 3,
-    fontWeight: '600',
-  },
-  listTagsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginTop: 6,
-  },
-  listTagButton: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 16,
-    marginRight: 6,
-    marginBottom: 5,
-    backgroundColor: COLORS.lightGray,
-  },
-  listTagText: {
-    fontSize: 11,
-    color: '#fff',
-    fontWeight: '500',
-  },
   imageLoadingContainer: {
     position: 'absolute',
     top: 0,

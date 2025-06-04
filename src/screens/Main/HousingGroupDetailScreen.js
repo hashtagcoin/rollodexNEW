@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, Alert, ActivityIndicator, Share, Platform } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Image, TouchableOpacity, Alert, ActivityIndicator, Share, Platform } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import AppHeader from '../../components/layout/AppHeader';
 import { COLORS, FONTS, SIZES } from '../../constants/theme';
@@ -14,15 +14,24 @@ const HousingGroupDetailScreen = ({ route }) => {
   const { groupId, fromJoinButton } = route.params || {};
   const navigation = useNavigation();
   const scrollViewRef = useRef(null);
+  const [refreshKey, setRefreshKey] = useState(0);
   
   // Scroll to top when screen comes into focus
   useFocusEffect(
     useCallback(() => {
       if (scrollViewRef.current) {
-        scrollViewRef.current.scrollTo({ x: 0, y: 0, animated: false });
+        scrollViewRef.current.scrollToOffset({ offset: 0, animated: false });
       }
     }, [])
   );
+  
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      console.log('HousingGroupDetailScreen focused - refreshing data and favorite status');
+      setRefreshKey(prevKey => prevKey + 1);
+    });
+    return unsubscribe;
+  }, [navigation]);
   
   // Progressive loading states for different sections
   const [loadingGroupDetails, setLoadingGroupDetails] = useState(true);
@@ -403,47 +412,65 @@ const HousingGroupDetailScreen = ({ route }) => {
     }
   };
   
-  const toggleFavorite = async () => {
-    if (!currentUser) {
-      Alert.alert('Login Required', 'Please sign in to favorite this group');
-      return;
-    }
-    
-    setActionLoading(true);
+  const handleToggleFavorite = async () => {
     try {
+      const userId = currentUser?.id;
+      if (!userId) {
+        Alert.alert('Authentication Required', 'Please log in to favorite this group.');
+        return;
+      }
+
       if (isFavorited) {
-        // Remove from favorites
-        const { error } = await supabase
+        // Remove from favorites (use correct table)
+        const { error: deleteError } = await supabase
           .from('favorites')
           .delete()
-          .eq('favorite_id', favoriteId);
-          
-        if (error) throw error;
-        
+          .eq('user_id', userId)
+          .eq('item_id', groupId)
+          .eq('item_type', 'housing_group');
+        if (deleteError) {
+          console.error('Error removing favorite:', deleteError);
+          throw deleteError;
+        }
         setIsFavorited(false);
-        setFavoriteId(null);
       } else {
-        // Add to favorites
-        const { data, error } = await supabase
+        // Check if the favorite already exists
+        const { data: existingFavorite, error } = await supabase
           .from('favorites')
-          .insert({
-            user_id: currentUser.id,
-            item_id: groupId,
-            item_type: 'housing_group'
-          })
-          .select('favorite_id')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('item_id', groupId)
+          .eq('item_type', 'housing_group')
           .single();
-          
-        if (error) throw error;
-        
+
+        if (existingFavorite) {
+          // If it exists (but somehow UI shows not favorited), just update the state
+          console.log('Favorite already exists, updating UI state');
+          setIsFavorited(true);
+          return;
+        }
+
+        // Add to favorites using upsert (correct table and schema)
+        const { error: insertError } = await supabase
+          .from('favorites')
+          .upsert({
+            user_id: userId,
+            item_id: groupId,
+            item_type: 'housing_group',
+            created_at: new Date().toISOString()
+          }, {
+            onConflict: 'user_id,item_id,item_type',
+            ignoreDuplicates: true
+          });
+        if (insertError) {
+          console.error('Error favoriting housing group:', insertError);
+          throw insertError;
+        }
         setIsFavorited(true);
-        setFavoriteId(data.favorite_id);
       }
     } catch (error) {
-      console.error('Error toggling favorite:', error.message);
-      Alert.alert('Error', 'Could not update favorites. Please try again.');
-    } finally {
-      setActionLoading(false);
+      console.error('Error toggling favorite status:', error);
+      Alert.alert('Error', 'Failed to update favorite status. Please try again.');
     }
   };
   
@@ -569,191 +596,200 @@ const HousingGroupDetailScreen = ({ route }) => {
   return (
     <View style={styles.container}>
       <AppHeader title="Housing Group" showBackButton={true} navigation={navigation} />
-      <ScrollView ref={scrollViewRef} style={styles.scrollContainer}>
-        {/* Action buttons (Share and Favorite) */}
-        <View style={styles.actionButtonsContainer}>
-          <TouchableOpacity 
-            style={styles.actionButton} 
-            onPress={handleShare}
-            disabled={actionLoading}
-          >
-            <Ionicons name="share-social-outline" size={24} color={COLORS.black} />
-            <Text style={styles.actionButtonText}>Share</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={styles.actionButton} 
-            onPress={toggleFavorite}
-            disabled={actionLoading}
-          >
-            <Ionicons 
-              name={isFavorited ? "heart" : "heart-outline"} 
-              size={24} 
-              color={isFavorited ? "#FF4B4B" : COLORS.black} 
-            />
-            <Text style={styles.actionButtonText}>{isFavorited ? 'Favorited' : 'Favorite'}</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Group Details Section */}
-        {loadingGroupDetails ? (
-          // Skeleton loader for group details
-          renderGroupDetailsSkeleton()
-        ) : groupDetailsError ? (
-          // Error state for group details
-          <View style={styles.errorContainer}>
-            <Ionicons name="alert-circle-outline" size={24} color="#FF4B4B" />
-            <Text style={styles.errorText}>{groupDetailsError}</Text>
-            <TouchableOpacity 
-              style={styles.retryButton}
-              onPress={() => fetchGroupDetails()}
-            >
-              <Text style={styles.retryButtonText}>Retry</Text>
-            </TouchableOpacity>
-          </View>
-        ) : groupDetails && (
-          // Group details content
-          <View style={styles.groupDetailsContainer}>
-            <Text style={styles.groupName}>{groupDetails.name}</Text>
-            <Text style={styles.description}>{groupDetails.description}</Text>
-            
-            <View style={styles.detailsRow}>
-              <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>Members</Text>
-                <Text style={styles.detailValue}>{groupDetails.current_members}/{groupDetails.max_members}</Text>
-              </View>
+      <FlatList
+        ref={scrollViewRef}
+        data={[{ key: 'content' }]}
+        renderItem={() => (
+          <>
+            {/* Action buttons (Share and Favorite) */}
+            <View style={styles.actionButtonsContainer}>
+              <TouchableOpacity 
+                style={styles.actionButton} 
+                onPress={handleShare}
+                disabled={actionLoading}
+              >
+                <Ionicons name="share-social-outline" size={24} color={COLORS.black} />
+                <Text style={styles.actionButtonText}>Share</Text>
+              </TouchableOpacity>
               
-              <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>Move-in Date</Text>
-                <Text style={styles.detailValue}>
-                  {groupDetails.move_in_date ? new Date(groupDetails.move_in_date).toLocaleDateString() : 'Flexible'}
-                </Text>
-              </View>
-            </View>
-          </View>
-        )}
-        
-        {/* Housing Listing Section */}
-        {loadingHousingListing ? (
-          // Skeleton loader for housing listing
-          renderHousingListingSkeleton()
-        ) : housingListingError ? (
-          // Error state for housing listing
-          <View style={styles.errorCard}>
-            <Text style={styles.errorCardText}>{housingListingError}</Text>
-          </View>
-        ) : housingListing && (
-          // Housing listing content
-          <View style={styles.housingCard}>
-            <TouchableOpacity 
-              style={styles.housingImageContainer}
-              onPress={() => navigation.navigate('HousingDetail', { item: housingListing })}
-            >
-              {housingListing.media_urls?.[0] ? (
-                <Image 
-                  source={{ uri: housingListing.media_urls[0] }} 
-                  style={styles.housingImage} 
-                  // Add fade-in animation
-                  onLoadStart={() => {}}
-                  onLoadEnd={() => {}}
-                  // Add fallback for image loading errors
-                  onError={(e) => console.log('Image loading error:', e.nativeEvent.error)}
+              <TouchableOpacity 
+                style={styles.actionButton} 
+                onPress={handleToggleFavorite}
+                disabled={actionLoading}
+              >
+                <Ionicons 
+                  name={isFavorited ? "heart" : "heart-outline"} 
+                  size={24} 
+                  color={isFavorited ? "#FF4B4B" : COLORS.black} 
                 />
-              ) : (
-                <View style={styles.defaultHousingImage}>
-                  <Text style={styles.defaultImageText}>No Image Available</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-            <View style={styles.housingInfo}>
-              <Text style={styles.housingTitle}>{housingListing.title}</Text>
-              <Text style={styles.housingAddress}>{housingListing.address}</Text>
-              <Text style={styles.housingPrice}>${housingListing.weekly_rent}/wk | Available from {new Date(housingListing.available_from).toLocaleDateString()}</Text>
+                <Text style={styles.actionButtonText}>{isFavorited ? 'Favorited' : 'Favorite'}</Text>
+              </TouchableOpacity>
             </View>
-          </View>
-        )}
-        
-        {/* Members Section */}
-        {loadingMembers ? (
-          // Skeleton loader for members
-          renderMembersSkeleton()
-        ) : membersError ? (
-          // Error state for members
-          <View style={styles.errorContainer}>
-            <Ionicons name="alert-circle-outline" size={24} color="#FF4B4B" />
-            <Text style={styles.errorText}>{membersError}</Text>
-            <TouchableOpacity 
-              style={styles.retryButton}
-              onPress={() => fetchMembers()}
-            >
-              <Text style={styles.retryButtonText}>Retry</Text>
-            </TouchableOpacity>
-          </View>
-        ) : members.length > 0 && groupDetails ? (
-          // Members content
-          <View style={styles.membersSection}>
-            <Text style={styles.sectionTitle}>
-              Looking for {groupDetails.max_members - groupDetails.current_members} more 
-              {(groupDetails.max_members - groupDetails.current_members) === 1 ? ' person' : ' people'}
-            </Text>
-            <Text style={styles.moveInBy}>
-              Hoping to move in by {groupDetails.move_in_date ? new Date(groupDetails.move_in_date).toLocaleDateString() : 'flexible date'}
-            </Text>
+
+            {/* Group Details Section */}
+            {loadingGroupDetails ? (
+              // Skeleton loader for group details
+              renderGroupDetailsSkeleton()
+            ) : groupDetailsError ? (
+              // Error state for group details
+              <View style={styles.errorContainer}>
+                <Ionicons name="alert-circle-outline" size={24} color="#FF4B4B" />
+                <Text style={styles.errorText}>{groupDetailsError}</Text>
+                <TouchableOpacity 
+                  style={styles.retryButton}
+                  onPress={() => fetchGroupDetails()}
+                >
+                  <Text style={styles.retryButtonText}>Retry</Text>
+                </TouchableOpacity>
+              </View>
+            ) : groupDetails && (
+              // Group details content
+              <View style={styles.groupDetailsContainer}>
+                <Text style={styles.groupName}>{groupDetails.name}</Text>
+                <Text style={styles.description}>{groupDetails.description}</Text>
+                
+                <View style={styles.detailsRow}>
+                  <View style={styles.detailItem}>
+                    <Text style={styles.detailLabel}>Members</Text>
+                    <Text style={styles.detailValue}>{groupDetails.current_members}/{groupDetails.max_members}</Text>
+                  </View>
+                  
+                  <View style={styles.detailItem}>
+                    <Text style={styles.detailLabel}>Move-in Date</Text>
+                    <Text style={styles.detailValue}>
+                      {groupDetails.move_in_date ? new Date(groupDetails.move_in_date).toLocaleDateString() : 'Flexible'}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            )}
             
-            {/* Member Cards */}
-            {members.map(member => renderMemberItem(member))}
-          </View>
-        ) : (
-          // No members state
-          <View style={styles.noMembersContainer}>
-            <Text style={styles.noMembersText}>No members in this group yet</Text>
-            <Text style={styles.noMembersSubtext}>Be the first to join!</Text>
-          </View>
-        )}
-        
-        {/* Applications Section */}
-        {currentUser && (
-          <ApplicationsList
-            housingGroupId={groupId}
-            currentUserId={currentUser.id}
-            isAdmin={isCurrentUserAdmin}
-            isMember={isCurrentUserMember}
-          />
-        )}
-        
-        {/* Apply to Join Button */}
-        {!isCurrentUserMember && !isJoinRequestPending && groupDetails && (
-          <TouchableOpacity style={styles.joinButton} onPress={handleJoinRequest} disabled={actionLoading}>
-            {actionLoading ? (
-              <ActivityIndicator size="small" color={COLORS.white} />
+            {/* Housing Listing Section */}
+            {loadingHousingListing ? (
+              // Skeleton loader for housing listing
+              renderHousingListingSkeleton()
+            ) : housingListingError ? (
+              // Error state for housing listing
+              <View style={styles.errorCard}>
+                <Text style={styles.errorCardText}>{housingListingError}</Text>
+              </View>
+            ) : housingListing && (
+              // Housing listing content
+              <View style={styles.housingCard}>
+                <TouchableOpacity 
+                  style={styles.housingImageContainer}
+                  onPress={() => navigation.navigate('HousingDetail', { item: housingListing })}
+                >
+                  {housingListing.media_urls?.[0] ? (
+                    <Image 
+                      source={{ uri: housingListing.media_urls[0] }} 
+                      style={styles.housingImage} 
+                      // Add fade-in animation
+                      onLoadStart={() => {}}
+                      onLoadEnd={() => {}}
+                      // Add fallback for image loading errors
+                      onError={(e) => console.log('Image loading error:', e.nativeEvent.error)}
+                    />
+                  ) : (
+                    <View style={styles.defaultHousingImage}>
+                      <Text style={styles.defaultImageText}>No Image Available</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+                <View style={styles.housingInfo}>
+                  <Text style={styles.housingTitle}>{housingListing.title}</Text>
+                  <Text style={styles.housingAddress}>{housingListing.address}</Text>
+                  <Text style={styles.housingPrice}>${housingListing.weekly_rent}/wk | Available from {new Date(housingListing.available_from).toLocaleDateString()}</Text>
+                </View>
+              </View>
+            )}
+            
+            {/* Members Section */}
+            {loadingMembers ? (
+              // Skeleton loader for members
+              renderMembersSkeleton()
+            ) : membersError ? (
+              // Error state for members
+              <View style={styles.errorContainer}>
+                <Ionicons name="alert-circle-outline" size={24} color="#FF4B4B" />
+                <Text style={styles.errorText}>{membersError}</Text>
+                <TouchableOpacity 
+                  style={styles.retryButton}
+                  onPress={() => fetchMembers()}
+                >
+                  <Text style={styles.retryButtonText}>Retry</Text>
+                </TouchableOpacity>
+              </View>
+            ) : members.length > 0 && groupDetails ? (
+              // Members content
+              <View style={styles.membersSection}>
+                <Text style={styles.sectionTitle}>
+                  Looking for {groupDetails.max_members - groupDetails.current_members} more 
+                  {(groupDetails.max_members - groupDetails.current_members) === 1 ? ' person' : ' people'}
+                </Text>
+                <Text style={styles.moveInBy}>
+                  Hoping to move in by {groupDetails.move_in_date ? new Date(groupDetails.move_in_date).toLocaleDateString() : 'flexible date'}
+                </Text>
+                
+                {/* Member Cards */}
+                {members.map(member => renderMemberItem(member))}
+              </View>
             ) : (
-              <Text style={styles.joinButtonText}>Apply to Join Group</Text>
+              // No members state
+              <View style={styles.noMembersContainer}>
+                <Text style={styles.noMembersText}>No members in this group yet</Text>
+                <Text style={styles.noMembersSubtext}>Be the first to join!</Text>
+              </View>
             )}
-          </TouchableOpacity>
-        )}
-        
-        {isJoinRequestPending && (
-          <View style={styles.pendingContainer}>
-            <Text style={styles.pendingText}>Your application is pending approval</Text>
-            {applicationStatus && applicationStatus.applicant_message && (
-              <Text style={styles.applicationMessage}>Your message: "{applicationStatus.applicant_message}"</Text>
+            
+            {/* Applications Section */}
+            {currentUser && (
+              <ApplicationsList
+                housingGroupId={groupId}
+                currentUserId={currentUser.id}
+                isAdmin={isCurrentUserAdmin}
+                isMember={isCurrentUserMember}
+              />
             )}
-            <TouchableOpacity 
-              style={styles.cancelButton} 
-              onPress={handleCancelJoinRequest}
-              disabled={actionLoading}
-            >
-              {actionLoading ? (
-                <ActivityIndicator size="small" color="#FF4B4B" />
-              ) : (
-                <Text style={styles.cancelButtonText}>Withdraw Application</Text>
-              )}
-            </TouchableOpacity>
-          </View>
+            
+            {/* Apply to Join Button */}
+            {!isCurrentUserMember && !isJoinRequestPending && groupDetails && (
+              <TouchableOpacity style={styles.joinButton} onPress={handleJoinRequest} disabled={actionLoading}>
+                {actionLoading ? (
+                  <ActivityIndicator size="small" color={COLORS.white} />
+                ) : (
+                  <Text style={styles.joinButtonText}>Apply to Join Group</Text>
+                )}
+              </TouchableOpacity>
+            )}
+            
+            {isJoinRequestPending && (
+              <View style={styles.pendingContainer}>
+                <Text style={styles.pendingText}>Your application is pending approval</Text>
+                {applicationStatus && applicationStatus.applicant_message && (
+                  <Text style={styles.applicationMessage}>Your message: "{applicationStatus.applicant_message}"</Text>
+                )}
+                <TouchableOpacity 
+                  style={styles.cancelButton} 
+                  onPress={handleCancelJoinRequest}
+                  disabled={actionLoading}
+                >
+                  {actionLoading ? (
+                    <ActivityIndicator size="small" color="#FF4B4B" />
+                  ) : (
+                    <Text style={styles.cancelButtonText}>Withdraw Application</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
+            
+            <View style={styles.bottomSpace} />
+          </>
         )}
-        
-        <View style={styles.bottomSpace} />
-      </ScrollView>
+        keyExtractor={(item) => item.key}
+        contentContainerStyle={styles.scrollContainer}
+        key={refreshKey}
+      />
     </View>
   );
 };

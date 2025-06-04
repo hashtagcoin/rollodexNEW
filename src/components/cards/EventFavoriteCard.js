@@ -92,7 +92,7 @@ const EventFavoriteCard = ({
           <View style={CardStyles.listContentContainer}>
             <View style={CardStyles.topSection}>
               <Text style={[CardStyles.title, {flex: 1, paddingRight: 5}]} numberOfLines={1}>
-                {item.item_title || 'Event Title'}
+                {item.item_type === 'group_event' ? item.item_title : 'Unknown Title'}
               </Text>
               <View style={CardStyles.ratingContainer}>
                 <Ionicons name={getCategoryIcon(item.event_category)} size={16} color={COLORS.primary} />
@@ -172,7 +172,7 @@ const EventFavoriteCard = ({
           
           <View style={{padding: 10}}>
             <Text style={[CardStyles.title, {marginBottom: 4}]} numberOfLines={1}>
-              {item.item_title || 'Event Title'}
+              {item.item_type === 'group_event' ? item.item_title : 'Unknown Title'}
             </Text>
             
             <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 4}}>

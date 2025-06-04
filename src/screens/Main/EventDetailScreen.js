@@ -162,17 +162,22 @@ const EventDetailScreen = ({ route, navigation }) => {
         
         setIsFavorite(false);
       } else {
-        // Favorite event
+        // Favorite event (use upsert to avoid duplicates and match DB schema)
         const { error } = await supabase
           .from('favorites')
-          .insert({
+          .upsert({
             item_id: eventId,
             user_id: userProfile.id,
-            item_type: 'group_event'
+            item_type: 'group_event',
+            created_at: new Date().toISOString()
+          }, {
+            onConflict: 'user_id,item_id,item_type',
+            ignoreDuplicates: true
           });
-          
-        if (error) throw error;
-        
+        if (error) {
+          console.error('Error favoriting event:', error);
+          throw error;
+        }
         setIsFavorite(true);
       }
     } catch (error) {

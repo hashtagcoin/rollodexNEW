@@ -9,7 +9,6 @@ import {
   StyleSheet,
   Dimensions,
   Animated,
-  ScrollView
 } from 'react-native';
 
 // Create an animated version of FlatList
@@ -18,7 +17,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import AppHeader from '../../components/layout/AppHeader';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabaseClient';
-import { COLORS } from '../../constants/theme';
+import { COLORS, DARK_GREEN, SIZES } from '../../constants/theme';
+import { CardStyles } from '../../constants/CardStyles';
 import SearchComponent from '../../components/common/SearchComponent';
 import HousingGroupCard from '../../components/cards/HousingGroupCard';
 
@@ -46,8 +46,10 @@ const HousingGroupsScreen = ({ navigation }) => {
   const [viewMode, setViewMode] = useState('List');
   const [userId, setUserId] = useState(null);
   const [activeFilters, setActiveFilters] = useState([]);
-  
-  // Animation values removed (FAB no longer present)
+  const [userFavorites, setUserFavorites] = useState(new Set());
+
+  // Create refs for FlatList
+  const flatListRef = useRef(null);
 
   // Fetch user ID on component mount
   useEffect(() => {
@@ -239,6 +241,109 @@ const HousingGroupsScreen = ({ navigation }) => {
     });
   }, [housingGroups, searchTerm, activeFilters]); // Only recalculate when these dependencies change
 
+  // Toggle Favorite Function
+  const toggleFavorite = useCallback(async (itemId, itemType) => {
+    if (!itemId || !itemType) {
+      console.error('[HousingGroups] toggleFavorite: Invalid itemId or itemType', itemId, itemType);
+      Alert.alert('Error', 'Could not update favorite status.');
+      return;
+    }
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      Alert.alert('Authentication Error', 'You must be logged in to favorite items.');
+      console.error('[HousingGroups] toggleFavorite: Auth error or no user', authError);
+      return;
+    }
+
+    const isCurrentlyFavorited = userFavorites.has(itemId);
+
+    console.log(`[HousingGroups] toggleFavorite: Item ID: ${itemId}, Type: ${itemType}, Currently Favorited: ${isCurrentlyFavorited}, User: ${user.id}`);
+
+    if (isCurrentlyFavorited) {
+      // Unfavorite
+      const { error } = await supabase
+        .from('favorites')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('item_id', itemId)
+        .eq('item_type', itemType);
+
+      if (error) {
+        console.error('[HousingGroups] Error unfavoriting item:', error);
+        Alert.alert('Error', 'Could not remove from favorites. Please try again.');
+      } else {
+        setUserFavorites(prevFavorites => {
+          const newFavorites = new Set(prevFavorites);
+          newFavorites.delete(itemId);
+          console.log('[HousingGroups] Item unfavorited. New favorites set:', newFavorites);
+          return newFavorites;
+        });
+      }
+    } else {
+      // Favorite - use upsert to handle potential conflicts
+      const { error } = await supabase
+        .from('favorites')
+        .upsert({ 
+          user_id: user.id, 
+          item_id: itemId, 
+          item_type: itemType,
+          created_at: new Date().toISOString()
+        }, {
+          onConflict: 'user_id,item_id,item_type',
+          ignoreDuplicates: true
+        });
+
+      if (error) {
+        console.error('[HousingGroups] Error favoriting item:', error);
+        Alert.alert('Error', 'Could not add to favorites. Please try again.');
+      } else {
+        setUserFavorites(prevFavorites => {
+          const newFavorites = new Set(prevFavorites);
+          newFavorites.add(itemId);
+          console.log('[HousingGroups] Item favorited. New favorites set:', newFavorites);
+          return newFavorites;
+        });
+      }
+    }
+  }, [userFavorites]);
+
+  // Refresh user favorites
+  const refreshUserFavorites = useCallback(async () => {
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      console.error('[HousingGroups] refreshUserFavorites: Auth error or no user', authError);
+      return;
+    }
+
+    const { data: favorites, error: favoritesError } = await supabase
+      .from('favorites')
+      .select('item_id')
+      .eq('user_id', user.id);
+
+    if (favoritesError) {
+      console.error('[HousingGroups] refreshUserFavorites: Error fetching favorites', favoritesError);
+    } else {
+      setUserFavorites(new Set(favorites.map(favorite => favorite.item_id)));
+    }
+  }, []);
+
+  // Reset scroll position when tab is focused and refresh favorites data
+  useFocusEffect(
+    useCallback(() => {
+      console.log('[HousingGroups] Screen focused - refreshing favorites data');
+      refreshUserFavorites();
+      return () => {
+        console.log('[HousingGroups] Screen unfocused');
+      };
+    }, [refreshUserFavorites])
+  );
+
+  // Handle creating a new housing group
+  const handleCreateGroup = () => {
+    navigation.navigate('CreateHousingGroupScreen');
+  };
+
   // Handle join group action
   const handleJoinGroup = async (groupId) => {
     try {
@@ -322,30 +427,31 @@ const HousingGroupsScreen = ({ navigation }) => {
     }
   };
 
-  // Render item for FlatList
+  // Calculate how many spots are still needed
+  const calculateSpotsNeeded = useCallback((group) => {
+    // Check if max_members and current_members data is available
+    if (group && group.max_members !== undefined && group.current_members !== undefined) {
+      return Math.max(0, group.max_members - group.current_members);
+    }
+    // Default to 0 if data is missing
+    return 0;
+  }, []);
+
+  // Render a housing group card
   const renderHousingGroup = ({ item }) => {
-    // Calculate how many more members are needed
-    const spotsNeeded = item.max_members - item.current_members;
-    
-    // Create a modified item with needsLabel if not a member or pending
-    const modifiedItem = {
-      ...item,
-      needsLabel: (!item.membershipStatus || (item.membershipStatus !== 'approved' && item.membershipStatus !== 'pending')) 
-        ? `Need ${spotsNeeded > 0 ? spotsNeeded : 'more'}` 
-        : null
-    };
+    // Calculate spots needed
+    const spotsNeeded = calculateSpotsNeeded(item);
     
     return (
-      <View style={viewMode === 'Grid' ? styles.gridCardWrapper : styles.listCardWrapper}>
-        <HousingGroupCard 
-          item={modifiedItem}
-          // Always navigate to the Main version when tapping the card
-          onPress={() => navigation.navigate('HousingGroupDetailScreen', { groupId: item.id })}
-          // Use handleCardAction for the button press
-          onActionPress={() => handleCardAction(item)}
-          gridMode={viewMode === 'Grid'}
-        />
-      </View>
+      <HousingGroupCard
+        item={item}
+        onPress={() => navigation.navigate('HousingGroupDetailScreen', { groupId: item.id })}
+        onJoin={handleJoinGroup}
+        userFavorites={userFavorites}
+        onToggleFavorite={(id) => toggleFavorite(id, 'housing_group')}
+        isFavorited={userFavorites.has(item.id)}
+        displayAs={viewMode.toLowerCase()}
+      />
     );
   };
 
@@ -353,11 +459,11 @@ const HousingGroupsScreen = ({ navigation }) => {
   const EmptyListComponent = () => (
     <View style={styles.emptyContainer}>
       <Ionicons name="people-outline" size={64} color="#ccc" />
-      <Text style={styles.emptyTitle}>No Housing Groups Found</Text>
+      <Text style={styles.emptyText}>No Housing Groups Found</Text>
       <Text style={styles.emptyText}>
         {searchTerm || activeFilters.length > 0 
           ? 'Try different search terms or filters' 
-          : 'Check back later for new housing groups'}
+          : 'Create a group to start collaborating'}
       </Text>
     </View>
   );
@@ -365,160 +471,148 @@ const HousingGroupsScreen = ({ navigation }) => {
   // Render loading state
   if (loading && !refreshing) {
     return (
-      <View style={styles.loadingContainer}>
+      <View style={styles.loaderContainer}>
         <ActivityIndicator size="large" color={COLORS.primary} />
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      {/* FAB button removed as requested */}
+    <View style={styles.screenContainer}>
+      <AppHeader 
+        title="Housing Groups" 
+        navigation={navigation} 
+        canGoBack={true}
+      />
       
-      <AppHeader title="Housing Groups" navigation={navigation} canGoBack={true} />
-      
-      {/* Search component */}
       <SearchComponent
-        searchTerm={searchTerm}
-        onSearchChange={setSearchTerm}
+        contentType="housing_groups"
         categories={HOUSING_FILTERS.map(filter => filter.label)}
         selectedCategory={activeFilters.length > 0 ? 
           HOUSING_FILTERS.find(f => activeFilters.includes(f.key))?.label || 'All' : 'All'}
         onCategoryChange={(category) => {
-          // Find the corresponding filter key
           const filter = HOUSING_FILTERS.find(f => f.label === category);
           if (filter) {
             if (filter.key === 'all') {
-              // Clear all filters when 'All' is selected
               setActiveFilters([]);
             } else {
-              // Set this as the only active filter
               setActiveFilters([filter.key]);
             }
           }
         }}
+        searchTerm={searchTerm}
+        onSearchChange={setSearchTerm}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
         viewModes={['Grid', 'List']}
-        contentType="housing_groups"
+        showCategories={true}
+        showViewModes={true}
       />
-      
-      {/* Listing count */}
-      <Text style={styles.listingCount}>
-        {filteredGroups.length} {filteredGroups.length === 1 ? 'Group' : 'Groups'}
-      </Text>
-      
-      {/* Housing groups list */}
-      <AnimatedFlatList
-        data={filteredGroups}
-        keyExtractor={(item) => item.id}
-        renderItem={renderHousingGroup}
-        contentContainerStyle={styles.contentContainer}
-        key={viewMode} // Force re-render when view mode changes
-        numColumns={viewMode === 'Grid' ? 2 : 1}
-        columnWrapperStyle={viewMode === 'Grid' ? styles.gridContainer : null}
-        refreshControl={
-          <RefreshControl 
-            refreshing={refreshing} 
-            onRefresh={onRefresh}
-            colors={[COLORS.primary]} 
+
+      <View style={styles.contentViewWrapper}>
+        {loading ? (
+          <View style={styles.loaderContainer}>
+            <ActivityIndicator size="large" color={COLORS.primary} />
+            <Text style={styles.loadingText}>Loading housing groups...</Text>
+          </View>
+        ) : filteredGroups.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Ionicons name="home-outline" size={80} color={COLORS.gray} />
+            <Text style={styles.emptyText}>No housing groups found</Text>
+            <TouchableOpacity
+              style={styles.emptyButton}
+              onPress={handleCreateGroup}
+            >
+              <Text style={styles.emptyButtonText}>Create a Housing Group</Text>
+            </TouchableOpacity>
+          </View>
+        ) : viewMode === 'Grid' ? (
+          <FlatList
+            key="grid"
+            data={filteredGroups}
+            renderItem={renderHousingGroup}
+            keyExtractor={(item) => String(item.id)}
+            numColumns={2}
+            columnWrapperStyle={{justifyContent: 'space-between'}}
+            contentContainerStyle={{paddingHorizontal: 10, paddingBottom: 20}}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                colors={[COLORS.primary]}
+              />
+            }
           />
-        }
-        scrollEventThrottle={16}
-        ListEmptyComponent={EmptyListComponent}
-        showsVerticalScrollIndicator={false}
-      />
+        ) : (
+          <FlatList
+            key="list"
+            data={filteredGroups}
+            renderItem={renderHousingGroup}
+            keyExtractor={(item) => String(item.id)}
+            contentContainerStyle={{paddingHorizontal: 10, paddingBottom: 20}}
+            showsVerticalScrollIndicator={false}
+            ItemSeparatorComponent={() => <View style={{height: 10}} />}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                colors={[COLORS.primary]}
+              />
+            }
+          />
+        )}
+      </View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
+  screenContainer: {
     flex: 1,
-    backgroundColor: '#f8f8f8',
+    backgroundColor: '#F8F7F3',
   },
-  contentContainer: {
-    flexGrow: 1,
-    paddingBottom: 20, // Reduced padding since FAB is removed
-    paddingHorizontal: 4,
+  contentViewWrapper: {
+    flex: 1,
   },
-  headerContainer: {
-    marginTop: 10,
-    marginBottom: 10, // Reduced to make room for filters
+  listContainer: {
+    paddingBottom: 20,
+    paddingHorizontal: 10,
   },
-  gridContainer: {
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
+  loaderContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  gridCardWrapper: {
-    width: '48%', // Using percentage for better responsiveness
-    marginBottom: 12, // Reduced margin between cards
-  },
-  listCardWrapper: {
-    width: '100%',
-    marginBottom: 10, // Reduced margin between cards
-    paddingHorizontal: 12, // Reduced horizontal padding
-  },
-  filterScroll: {
-    flexGrow: 0,
-    marginBottom: 10,
-    maxHeight: 50,
-    paddingHorizontal: 6,
-  },
-  filterChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    backgroundColor: '#f0f0f0',
-    marginRight: 8,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-  },
-  filterChipActive: {
-    backgroundColor: COLORS.primary + '20', // Light version of primary color
-    borderColor: COLORS.primary,
-  },
-  filterChipText: {
-    fontSize: 12,
-    color: '#555',
-    fontWeight: '500',
-  },
-  filterChipTextActive: {
-    color: COLORS.primary,
-    fontWeight: '600',
-  },
-  listingCount: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 10,
-    marginLeft: 16,
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: COLORS.darkGray,
   },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    marginTop: 50,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#555',
-    marginTop: 16,
-    marginBottom: 8,
+    padding: 20,
   },
   emptyText: {
-    fontSize: 14,
-    color: '#888',
+    fontSize: 18,
+    color: COLORS.darkGray,
+    marginTop: 16,
     textAlign: 'center',
   },
-  // FAB styles removed
-
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  }
+  emptyButton: {
+    marginTop: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    backgroundColor: COLORS.primary,
+    borderRadius: 8,
+  },
+  emptyButtonText: {
+    color: COLORS.white,
+    fontSize: 16,
+    fontWeight: '600',
+  },
 });
 
 export default HousingGroupsScreen;

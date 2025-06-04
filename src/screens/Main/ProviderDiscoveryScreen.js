@@ -321,7 +321,8 @@ const ProviderDiscoveryScreen = ({ route }) => {
         .upsert({ 
           user_id: user.id, 
           item_id: itemId, 
-          item_type: itemType 
+          item_type: itemType,
+          created_at: new Date().toISOString()
         }, {
           onConflict: 'user_id,item_id,item_type',
           ignoreDuplicates: true

@@ -189,24 +189,25 @@ const HousingGroupDetailScreen = ({ route }) => {
       if (isFavorited) {
         // Remove from favorites
         const { error: deleteError } = await supabase
-          .from('user_favorites')
+          .from('favorites')
           .delete()
           .eq('user_id', userId)
           .eq('item_id', groupId)
           .eq('item_type', 'housing_group');
-          
-        if (deleteError) throw deleteError;
+        if (deleteError) {
+          console.error('Error removing favorite:', deleteError);
+          throw deleteError;
+        }
         setIsFavorited(false);
       } else {
         // Check if the favorite already exists
         const { data: existingFavorite } = await supabase
-          .from('user_favorites')
+          .from('favorites')
           .select('id')
           .eq('user_id', userId)
           .eq('item_id', groupId)
           .eq('item_type', 'housing_group')
           .single();
-          
         if (existingFavorite) {
           // If it exists (but somehow UI shows not favorited), just update the state
           console.log('Favorite already exists, updating UI state');
@@ -214,17 +215,22 @@ const HousingGroupDetailScreen = ({ route }) => {
           return;
         }
         
-        // Add to favorites using upsert to avoid constraint violations
+        // Add to favorites using upsert
         const { error: insertError } = await supabase
-          .from('user_favorites')
+          .from('favorites')
           .upsert({
             user_id: userId,
             item_id: groupId,
             item_type: 'housing_group',
             created_at: new Date().toISOString()
-          }, { onConflict: 'user_id,item_id,item_type' });
-          
-        if (insertError) throw insertError;
+          }, {
+            onConflict: 'user_id,item_id,item_type',
+            ignoreDuplicates: true
+          });
+        if (insertError) {
+          console.error('Error favoriting housing group:', insertError);
+          throw insertError;
+        }
         setIsFavorited(true);
       }
     } catch (error) {
