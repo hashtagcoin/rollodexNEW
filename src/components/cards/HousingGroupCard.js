@@ -1,323 +1,224 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  Image, 
-  TouchableOpacity,
-  Dimensions,
-  ActivityIndicator,
-  Share
-} from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import React, { useState, useMemo } from 'react';
+import { View, Text, TouchableOpacity, Image, ActivityIndicator } from 'react-native'; 
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import { format } from 'date-fns';
-import { COLORS, FONTS, SHADOWS } from '../../constants/theme';
-import { LinearGradient } from 'expo-linear-gradient';
 import { getValidImageUrl } from '../../utils/imageHelper';
-import { supabase } from '../../lib/supabaseClient';
+import { CardStyles } from '../../constants/CardStyles';
+import { COLORS, SIZES } from '../../constants/theme';
 
-const { width } = Dimensions.get('window');
-const CARD_MARGIN = 10;
-const CARD_WIDTH = width - (CARD_MARGIN * 4);
-
-const HousingGroupCard = ({ 
-  item, 
-  onPress, 
-  onActionPress,
-  gridMode = false,
-  onSharePress,
-  onFavoritePress
-}) => {
+// Main component
+const HousingGroupCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', isFavorited, onToggleFavorite, onSharePress }) => { 
   const [imageLoaded, setImageLoaded] = useState(false);
-  const [isFavorite, setIsFavorite] = useState(false);
-  
-  // Check favorite status when component mounts
-  useEffect(() => {
-    checkFavoriteStatus();
-  }, [item]);
 
-  // Check if housing group is favorited
-  const checkFavoriteStatus = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user || !item.id) return;
-      
-      const { data } = await supabase
-        .from('user_favorites')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('item_id', item.id)
-        .eq('item_type', 'housing_group')
-        .single();
-        
-      setIsFavorite(!!data);
-    } catch (error) {
-      // Ignore errors to avoid UI disruption
-    }
-  };
+  // Process housing group information
+  const groupName = item.name || 'Housing Group';
+  const description = item.description || 'No description available';
+  const memberCount = item.max_members ? `${item.current_members || 0}/${item.max_members} Members` : 'Open Group';
+  const moveInDate = item.move_in_date ? format(new Date(item.move_in_date), 'MMM d, yyyy') : 'Flexible';
   
-  // Handle favorite button press
-  const handleFavoritePress = async (e) => {
-    e.stopPropagation();
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      
-      if (isFavorite) {
-        // Remove from favorites
-        await supabase
-          .from('user_favorites')
-          .delete()
-          .eq('user_id', user.id)
-          .eq('item_id', item.id)
-          .eq('item_type', 'housing_group');
-          
-        setIsFavorite(false);
-      } else {
-        // Add to favorites
-        await supabase
-          .from('user_favorites')
-          .insert({
-            user_id: user.id,
-            item_id: item.id,
-            item_type: 'housing_group',
-            created_at: new Date().toISOString()
-          });
-          
-        setIsFavorite(true);
-      }
-      
-      // Call external handler if provided
-      if (onFavoritePress) {
-        onFavoritePress(item, !isFavorite);
-      }
-    } catch (error) {
-      console.error('Error toggling favorite:', error);
-    }
-  };
+  // Get location from housing listing if available
+  const location = item.housing_listing_data?.suburb || 'Location N/A';
   
-  // Handle share button press
-  const handleSharePress = (e) => {
-    e.stopPropagation();
-    if (onSharePress) {
-      onSharePress(item);
-    } else {
-      // Default share handling
-      Share.share({
-        message: `Check out this housing group: ${item.name}`,
-        title: item.name,
-      });
-    }
-  };
-  
-  // Determine button text and style based on membership status
-  let buttonText = 'Join';
-  let buttonStyle = styles.joinButton;
-  let buttonTextStyle = styles.joinButtonText;
-  let disabled = false;
-  let statusLabel = null;
-  let statusLabelStyle = null;
-
-  if (item.membershipStatus === 'approved') {
-    buttonText = 'Leave';
-    buttonStyle = styles.leaveButton;
-    buttonTextStyle = styles.leaveButtonText;
-    statusLabel = 'Member';
-    statusLabelStyle = styles.memberLabel;
-  } else if (item.membershipStatus === 'pending') {
-    buttonText = 'Leave'; // Changed from 'Pending' to 'Leave'
-    buttonStyle = styles.leaveButton; // Changed to use leaveButton style instead of pendingButton
-    buttonTextStyle = styles.leaveButtonText;
-    statusLabel = 'Pending';
-    statusLabelStyle = styles.pendingLabel;
-    disabled = false; // Allow users to cancel their pending request
-  } else if (item.applicationStatus === 'pending') {
-    buttonText = 'Application Pending';
-    buttonStyle = styles.pendingButton;
-    buttonTextStyle = styles.pendingButtonText;
-    statusLabel = 'Application Pending';
-    statusLabelStyle = styles.pendingLabel;
-    disabled = true;
-  } else if (item.applicationStatus === 'declined' || item.membershipStatus === 'declined') {
-    buttonText = 'Application Declined';
-    buttonStyle = styles.declinedButton;
-    buttonTextStyle = styles.declinedButtonText;
-    statusLabel = 'Declined';
-    statusLabelStyle = styles.declinedLabel;
-    disabled = true;
-  } else if (item.needsLabel) {
-    // Show the 'Need X' label when provided
-    statusLabel = item.needsLabel;
-    statusLabelStyle = styles.needsLabel;
-  }
-  
-  // Format move-in date if available
-  const moveInDateText = item.move_in_date ? format(new Date(item.move_in_date), 'MMM d, yyyy') : 'Flexible';
-  
-  // Get image from housing listing if available
+  // Handle images - try to get from different possible fields
   const listingImage = item.housing_listing_data?.media_urls && 
                        item.housing_listing_data.media_urls.length > 0 ? 
                        item.housing_listing_data.media_urls[0] : null;
-                       
-  const rawImageUrl = listingImage || (item.avatar_url || null);
+  const rawImageUrl = listingImage || item.avatar_url || null;
   const imageUrl = getValidImageUrl(rawImageUrl, 'housingimages');
-  
   const imageSource = useMemo(() => {
-    return imageUrl ? 
-      { uri: imageUrl } : 
-      { uri: 'https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/housingimages/default-housing.png' };
+    return imageUrl ? { uri: imageUrl } : { uri: 'https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/housingimages/default-housing.png' };
   }, [imageUrl]);
 
-  return (
-    <TouchableOpacity 
-      style={[
-        styles.card,
-        gridMode ? styles.gridCard : styles.listCard
-      ]}
-      onPress={onPress}
-      activeOpacity={0.7}
-    >
-      {/* Status label for list view - outside of image container */}
-      {!gridMode && statusLabel && (
-        <View style={[styles.cardStatusLabel]}>
-          <View style={[statusLabelStyle, styles.compactLabel]}>
-            <Text style={styles.statusLabelText}>{statusLabel}</Text>
-          </View>
-        </View>
-      )}
-      
-      <View style={gridMode ? styles.gridImageContainer : styles.listImageContainer}>
-        {!imageLoaded && (
-          <View style={styles.loaderContainer}>
-            <ActivityIndicator size="small" color={COLORS.primary} />
-          </View>
-        )}
-        <Image 
-          source={imageSource}
-          style={gridMode ? styles.gridImage : styles.listImage}
-          onLoad={() => setImageLoaded(true)}
-          onError={() => setImageLoaded(true)}
-        />
-        
-        {/* Card action icons */}
-        <View style={styles.actionIconsContainer}>
-          <TouchableOpacity 
-            style={styles.actionIcon}
-            onPress={handleFavoritePress}
-          >
-            <Ionicons 
-              name={isFavorite ? "heart" : "heart-outline"} 
-              size={22} 
-              color={isFavorite ? COLORS.error : "#fff"}
+  // Process housing group info tags
+  const processInfoTags = () => {
+    const infoTags = [];
+    
+    // Add move-in date as a tag
+    infoTags.push({ name: `Move-in: ${moveInDate}`, color: COLORS.success });
+    
+    // Add support needs if available
+    if (item.support_needs) {
+      infoTags.push({ name: `Support: ${item.support_needs}`, color: COLORS.info });
+    }
+    
+    // Add gender preference if available
+    if (item.gender_preference) {
+      infoTags.push({ name: item.gender_preference, color: COLORS.purple });
+    }
+    
+    return infoTags;
+  };
+  
+  const infoTags = processInfoTags();
+
+  if (displayAs === 'list') {
+    return (
+      <TouchableOpacity 
+        style={CardStyles.listCardContainer} 
+        onPress={onPress ? () => onPress(item) : undefined} 
+        activeOpacity={0.8}
+      >
+        <View style={CardStyles.listCardInner}> 
+          <View style={CardStyles.listImageContainer}> 
+            {!imageLoaded && (
+              <View style={CardStyles.loaderContainer}> 
+                <ActivityIndicator size="large" color={COLORS.primary} />
+              </View>
+            )}
+            <Image 
+              source={imageSource}
+              style={CardStyles.listImage} 
+              onLoad={() => {
+                setImageLoaded(true);
+                if (typeof onImageLoaded === 'function' && imageUrl) onImageLoaded(imageUrl);
+              }}
+              onError={(e) => console.log('Housing Group Card List Image Error:', e.nativeEvent.error)}
             />
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={styles.actionIcon}
-            onPress={handleSharePress}
-          >
-            <Ionicons name="share-social-outline" size={20} color="#fff" />
-          </TouchableOpacity>
-        </View>
-        
-        {/* NDIS labels removed as requested */}
-        
-        {/* Membership status label for grid view only */}
-        {gridMode && statusLabel && (
-          <View style={[styles.statusLabelContainer, statusLabelStyle]}>
-            <Text style={styles.statusLabelText}>{statusLabel}</Text>
+            <TouchableOpacity 
+              style={CardStyles.iconContainer} 
+              onPress={onToggleFavorite}
+            >
+              <View style={isFavorited ? CardStyles.iconCircleActive : CardStyles.iconCircle}> 
+                <Ionicons name={isFavorited ? "heart" : "heart-outline"} size={16} style={isFavorited ? CardStyles.favoriteIconActive : CardStyles.favoriteIcon} />
+              </View>
+            </TouchableOpacity>
+            {onSharePress && (
+              <TouchableOpacity 
+                style={[CardStyles.iconContainer, { top: 48 }]}
+                onPress={() => onSharePress(item)}
+              >
+                <View style={CardStyles.iconCircle}> 
+                  <Ionicons name="share-social-outline" size={16} style={CardStyles.favoriteIcon} />
+                </View>
+              </TouchableOpacity>
+            )}
           </View>
-        )}
-        
-        {/* Join/Leave button positioned at bottom right of image */}
+          
+          <View style={CardStyles.listContentContainer}> 
+            <View style={CardStyles.topSection}> 
+              <Text style={[CardStyles.title, {flex: 1, paddingRight: 5}]} numberOfLines={1}>{groupName}</Text>
+              <View style={localStyles.memberBadge}>
+                <Ionicons name="people" size={14} color={COLORS.primary} />
+                <Text style={localStyles.memberText}>{memberCount}</Text>
+              </View>
+            </View>
+
+            <Text style={CardStyles.subtitle} numberOfLines={1}>{location}</Text> 
+            <Text style={[CardStyles.subtitle, {marginVertical: 4}]} numberOfLines={2}>{description}</Text> 
+            <View style={localStyles.listTagsContainer}>
+              {infoTags.slice(0, 2).map((tag, index) => (
+                <View key={`${tag.name}-${index}`} style={[localStyles.listTagButton, {backgroundColor: tag.color || COLORS.lightGray}]}>
+                  <Text style={localStyles.listTagText}>{tag.name}</Text>
+                </View>
+              ))}
+              {infoTags.length > 2 && (
+                <View style={[localStyles.listTagButton, {backgroundColor: COLORS.lightGray}]}>
+                  <Text style={localStyles.listTagText}>+{infoTags.length - 2} more</Text>
+                </View>
+              )}
+            </View>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  } else {
+    // Grid view layout
+    return (
+      <View style={CardStyles.gridCardWrapper}> 
         <TouchableOpacity 
-          style={[styles.actionButton, buttonStyle, styles.imageButton]} 
-          onPress={() => !disabled && onActionPress()}
-          disabled={disabled}
+          style={CardStyles.gridCardContainer}  
+          onPress={onPress ? () => onPress(item) : undefined} 
+          activeOpacity={0.8}
         >
-          <Text style={buttonTextStyle}>{buttonText}</Text>
-        </TouchableOpacity>
-      </View>
-      
-      <View style={styles.cardContent}>
-        <Text 
-          style={styles.cardTitle} 
-          numberOfLines={1} 
-          ellipsizeMode="tail"
-        >
-          {item.name}
-        </Text>
-        
-        {/* Location from housing listing if available */}
-        <Text style={styles.locationText} numberOfLines={1}>
-          <Ionicons name="location-outline" size={12} color="#888" style={{marginRight: 4}} />
-          {item.housing_listing_data?.suburb || 'Location N/A'}
-        </Text>
-        
-        <Text 
-          style={styles.cardDescription} 
-          numberOfLines={gridMode ? 3 : 2} 
-          ellipsizeMode="tail"
-        >
-          {item.description || 'No description available.'}
-        </Text>
-        
-        <View style={styles.cardFooter}>
-          <View style={styles.infoRow}>
-            <View style={styles.memberCountContainer}>
-              <Ionicons name="people" size={14} color="#666" />
-              <Text style={styles.memberCount}>
-                {item.current_members || 0}/{item.max_members || 0}
-              </Text>
+          <View style={CardStyles.gridCardInner}> 
+            <View style={CardStyles.gridImageContainer}> 
+              {!imageLoaded && (
+                <View style={CardStyles.loaderContainer}> 
+                  <ActivityIndicator size="large" color={COLORS.primary} />
+                </View>
+              )}
+              <Image 
+                source={imageSource}
+                style={CardStyles.gridImage} 
+                onLoad={() => {
+                  setImageLoaded(true);
+                  if (typeof onImageLoaded === 'function' && imageUrl) onImageLoaded(imageUrl);
+                }}
+                onError={(e) => console.log('Housing Group Card Image Error:', e.nativeEvent.error)}
+              />
+              <TouchableOpacity 
+                style={CardStyles.iconContainer} 
+                onPress={onToggleFavorite}
+              >
+                <View style={isFavorited ? CardStyles.iconCircleActive : CardStyles.iconCircle}> 
+                  <Ionicons name={isFavorited ? "heart" : "heart-outline"} size={20} style={isFavorited ? CardStyles.favoriteIconActive : CardStyles.favoriteIcon} />
+                </View>
+              </TouchableOpacity>
+              {onSharePress && (
+                <TouchableOpacity 
+                  style={[CardStyles.iconContainer, { top: 48 }]} 
+                  onPress={() => onSharePress(item)}
+                >
+                  <View style={CardStyles.iconCircle}> 
+                    <Ionicons name="share-social-outline" size={20} style={CardStyles.favoriteIcon} /> 
+                  </View>
+                </TouchableOpacity>
+              )}
             </View>
             
-            <View style={styles.moveInContainer}>
-              <Ionicons name="calendar" size={14} color="#666" />
-              <Text style={styles.moveInText}>
-                {moveInDateText}
-              </Text>
+            <View style={{padding: 8}}> 
+              <Text style={[CardStyles.title, {marginBottom: 4}]} numberOfLines={2}>{groupName}</Text> 
+              <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4}}> 
+                <Text style={CardStyles.subtitle} numberOfLines={1}>{location}</Text> 
+                <View style={localStyles.memberBadge}>
+                  <Ionicons name="people" size={14} color={COLORS.primary} />
+                  <Text style={localStyles.memberText}>{memberCount}</Text>
+                </View>
+              </View>
+              <Text style={[CardStyles.subtitle, {marginTop: 4}]} numberOfLines={1}>{moveInDate}</Text>
             </View>
           </View>
-        </View>
+        </TouchableOpacity>
       </View>
-      
-      {/* Join/Leave button moved inside image container */}
-    </TouchableOpacity>
-  );
+    );
+  }
 };
 
-const styles = StyleSheet.create({
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16, // More rounded corners like Airbnb
-    marginBottom: 12, // Reduced space between cards
-    overflow: 'hidden',
-    ...SHADOWS.medium,
-    elevation: 4, // Add more depth on Android
-  },
-  listCard: {
+const localStyles = {
+  memberBadge: {
     flexDirection: 'row',
-    width: '100%',
-    height: 140, // Reduced height for more compact design
-    position: 'relative',
+    alignItems: 'center',
+    backgroundColor: COLORS.lightGray,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    marginLeft: 5,
   },
-  gridCard: {
-    width: CARD_WIDTH / 2 - 8,
-    height: 280, // Reduced height for more compact design
-    marginHorizontal: 4,
-    position: 'relative',
+  memberText: {
+    fontSize: 12,
+    color: COLORS.primary,
+    marginLeft: 3,
+    fontWeight: '600',
   },
-  listImageContainer: {
-    width: 140, // Wider image container
-    height: '100%',
-    position: 'relative',
+  listTagsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 6,
   },
-  gridImageContainer: {
-    width: '100%',
-    height: 140, // Reduced height for more compact design
-    position: 'relative',
+  listTagButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 16,
+    marginRight: 6,
+    marginBottom: 5,
+    backgroundColor: COLORS.lightGray,
   },
-  loaderContainer: {
+  listTagText: {
+    fontSize: 11,
+    color: '#fff',
+    fontWeight: '500',
+  },
+  imageLoadingContainer: {
     position: 'absolute',
     top: 0,
     left: 0,
@@ -514,7 +415,7 @@ const styles = StyleSheet.create({
     color: '#ff6b6b',
     fontSize: 12, // Reduced font size
     fontWeight: '600',
-  },
-});
+  }
+};
 
 export default HousingGroupCard;

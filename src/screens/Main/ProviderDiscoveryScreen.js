@@ -62,16 +62,81 @@ const ProviderDiscoveryScreen = ({ route }) => {
     }
   }, [initialParams.initialCategory]);
   
-  // Reset scroll position when tab is focused
+  // Function to refresh just the user favorites without reloading all items
+  const refreshUserFavorites = useCallback(async () => {
+    try {
+      console.log('[ProviderDiscovery] Refreshing user favorites');
+      
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) {
+        console.log('[ProviderDiscovery] Not logged in, cannot refresh favorites');
+        return;
+      }
+      
+      // Get current displayed item IDs
+      if (!items || items.length === 0) {
+        console.log('[ProviderDiscovery] No items to refresh favorites for');
+        return;
+      }
+      
+      // Determine correct item type for the current category
+      const isHousing = selectedCategory === 'Housing';
+      const itemTypeForFavorites = isHousing ? 'housing_listing' : 'service_provider';
+      const itemIds = items.map(item => item.id);
+      
+      console.log(`[ProviderDiscovery] Refreshing favorites for ${items.length} ${itemTypeForFavorites} items`);
+      
+      // Try to get any favorited items for the current items shown
+      try {
+        // First, clear the current user favorites if switching categories
+        setUserFavorites(new Set());
+        
+        // Fetch latest favorites status for these items
+        const { data: favoritesData, error: favoritesError } = await supabase
+          .from('favorites')
+          .select('item_id')
+          .eq('user_id', user.id)
+          .eq('item_type', itemTypeForFavorites)
+          .in('item_id', itemIds);
+        
+        if (favoritesError) {
+          console.error('[ProviderDiscovery] DB Error refreshing favorites:', favoritesError);
+        } else if (favoritesData) {
+          const favoritedIds = new Set(favoritesData.map(fav => fav.item_id));
+          console.log(`[ProviderDiscovery] Found ${favoritesData.length} favorited items of type ${itemTypeForFavorites}`);
+          
+          // Always update regardless of previous state to ensure consistency
+          setUserFavorites(favoritedIds);
+        }
+      } catch (dbError) {
+        console.error('[ProviderDiscovery] Exception querying favorites:', dbError);
+      }
+    } catch (err) {
+      console.error('[ProviderDiscovery] Top-level exception refreshing favorites:', err);
+    }
+  }, [items, selectedCategory]);
+  
+  
+  // Reset scroll position when tab is focused and refresh favorites data
   useFocusEffect(
     useCallback(() => {
-      console.log('[ProviderDiscovery] Focus effect: scrolling to top if list view.');
+      console.log('[ProviderDiscovery] Screen focused');
+      
+      // Reset scroll position if in list view
       if (viewMode === 'List' && listViewRef.current) {
         listViewRef.current.scrollToOffset({ offset: 0, animated: false });
       }
-      // Optionally, trigger a data refresh on focus if needed, though current setup relies on deps for useEffect
-      // fetchData(false); // Example: if you want to refresh on every focus
-    }, [viewMode]) // Dependency: viewMode to ensure ref is current for list
+      
+      // IMPORTANT: Always refresh favorites when screen gains focus
+      // This ensures changes from other screens (like ServiceDetailScreen) are reflected
+      console.log('[ProviderDiscovery] Screen focused - refreshing favorites data');
+      refreshUserFavorites();
+      
+      return () => {
+        // Code to run when screen loses focus (optional)
+        console.log('[ProviderDiscovery] Screen unfocused');
+      };
+    }, [refreshUserFavorites]) // Only depend on refreshUserFavorites to ensure it runs on every focus
   );
   const [viewMode, setViewMode] = useState(VIEW_MODES[0]);
   const [items, setItems] = useState([]);
@@ -250,10 +315,17 @@ const ProviderDiscoveryScreen = ({ route }) => {
         });
       }
     } else {
-      // Favorite
+      // Favorite - use upsert to handle potential conflicts
       const { error } = await supabase
         .from('favorites')
-        .insert({ user_id: user.id, item_id: itemId, item_type: itemType });
+        .upsert({ 
+          user_id: user.id, 
+          item_id: itemId, 
+          item_type: itemType 
+        }, {
+          onConflict: 'user_id,item_id,item_type',
+          ignoreDuplicates: true
+        });
 
       if (error) {
         console.error('[ProviderDiscovery] Error favoriting item:', error);

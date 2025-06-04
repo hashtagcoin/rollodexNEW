@@ -9,17 +9,18 @@ import {
   Alert,
   ActivityIndicator,
   Image,
-  Platform,
+  Platform, // Platform is imported but not used
 } from 'react-native';
 import * as FileSystem from 'expo-file-system';
 import { decode } from 'base64-arraybuffer';
-import { Feather, MaterialIcons } from '@expo/vector-icons';
-import { Picker } from '@react-native-picker/picker';
-import * as ImagePicker from 'expo-image-picker';
-import { v4 as uuidv4 } from 'uuid';
+import ModernImagePicker from '../../components/ModernImagePicker';
+import { Feather } from '@expo/vector-icons'; // MaterialIcons was imported but not used
+import { Dropdown } from 'react-native-element-dropdown';
+import * as ImagePicker from 'expo-image-picker'; // ImagePicker is used in the (now removed) pickImage function, ModernImagePicker likely uses it internally
+import { v4 as uuidv4 } from 'uuid'; // Note: uuidv4 is imported but not used
 import { supabase } from '../../lib/supabaseClient';
 
-// Function to generate a random string for filenames
+// Function to generate a random string for filenames (currently not used in this file)
 const generateRandomString = (length) => {
   const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   let result = '';
@@ -57,10 +58,10 @@ const EditServiceListingScreen = ({ route, navigation }) => {
   const { profile } = useUser();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [images, setImages] = useState([]);
-  const [existingImageUrls, setExistingImageUrls] = useState([]);
-  const [removedImageUrls, setRemovedImageUrls] = useState([]);
-  const [uploadingImages, setUploadingImages] = useState(false);
+  const [images, setImages] = useState([]); // New images selected by user
+  const [existingImageUrls, setExistingImageUrls] = useState([]); // URLs from DB
+  const [removedImageUrls, setRemovedImageUrls] = useState([]); // Existing URLs marked for removal
+  const [uploadingImages, setUploadingImages] = useState(false); // For ModernImagePicker loading state
 
   const [formData, setFormData] = useState({
     title: '',
@@ -78,59 +79,48 @@ const EditServiceListingScreen = ({ route, navigation }) => {
 
   useEffect(() => {
     fetchServiceDetails();
-    // We don't need to call loadUserProfile() as it doesn't exist
-    // The profile is already available via useUser() context
-    
-    // Log any existing image URLs for debugging
-    if (existingImageUrls.length > 0) {
-      // [LOG] Only keep logs for:
-// 1. URL saved to Supabase on upload
-// 2. URL displayed on screen when rendering
-// Remove all other logs.
-//
-// (Below, all logs will be removed except those two cases)
-//
-// [LOG]'Existing images on load:', existingImageUrls);
-    }
-  }, []);
-  
-  // This effect refreshes the UI when we navigate back to this screen
+    // Profile is available via useUser() context
+  }, []); // serviceId is not needed here as it's constant for the screen's lifetime once loaded
+
   useEffect(() => {
-  const unsubscribe = navigation.addListener('focus', () => {
-    if (serviceId) {
-      setImages([]); // Clear unsaved images to avoid grey squares
-      fetchServiceDetails();
-    }
-  });
-  return unsubscribe;
-}, [navigation, serviceId]);
+    const unsubscribe = navigation.addListener('focus', () => {
+      if (serviceId) {
+        setImages([]); // Clear any unsaved new images
+        // setRemovedImageUrls([]); // Optionally clear this too, or let user confirm removals on save
+        fetchServiceDetails(); // Re-fetch to ensure data is fresh
+      }
+    });
+    return unsubscribe;
+  }, [navigation, serviceId]);
 
   const fetchServiceDetails = async () => {
     try {
       setLoading(true);
-      
       const { data, error } = await supabase
         .from('services')
         .select('*')
         .eq('id', serviceId)
         .single();
-      
+
       if (error) throw error;
-      
-      // Check if the current user is the provider of this service
-      const { data: providerData } = await supabase
+      if (!data) {
+          Alert.alert('Error', 'Service not found.');
+          navigation.goBack();
+          return;
+      }
+
+      const { data: providerData, error: providerError } = await supabase
         .from('service_providers')
         .select('id')
         .eq('user_id', profile.id)
         .single();
-      
-      if (data.provider_id !== providerData.id) {
-        Alert.alert('Error', 'You do not have permission to edit this service');
+
+      if (providerError || !providerData || data.provider_id !== providerData.id) {
+        Alert.alert('Permission Denied', 'You do not have permission to edit this service.');
         navigation.goBack();
         return;
       }
-      
-      // Set the form data from the retrieved service
+
       setFormData({
         title: data.title || '',
         description: data.description || '',
@@ -144,54 +134,36 @@ const EditServiceListingScreen = ({ route, navigation }) => {
         addressPostcode: data.address_postcode || '',
         available: data.available !== undefined ? data.available : true,
       });
-      
-      // Set existing image URLs
+
       if (data.media_urls && Array.isArray(data.media_urls)) {
-        // [LOG] Only keep logs for:
-// 1. URL saved to Supabase on upload
-// 2. URL displayed on screen when rendering
-// Remove all other logs.
-//
-// (Below, all logs will be removed except those two cases)
-//
-// [LOG]'[EditServiceListingScreen] Raw DB media_urls:', data.media_urls);
-        // Ensure all URLs are full paths with correct user subfolder structure
         const processedUrls = data.media_urls.filter(url => url && typeof url === 'string').map(url => {
           if (url.startsWith('http')) {
+            // [LOG] URL displayed on screen when rendering (already a full URL)
+            // console.log('[EditServiceListingScreen] Displaying existing image (full URL):', url);
             return url;
           }
-          // Insert userId subfolder if missing (for legacy paths)
           const profileId = profile?.id;
+          // Handle potential legacy paths or construct full URL if relative
+          const fileName = url.split('/').pop();
+          let fullUrl = `https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/providerimages/service-images/${profileId}/${fileName}`;
+
           if (profileId && !url.includes(`service-images/${profileId}/`)) {
-            const fileName = url.split('/').pop();
-            return `https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/providerimages/service-images/${profileId}/${fileName}`;
+            // Assuming it's a legacy path that should now be in the user's folder
+             // fullUrl is already constructed for this case
+          } else if (!url.includes(`service-images/`)) {
+            // If it's an even older path, relative to providerimages bucket root
+             fullUrl = `https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/providerimages/${url}`;
           }
-          // Otherwise, construct full URL
-          return `https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/providerimages/${url}`;
+          // [LOG] URL displayed on screen when rendering (constructed URL)
+          // console.log('[EditServiceListingScreen] Displaying existing image (constructed URL):', fullUrl);
+          return fullUrl;
         });
-        // [LOG] Only keep logs for:
-// 1. URL saved to Supabase on upload
-// 2. URL displayed on screen when rendering
-// Remove all other logs.
-//
-// (Below, all logs will be removed except those two cases)
-//
-// [LOG]'[EditServiceListingScreen] Processed image URLs:', processedUrls);
         setExistingImageUrls(processedUrls);
-        setTimeout(() => {
-          // [LOG] Only keep logs for:
-// 1. URL saved to Supabase on upload
-// 2. URL displayed on screen when rendering
-// Remove all other logs.
-//
-// (Below, all logs will be removed except those two cases)
-//
-// [LOG]'[EditServiceListingScreen] State existingImageUrls:', processedUrls);
-        }, 500);
+      } else {
+        setExistingImageUrls([]);
       }
     } catch (error) {
-      // [LOG] (Removed error logs except for Alert/critical errors)'Error fetching service details:', error);
-      Alert.alert('Error', 'Failed to load service details');
+      Alert.alert('Error', 'Failed to load service details: ' + error.message);
       navigation.goBack();
     } finally {
       setLoading(false);
@@ -207,449 +179,247 @@ const EditServiceListingScreen = ({ route, navigation }) => {
 
   const validateForm = () => {
     if (!formData.title.trim()) {
-      Alert.alert('Error', 'Title is required');
+      Alert.alert('Validation Error', 'Title is required.');
       return false;
     }
-    
     if (!formData.description.trim()) {
-      Alert.alert('Error', 'Description is required');
+      Alert.alert('Validation Error', 'Description is required.');
       return false;
     }
-    
-    if (!formData.price.trim() || isNaN(parseFloat(formData.price))) {
-      Alert.alert('Error', 'Valid price is required');
+    if (!formData.price.trim() || isNaN(parseFloat(formData.price)) || parseFloat(formData.price) < 0) {
+      Alert.alert('Validation Error', 'A valid, non-negative price is required.');
       return false;
     }
-    
-    if (formData.format === 'In-Person' && 
-        (!formData.addressStreet.trim() || 
-         !formData.addressSuburb.trim() || 
-         !formData.addressState.trim() || 
+    if (formData.format === 'In-Person' &&
+        (!formData.addressStreet.trim() ||
+         !formData.addressSuburb.trim() ||
+         !formData.addressState.trim() ||
          !formData.addressPostcode.trim())) {
-      Alert.alert('Error', 'Address is required for in-person services');
+      Alert.alert('Validation Error', 'A complete address is required for in-person services.');
       return false;
     }
-    
     return true;
   };
 
-  const pickImage = async () => {
-    try {
-      // No need to request permissions explicitly as ImagePicker now handles this internally
-      const maxImages = 10 - (existingImageUrls.length + images.length);
-      
-      if (maxImages <= 0) {
-        Alert.alert('Image Limit', 'You have reached the maximum number of images allowed (10).');
-        return;
-      }
-      
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: false,
-        quality: 0.8,
-        base64: true, // Request base64 data for reliable upload
-        exif: false   // Skip exif data to reduce payload size
-      });
-      
-      // [LOG] Only keep logs for:
-// 1. URL saved to Supabase on upload
-// 2. URL displayed on screen when rendering
-// Remove all other logs.
-//
-// (Below, all logs will be removed except those two cases)
-//
-// [LOG]'Image picker result:', result.canceled ? 'Canceled' : `Selected ${result.assets?.length || 0} image(s)`);
-      
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const selectedAsset = result.assets[0];
-        // [LOG] Only keep logs for:
-// 1. URL saved to Supabase on upload
-// 2. URL displayed on screen when rendering
-// Remove all other logs.
-//
-// (Below, all logs will be removed except those two cases)
-//
-// [LOG]'Selected image:', selectedAsset.uri);
-        
-        // Store both URI and base64 data for reliable upload
-        setImages(prevImages => [...prevImages, { 
-          uri: selectedAsset.uri,
-          base64: selectedAsset.base64,
-          width: selectedAsset.width,
-          height: selectedAsset.height,
-          type: selectedAsset.type || 'image/jpeg'
-        }]);
-      }
-    } catch (error) {
-      // [LOG] (Removed error logs except for Alert/critical errors)'Error picking image:', error);
-      Alert.alert('Error', 'Failed to select image');
-    }
+  const handleRemoveExistingImage = (indexToRemove) => {
+    const urlToRemove = existingImageUrls[indexToRemove];
+    setRemovedImageUrls(prev => [...prev, urlToRemove]);
+    setExistingImageUrls(prevUrls => prevUrls.filter((_, i) => i !== indexToRemove));
+    // Alert.alert('Image Marked for Removal', 'The image will be deleted from storage when you save changes.');
   };
 
-  const removeImage = (index) => {
-    // [LOG] Only keep logs for:
-// 1. URL saved to Supabase on upload
-// 2. URL displayed on screen when rendering
-// Remove all other logs.
-//
-// (Below, all logs will be removed except those two cases)
-//
-// [LOG]'Removing new image at index:', index);
-    setImages(prevImages => prevImages.filter((_, i) => i !== index));
-    Alert.alert('Image Removed', 'The selected image has been removed');
-  };
-
-  const removeExistingImage = (index) => {
-    // [LOG] Only keep logs for:
-// 1. URL saved to Supabase on upload
-// 2. URL displayed on screen when rendering
-// Remove all other logs.
-//
-// (Below, all logs will be removed except those two cases)
-//
-// [LOG]'Removing existing image at index:', index);
-    const imageUrl = existingImageUrls[index];
-    // Add to removed images list
-    setRemovedImageUrls(prev => [...prev, imageUrl]);
-    // Remove from UI
-    setExistingImageUrls(prevUrls => prevUrls.filter((_, i) => i !== index));
-    Alert.alert('Image Removed', 'The existing image has been removed and will be deleted when you save');
+  const removeNewImage = (indexToRemove) => { // Renamed from removeImage for clarity
+    setImages(prevImages => prevImages.filter((_, i) => i !== indexToRemove));
+    // ModernImagePicker should handle its own visual removal, this syncs state
   };
 
   const uploadImages = async () => {
-    if (images.length === 0) return [];
-    
-    setUploadingImages(true);
-    const uploadedUrls = [];
-    
-    try {
-      // Get the profile ID for use in the folder path
-      if (!profile) {
-        throw new Error('User profile not found');
-      }
-      const profileId = profile.id;
-      // [LOG] Only keep logs for:
-// 1. URL saved to Supabase on upload
-// 2. URL displayed on screen when rendering
-// Remove all other logs.
-//
-// (Below, all logs will be removed except those two cases)
-//
-// [LOG]'Using profile ID for uploads:', profileId);
-      
-      // Create the service-images folder first to ensure it exists
-      try {
-        await supabase.storage
-          .from('providerimages')
-          .upload('service-images/.emptyFolderPlaceholder', new Uint8Array(0), {
-            contentType: 'text/plain',
-            upsert: true
-          });
-        // [LOG] Only keep logs for:
-// 1. URL saved to Supabase on upload
-// 2. URL displayed on screen when rendering
-// Remove all other logs.
-//
-// (Below, all logs will be removed except those two cases)
-//
-// [LOG]'Verified service-images folder access');
-    } catch (folderError) {
-      // If error is about the file already existing, that's fine
-      if (!folderError.message.includes('already exists')) {
-        // console.log(warn('Error creating service-images folder:', folderError);
-      }
+    if (!profile?.id) {
+      Alert.alert('Upload Error', 'User session error. Cannot upload images.');
+      return [];
     }
-    
-    // Create the user-specific folder
-    const userFolderPath = `service-images/${profileId}`;
+    setUploadingImages(true);
+    const profileId = profile.id;
+    const uploadedUrls = [];
+
+    // Ensure base folder exists (optional, Supabase creates paths on upload)
+    // but can be good for explicit creation if needed for specific policies
     try {
       await supabase.storage
         .from('providerimages')
-        .upload(`${userFolderPath}/.emptyFolderPlaceholder`, new Uint8Array(0), {
-          contentType: 'text/plain',
-          upsert: true
+        .upload(`service-images/${profileId}/.placeholder`, new ArrayBuffer(0), { // empty file
+          contentType: 'application/octet-stream',
+          upsert: true, // don't error if it exists
         });
-      // [LOG] Only keep logs for:
-// 1. URL saved to Supabase on upload
-// 2. URL displayed on screen when rendering
-// Remove all other logs.
-//
-// (Below, all logs will be removed except those two cases)
-//
-// [LOG]'Created user folder placeholder');
-    } catch (folderErr) {
-      if (!folderErr.message.includes('already exists')) {
-        // console.log(warn('Error creating user folder:', folderErr);
-      }
+    } catch (folderError) {
+        // Non-critical, upload will likely create path anyway
     }
-    
-    // Process and upload each image
-    for (let i = 0; i < images.length; i++) {
-      const image = images[i];
-      const timestamp = new Date().getTime();
-      const randomString = generateRandomString(16);
-      const uri = image.uri;
-      const fileExt = uri.split('.').pop().toLowerCase();
-      let uploadData = null;
-      let uploadContentType = 'application/octet-stream';
 
-      // Prepare image data
+    for (const image of images) { // `images` are new images from ModernImagePicker
       try {
+        const timestamp = new Date().getTime();
+        const randomStr = Math.random().toString(36).substring(2, 8);
+        const fileExt = image.uri.split('.').pop()?.toLowerCase() || 'jpg';
+        const contentType = image.type || `image/${fileExt === 'jpg' ? 'jpeg' : fileExt}`;
+        
+        let baseFileName = `${timestamp}_${randomStr}`;
+        let fileName = `service-images/${profileId}/${baseFileName}.${fileExt}`;
+        
+        let fileData;
         if (image.base64) {
-          uploadData = decode(image.base64);
-          uploadContentType = `image/${fileExt}` === 'image/jpg' ? 'image/jpeg' : `image/${fileExt}`;
+          fileData = decode(image.base64);
+        } else if (image.uri) {
+          const base64 = await FileSystem.readAsStringAsync(image.uri, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          fileData = decode(base64);
         } else {
-          try {
-            const base64 = await FileSystem.readAsStringAsync(uri, {
-              encoding: FileSystem.EncodingType.Base64
-            });
-            uploadData = decode(base64);
-            uploadContentType = `image/${fileExt}` === 'image/jpg' ? 'image/jpeg' : `image/${fileExt}`;
-          } catch (fileReadErr) {
-            try {
-              const response = await fetch(uri);
-              uploadData = await response.blob();
-              uploadContentType = uploadData.type;
-            } catch (blobErr) {
-              Alert.alert('Error', `Failed to prepare image ${i+1}: ${blobErr.message}`);
-              continue;
-            }
-          }
+          continue; // Skip if no image data
         }
-        if (uploadData instanceof ArrayBuffer && uploadData.byteLength === 0) {
-          Alert.alert('Error', `Image ${i+1} appears to be corrupted or empty. Please select a different image.`);
-          continue;
-        }
-        if (uploadData instanceof Blob && uploadData.size === 0) {
-          Alert.alert('Error', `Image ${i+1} appears to be corrupted or empty. Please select a different image.`);
-          continue;
-        }
-      } catch (dataErr) {
-        Alert.alert('Error', `Failed to prepare image ${i+1}: ${dataErr.message}`);
-        continue;
-      }
 
-      // Upload with retry logic
-      let fileName = `${userFolderPath}/${timestamp}_${randomString}.${fileExt}`;
-      let uploadSuccess = false;
-      let attempts = 0;
-      let maxAttempts = 3;
-      let uploadCompleted = false;
-      try {
-        while (!uploadCompleted && attempts < maxAttempts) {
+        let attempts = 0;
+        const maxAttempts = 3;
+        let uploadSuccessful = false;
+
+        while(attempts < maxAttempts && !uploadSuccessful) {
           attempts++;
-          const { data, error } = await supabase.storage
+          const { data: uploadData, error: uploadError } = await supabase.storage
             .from('providerimages')
-            .upload(fileName, uploadData, {
-              contentType: uploadContentType,
+            .upload(fileName, fileData, {
+              contentType,
               cacheControl: '3600',
-              upsert: false
+              upsert: false, // Important: set to false to detect name collisions
             });
-          if (error) {
-            if (error.message.includes('already exists')) {
-              const newRandomString = generateRandomString(16);
-              fileName = `${userFolderPath}/${timestamp}_${newRandomString}.${fileExt}`;
-              continue;
+
+          if (uploadError) {
+            if (uploadError.message && (uploadError.message.includes('Duplicate') || uploadError.message.includes('already exists'))) {
+              // console.warn(`Filename collision for ${fileName}, retrying with new name... Attempt: ${attempts}`);
+              const newRandomStr = Math.random().toString(36).substring(2, 10);
+              fileName = `service-images/${profileId}/${timestamp}_${newRandomStr}.${fileExt}`; // Regenerate filename
+              if (attempts >= maxAttempts) {
+                 // console.error(`Failed to upload ${image.uri} after ${maxAttempts} collision retries.`);
+              }
+              continue; // Retry with the new filename
             }
-            throw error;
+            throw uploadError; // Non-collision error
           }
-          uploadCompleted = true;
-          // Get the public URL for the successfully uploaded image
-          const { data: { publicUrl } } = supabase.storage
-            .from('providerimages')
-            .getPublicUrl(fileName);
-          uploadedUrls.push(publicUrl);
-          setExistingImageUrls(prev => [...prev, publicUrl]);
+          
+          // Successful upload
+          const { data: publicUrlData } = supabase.storage.from('providerimages').getPublicUrl(fileName);
+          if (publicUrlData && publicUrlData.publicUrl) {
+            // [LOG] URL saved to Supabase on upload
+            console.log('[EditServiceListingScreen] Image uploaded to Supabase:', publicUrlData.publicUrl);
+            uploadedUrls.push(publicUrlData.publicUrl);
+            uploadSuccessful = true;
+          } else {
+            // This case should ideally not happen if upload was successful and no error
+            // console.error('Uploaded successfully but failed to get public URL for:', fileName);
+            if (attempts >= maxAttempts) {
+                // console.error(`Failed to get public URL for ${fileName} after ${maxAttempts} attempts.`);
+            }
+          }
+        } // end while attempts
+        if (!uploadSuccessful) {
+            // console.warn(`Failed to upload image ${image.uri} after all attempts.`);
         }
-        if (!uploadCompleted) {
-          throw new Error('Failed after maximum upload attempts');
-        }
-      } catch (uploadError) {
-        Alert.alert('Upload Error', uploadError.message || 'Failed to upload image');
-        continue;
+      } catch (error) {
+        // console.error('Error processing or uploading an image:', error.message, image.uri);
+        // Optionally, inform user about specific image failure
       }
     }
-      
-      // Clear the images array since they've been uploaded and moved to existingImageUrls
-      setImages([]);
-      
-      return uploadedUrls;
-    } catch (err) {
-      // [LOG] (Removed error logs except for Alert/critical errors)'Error during image upload:', err);
-      Alert.alert('Upload Error', err.message || 'An error occurred during image upload');
-      return [];
-    } finally {
-      setUploadingImages(false);
+    setUploadingImages(false);
+    return uploadedUrls;
+  };
+
+  const deleteStoredImages = async (urlsToDelete) => {
+    if (!urlsToDelete || urlsToDelete.length === 0) return;
+
+    const filesToRemove = urlsToDelete.map(fullUrl => {
+        // Extract path from full public URL: https://<project_ref>.supabase.co/storage/v1/object/public/<bucket_name>/<path_to_file>
+        try {
+            const url = new URL(fullUrl);
+            // Pathname will be /storage/v1/object/public/providerimages/service-images/userid/filename.jpg
+            // We need to remove the prefix up to the bucket name
+            const bucketName = 'providerimages';
+            const pathPrefix = `/storage/v1/object/public/${bucketName}/`;
+            if (url.pathname.startsWith(pathPrefix)) {
+                return url.pathname.substring(pathPrefix.length);
+            }
+        } catch (e) {
+            // console.error("Invalid URL for deletion:", fullUrl, e);
+        }
+        return null;
+    }).filter(path => path !== null);
+
+    if (filesToRemove.length > 0) {
+        // console.log("Attempting to delete files from Supabase storage:", filesToRemove);
+        const { data, error } = await supabase.storage
+            .from('providerimages')
+            .remove(filesToRemove);
+
+        if (error) {
+            // console.error('Error deleting images from Supabase storage:', error);
+            // Alert.alert("Deletion Error", "Some images scheduled for removal could not be deleted from storage. Please check manually or try again.");
+        } else {
+            // console.log('Images successfully deleted from Supabase storage:', data);
+        }
     }
   };
+
 
   const updateService = async () => {
     if (!validateForm()) {
       return;
     }
-    
+    setSaving(true);
+
     try {
-      setSaving(true);
-      // [LOG] Only keep logs for:
-// 1. URL saved to Supabase on upload
-// 2. URL displayed on screen when rendering
-// Remove all other logs.
-//
-// (Below, all logs will be removed except those two cases)
-//
-// [LOG]'Starting service update process...');
-      
-      // Upload new images if any
-      let newMediaUrls = [];
+      let newUploadedMediaUrls = [];
       if (images.length > 0) {
-        // [LOG] Only keep logs for:
-// 1. URL saved to Supabase on upload
-// 2. URL displayed on screen when rendering
-// Remove all other logs.
-//
-// (Below, all logs will be removed except those two cases)
-//
-// [LOG]`Uploading ${images.length} new images...`);
-        newMediaUrls = await uploadImages();
-        // [LOG] Only keep logs for:
-// 1. URL saved to Supabase on upload
-// 2. URL displayed on screen when rendering
-// Remove all other logs.
-//
-// (Below, all logs will be removed except those two cases)
-//
-// [LOG]'Uploaded image URLs:', newMediaUrls);
+        newUploadedMediaUrls = await uploadImages();
+      }
+
+      // Delete images marked for removal from Supabase Storage
+      if (removedImageUrls.length > 0) {
+        await deleteStoredImages(removedImageUrls);
       }
       
-      // Filter out any removed images and combine with new media URLs
-      // Make sure we filter by URL without worrying about parameter differences
-      const filteredExistingUrls = existingImageUrls.filter(url => {
-        // Check if this URL isn't in the removedImageUrls list
-        return !removedImageUrls.some(removedUrl => {
-          // Compare base URLs without query parameters
-          const baseUrl = url.split('?')[0];
-          const baseRemovedUrl = removedUrl.split('?')[0];
-          return baseUrl === baseRemovedUrl;
-        });
-      });
-      
-      // Combine filtered existing URLs with new uploaded URLs
-      const allMediaUrls = [...filteredExistingUrls, ...newMediaUrls];
-      
-      // [LOG] Only keep logs for:
-// 1. URL saved to Supabase on upload
-// 2. URL displayed on screen when rendering
-// Remove all other logs.
-//
-// (Below, all logs will be removed except those two cases)
-//
-// [LOG]'Removed image URLs:', removedImageUrls);
-      // [LOG] Only keep logs for:
-// 1. URL saved to Supabase on upload
-// 2. URL displayed on screen when rendering
-// Remove all other logs.
-//
-// (Below, all logs will be removed except those two cases)
-//
-// [LOG]'Filtered existing URLs:', filteredExistingUrls);
-      // [LOG] Only keep logs for:
-// 1. URL saved to Supabase on upload
-// 2. URL displayed on screen when rendering
-// Remove all other logs.
-//
-// (Below, all logs will be removed except those two cases)
-//
-// [LOG]'New media URLs:', newMediaUrls);
-      // [LOG] Only keep logs for:
-// 1. URL saved to Supabase on upload
-// 2. URL displayed on screen when rendering
-// Remove all other logs.
-//
-// (Below, all logs will be removed except those two cases)
-//
-// [LOG]'All media URLs to save:', allMediaUrls);
-      
-      // Prepare update object
-      const updateData = {
+      // Current existing URLs are already filtered by `handleRemoveExistingImage`
+      // So `existingImageUrls` state already reflects URLs that should be kept
+      const finalMediaUrls = Array.from(new Set([...existingImageUrls, ...newUploadedMediaUrls]));
+
+      const serviceUpdateData = {
         title: formData.title,
         description: formData.description,
         category: formData.category,
         format: formData.format,
         price: parseFloat(formData.price),
-        media_urls: allMediaUrls,
         address_number: formData.addressNumber,
         address_street: formData.addressStreet,
         address_suburb: formData.addressSuburb,
         address_state: formData.addressState,
         address_postcode: formData.addressPostcode,
-        available: formData.available
+        available: formData.available,
+        media_urls: finalMediaUrls,
+        updated_at: new Date().toISOString(),
       };
-      
-      // [LOG] Only keep logs for:
-// 1. URL saved to Supabase on upload
-// 2. URL displayed on screen when rendering
-// Remove all other logs.
-//
-// (Below, all logs will be removed except those two cases)
-//
-// [LOG]'Updating service record with data:', updateData);
-      
-      // Update the service
-      const { data, error } = await supabase
+
+      const { data: updatedService, error: updateError } = await supabase
         .from('services')
-        .update(updateData)
+        .update(serviceUpdateData)
         .eq('id', serviceId)
-        .select();
-      
-      if (error) throw error;
-      
-      // Update the existing image URLs to match what's in the database
-      if (data && data[0] && data[0].media_urls) {
-        // [LOG] Only keep logs for:
-// 1. URL saved to Supabase on upload
-// 2. URL displayed on screen when rendering
-// Remove all other logs.
-//
-// (Below, all logs will be removed except those two cases)
-//
-// [LOG]'Database returned media_urls:', data[0].media_urls);
-        
-        // Ensure all URLs in the database are full URLs
-        const processedUrls = data[0].media_urls.filter(url => url && typeof url === 'string').map(url => {
-          // If the URL is already a full URL, return it as is
-          if (url.startsWith('http')) {
-            return url;
-          }
-          
-          // Otherwise, construct the full URL with the Supabase storage URL
-          return `https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/providerimages/${url}`;
-        });
-        
-        // [LOG] Only keep logs for:
-// 1. URL saved to Supabase on upload
-// 2. URL displayed on screen when rendering
-// Remove all other logs.
-//
-// (Below, all logs will be removed except those two cases)
-//
-// [LOG]'Processed URLs after update:', processedUrls);
-        setExistingImageUrls(processedUrls);
-        setRemovedImageUrls([]);
-      }
-      
-      Alert.alert('Success', 'Service listing updated successfully', [
-        { 
-          text: 'OK', 
-          onPress: () => navigation.navigate('ManageListings')
-        }
+        .select()
+        .single();
+
+      if (updateError) throw updateError;
+
+      Alert.alert('Success', 'Service listing updated successfully!', [
+        { text: 'OK', onPress: () => navigation.navigate('ManageListings') },
       ]);
+
+      // Reset states post-successful update
+      setImages([]);
+      setRemovedImageUrls([]);
+      if (updatedService && updatedService.media_urls) {
+         // Update existingImageUrls to reflect the true state from DB
+         // This ensures any URLs that failed to upload or were malformed aren't shown
+        setExistingImageUrls(updatedService.media_urls.filter(url => url && typeof url === 'string').map(url => {
+            if (url.startsWith('http')) return url;
+            // Basic reconstruction if not full URL, assuming it's from providerimages root for safety
+            // Ideally, storage should always return full URLs or consistent relative paths.
+            return `https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/providerimages/${url}`;
+        }));
+
+      }
+
     } catch (error) {
-      // [LOG] (Removed error logs except for Alert/critical errors)'Error updating service listing:', error);
-      Alert.alert('Error', error.message || 'Failed to update service listing');
+      Alert.alert('Update Error', error.message || 'Failed to update service listing.');
     } finally {
       setSaving(false);
+      setUploadingImages(false); // Ensure this is reset
     }
   };
+
 
   if (loading) {
     return (
@@ -659,7 +429,7 @@ const EditServiceListingScreen = ({ route, navigation }) => {
           showBack
           onBack={() => navigation.goBack()}
         />
-        <ActivityIndicator size="large" color={COLORS.primary} />
+        <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 20 }}/>
       </View>
     );
   }
@@ -668,348 +438,356 @@ const EditServiceListingScreen = ({ route, navigation }) => {
     <View style={styles.container}>
       <AppHeader
         title="Edit Service Listing"
-        navigation={navigation}
-        showBackButton={true}
+        navigation={navigation} // Pass navigation for back button functionality
+        showBackButton={true} // Assuming AppHeader uses this prop
+        // onBack={() => navigation.goBack()} // Or provide onBack directly if AppHeader supports it
       />
 
-      <ScrollView style={styles.scrollContainer}>
+      <ScrollView style={styles.scrollContainer} contentContainerStyle={styles.scrollContentContainer} keyboardShouldPersistTaps="handled">
         <Card style={styles.formCard}>
-          <View style={styles.formGroup}>
+          <Text style={styles.sectionTitle}>Service Images</Text>
+          <ModernImagePicker
+            images={images} // Pass the local state for new images
+            setImages={setImages} // Pass the setter for ModernImagePicker to update
+            existingImages={existingImageUrls} // Pass existing images for display
+            onRemoveExisting={handleRemoveExistingImage} // Pass handler for removing existing images
+            onRemoveNew={removeNewImage} // Pass handler for removing new images (if ModernImagePicker allows/needs it)
+            maxImages={10}
+            loading={uploadingImages}
+            containerStyle={{ marginBottom: 12 }}
+          />
+          {/* Displaying existing images might be handled by ModernImagePicker itself if it supports `existingImages` prop
+              If not, the original mapping for existingImageUrls can be used here, but ensure ModernImagePicker accounts for them in maxImages.
+              For simplicity, assuming ModernImagePicker can show existing images and provide removal for them.
+              If ModernImagePicker only handles *new* images, then the explicit rendering of existingImageUrls is needed:
+          */}
+          {existingImageUrls.length > 0 && !ModernImagePicker.showsExisting && ( // Conditional render if ModernImagePicker doesn't show them
+            <View style={styles.existingImagesContainer}>
+              <Text style={styles.subLabel}>Current Images:</Text>
+              {existingImageUrls.map((url, idx) => {
+                // [LOG] URL displayed on screen when rendering
+                // console.log(`[EditServiceListingScreen] Rendering existing image ${idx}: ${url}`);
+                return (
+                  <View key={`${url}-${idx}`} style={styles.existingImageWrapper}>
+                    <Image source={{ uri: url }} style={styles.existingImage} onError={(e) => console.warn("Failed to load image:", url, e.nativeEvent.error)} />
+                    <TouchableOpacity
+                      style={styles.removeImageBtn}
+                      onPress={() => handleRemoveExistingImage(idx)}
+                    >
+                      <Feather name="x-circle" size={22} color={COLORS.error} />
+                    </TouchableOpacity>
+                  </View>
+                );
+              })}
+            </View>
+          )}
+        </Card>
+
+        <Card style={styles.formCard}>
+            <Text style={styles.sectionTitle}>Service Details</Text>
+            <View style={styles.formGroup}>
             <Text style={styles.label}>Title*</Text>
             <TextInput
-              style={styles.input}
-              placeholder="Enter service title"
-              value={formData.title}
-              onChangeText={(text) => handleChange('title', text)}
-              maxLength={80}
+                style={styles.input}
+                placeholder="Enter service title"
+                value={formData.title}
+                onChangeText={(text) => handleChange('title', text)}
+                maxLength={80}
             />
-          </View>
+            </View>
 
-          <View style={styles.formGroup}>
+            <View style={styles.formGroup}>
             <Text style={styles.label}>Description*</Text>
             <TextInput
-              style={[styles.input, styles.textArea]}
-              placeholder="Describe your service"
-              value={formData.description}
-              onChangeText={(text) => handleChange('description', text)}
-              multiline
-              numberOfLines={4}
-              maxLength={500}
+                style={[styles.input, styles.textArea]}
+                placeholder="Describe your service"
+                value={formData.description}
+                onChangeText={(text) => handleChange('description', text)}
+                multiline
+                numberOfLines={4}
+                maxLength={500}
             />
             <Text style={styles.charCount}>
-              {formData.description.length}/500
+                {formData.description.length}/500
             </Text>
-          </View>
+            </View>
 
-          <View style={styles.formGroup}>
+            <View style={styles.formGroup}>
             <Text style={styles.label}>Category*</Text>
-            <View style={styles.pickerContainer}>
-              <Picker
-                selectedValue={formData.category}
-                style={styles.picker}
-                onValueChange={(value) => handleChange('category', value)}
-              >
-                {SERVICE_CATEGORIES.map((category) => (
-                  <Picker.Item key={category} label={category} value={category} />
-                ))}
-              </Picker>
+            <Dropdown
+                style={[styles.pickerContainerStyle, { minHeight: 48 }]} // Renamed from pickerContainer to avoid conflict if used elsewhere
+                placeholderStyle={styles.pickerPlaceholderStyle}
+                selectedTextStyle={styles.pickerSelectedTextStyle}
+                inputSearchStyle={styles.pickerInputSearchStyle}
+                iconStyle={styles.pickerIconStyle}
+                data={SERVICE_CATEGORIES.map(cat => ({ label: cat, value: cat }))}
+                search
+                maxHeight={300}
+                labelField="label"
+                valueField="value"
+                placeholder={!formData.category ? 'Select category' : formData.category}
+                searchPlaceholder="Search..."
+                value={formData.category}
+                onChange={item => handleChange('category', item.value)}
+            />
             </View>
-          </View>
 
-          <View style={styles.formGroup}>
+            <View style={styles.formGroup}>
             <Text style={styles.label}>Format*</Text>
-            <View style={styles.pickerContainer}>
-              <Picker
-                selectedValue={formData.format}
-                style={styles.picker}
-                onValueChange={(value) => handleChange('format', value)}
-              >
-                {SERVICE_FORMATS.map((format) => (
-                  <Picker.Item key={format} label={format} value={format} />
-                ))}
-              </Picker>
+            <Dropdown
+                style={[styles.pickerContainerStyle, { minHeight: 48 }]}
+                placeholderStyle={styles.pickerPlaceholderStyle}
+                selectedTextStyle={styles.pickerSelectedTextStyle}
+                inputSearchStyle={styles.pickerInputSearchStyle}
+                iconStyle={styles.pickerIconStyle}
+                data={SERVICE_FORMATS.map(fmt => ({ label: fmt, value: fmt }))}
+                search
+                maxHeight={300}
+                labelField="label"
+                valueField="value"
+                placeholder={!formData.format ? 'Select format' : formData.format}
+                searchPlaceholder="Search..."
+                value={formData.format}
+                onChange={item => handleChange('format', item.value)}
+            />
             </View>
-          </View>
 
-          <View style={styles.formGroup}>
+            <View style={styles.formGroup}>
             <Text style={styles.label}>Price (AUD)*</Text>
             <TextInput
-              style={styles.input}
-              placeholder="0.00"
-              value={formData.price}
-              onChangeText={(text) => handleChange('price', text)}
-              keyboardType="numeric"
+                style={styles.input}
+                placeholder="0.00"
+                value={formData.price}
+                onChangeText={(text) => handleChange('price', text)}
+                keyboardType="numeric"
             />
-          </View>
+            </View>
 
-          {formData.format === 'In-Person' && (
+            {formData.format === 'In-Person' && (
             <View style={styles.addressContainer}>
-              <Text style={styles.sectionTitle}>Service Location</Text>
-              
-              <View style={styles.formGroup}>
+                <Text style={styles.sectionTitle}>Service Location (for In-Person)</Text>
+                
+                <View style={styles.formGroup}>
                 <Text style={styles.label}>Street Number</Text>
                 <TextInput
-                  style={styles.input}
-                  placeholder="Street Number"
-                  value={formData.addressNumber}
-                  onChangeText={(text) => handleChange('addressNumber', text)}
+                    style={styles.input}
+                    placeholder="e.g., 123"
+                    value={formData.addressNumber}
+                    onChangeText={(text) => handleChange('addressNumber', text)}
                 />
-              </View>
-              
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Street*</Text>
+                </View>
+                
+                <View style={styles.formGroup}>
+                <Text style={styles.label}>Street Name*</Text>
                 <TextInput
-                  style={styles.input}
-                  placeholder="Street"
-                  value={formData.addressStreet}
-                  onChangeText={(text) => handleChange('addressStreet', text)}
+                    style={styles.input}
+                    placeholder="e.g., Main Street"
+                    value={formData.addressStreet}
+                    onChangeText={(text) => handleChange('addressStreet', text)}
                 />
-              </View>
-              
-              <View style={styles.formGroup}>
+                </View>
+                
+                <View style={styles.formGroup}>
                 <Text style={styles.label}>Suburb*</Text>
                 <TextInput
-                  style={styles.input}
-                  placeholder="Suburb"
-                  value={formData.addressSuburb}
-                  onChangeText={(text) => handleChange('addressSuburb', text)}
-                />
-              </View>
-              
-              <View style={styles.formRow}>
-                <View style={[styles.formGroup, { flex: 1, marginRight: 8 }]}>
-                  <Text style={styles.label}>State*</Text>
-                  <TextInput
                     style={styles.input}
-                    placeholder="State"
+                    placeholder="e.g., Sydney"
+                    value={formData.addressSuburb}
+                    onChangeText={(text) => handleChange('addressSuburb', text)}
+                />
+                </View>
+                
+                <View style={styles.formRow}>
+                <View style={[styles.formGroup, { flex: 1, marginRight: 8 }]}>
+                    <Text style={styles.label}>State*</Text>
+                    <TextInput // Consider a Picker/Dropdown for states for consistency
+                    style={styles.input}
+                    placeholder="e.g., NSW"
                     value={formData.addressState}
                     onChangeText={(text) => handleChange('addressState', text)}
-                  />
+                    maxLength={3} // Or more if needed
+                    />
                 </View>
                 
                 <View style={[styles.formGroup, { flex: 1, marginLeft: 8 }]}>
-                  <Text style={styles.label}>Postcode*</Text>
-                  <TextInput
+                    <Text style={styles.label}>Postcode*</Text>
+                    <TextInput
                     style={styles.input}
-                    placeholder="Postcode"
+                    placeholder="e.g., 2000"
                     value={formData.addressPostcode}
                     onChangeText={(text) => handleChange('addressPostcode', text)}
                     keyboardType="numeric"
                     maxLength={4}
-                  />
+                    />
                 </View>
-              </View>
+                </View> {/* Corrected closing tag for formRow */}
             </View>
-          )}
+            )}
 
-          <View style={styles.formGroup}>
-            <View style={styles.labelRow}>
-              <Text style={styles.label}>Service Images</Text>
-              <Text style={styles.imageCount}>{existingImageUrls.length + images.length}/10 images</Text>
-            </View>
-            
-            <ScrollView 
-              horizontal
-              showsHorizontalScrollIndicator={false} 
-              style={styles.imagesScrollView}
-              contentContainerStyle={styles.imagesScrollContent}
-            >
-              {/* Existing Images */}
-              {existingImageUrls.map((url, index) => (
-                <View key={`existing-${index}`} style={styles.imageCard}>
-                  <Image source={{ uri: url }} style={styles.imagePreview} />
-                  <TouchableOpacity
-                    style={styles.removeButton}
-                    onPress={() => removeExistingImage(index)}
-                  >
-                    <Feather name="x-circle" size={22} color={COLORS.primary} />
-                  </TouchableOpacity>
-                </View>
-              ))}
-              
-              {/* New Images */}
-              {images.map((image, index) => (
-                <View key={`new-${index}`} style={styles.imageCard}>
-                  <Image source={{ uri: image.uri }} style={styles.imagePreview} />
-                  <View style={styles.newImageBadge}>
-                    <Text style={styles.newImageText}>New</Text>
-                  </View>
-                  <TouchableOpacity
-                    style={styles.removeButton}
-                    onPress={() => removeImage(index)}
-                  >
-                    <Feather name="x-circle" size={22} color={COLORS.primary} />
-                  </TouchableOpacity>
-                </View>
-              ))}
-              
-              {/* Add Image Button */}
-              {(existingImageUrls.length + images.length) < 10 && (
-                <TouchableOpacity 
-                  style={styles.addImageCard} 
-                  onPress={pickImage}
-                  disabled={uploadingImages}
-                >
-                  {uploadingImages ? (
-                    <ActivityIndicator size="small" color={COLORS.primary} />
-                  ) : (
-                    <>
-                      <Feather name="plus" size={32} color={COLORS.primary} />
-                      <Text style={styles.addImageText}>Add Image</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-              )}
-            </ScrollView>
-            
-            <Text style={styles.helperText}>
-              Tip: High-quality images help attract more clients to your service
-            </Text>
-          </View>
-
-          <View style={styles.formGroup}>
+            <View style={styles.formGroup}>
             <Text style={styles.label}>Availability</Text>
             <View style={styles.switchContainer}>
-              <TouchableOpacity
+                <TouchableOpacity
                 style={[
-                  styles.switchOption,
-                  formData.available ? styles.switchActive : null,
+                    styles.switchOption,
+                    formData.available ? styles.switchActive : null,
                 ]}
                 onPress={() => handleChange('available', true)}
-              >
+                >
                 <Text
-                  style={[
+                    style={[
                     styles.switchText,
                     formData.available ? styles.switchTextActive : null,
-                  ]}
+                    ]}
                 >
-                  Available
+                    Available
                 </Text>
-              </TouchableOpacity>
+                </TouchableOpacity>
 
-              <TouchableOpacity
+                <TouchableOpacity
                 style={[
-                  styles.switchOption,
-                  !formData.available ? styles.switchActive : null,
+                    styles.switchOption,
+                    !formData.available ? styles.switchActive : null,
                 ]}
                 onPress={() => handleChange('available', false)}
-              >
+                >
                 <Text
-                  style={[
+                    style={[
                     styles.switchText,
                     !formData.available ? styles.switchTextActive : null,
-                  ]}
+                    ]}
                 >
-                  Not Available
+                    Not Available
                 </Text>
-              </TouchableOpacity>
+                </TouchableOpacity>
             </View>
-          </View>
+            </View>
 
-          <Button
+            <Button
             title="Save Changes"
             onPress={updateService}
             loading={saving || uploadingImages}
             style={styles.submitButton}
-          />
-          
-          <TouchableOpacity 
+            disabled={saving || uploadingImages}
+            />
+            
+            <TouchableOpacity 
             style={styles.deleteButton}
+            disabled={saving || uploadingImages}
             onPress={() => {
-              Alert.alert(
+                Alert.alert(
                 "Delete Service",
-                "Are you sure you want to delete this service? This action cannot be undone.",
+                "Are you sure you want to delete this service listing? This action cannot be undone and will remove all associated data and images.",
                 [
-                  { text: "Cancel", style: "cancel" },
-                  { 
+                    { text: "Cancel", style: "cancel" },
+                    { 
                     text: "Delete", 
                     style: "destructive",
                     onPress: async () => {
-                      try {
-                        setSaving(true);
+                        try {
+                        setSaving(true); // Use saving state to disable buttons
+                        // First, delete associated images from storage if any
+                        if (existingImageUrls.length > 0) {
+                            await deleteStoredImages(existingImageUrls);
+                        }
+
                         const { error } = await supabase
-                          .from('services')
-                          .delete()
-                          .eq('id', serviceId);
+                            .from('services')
+                            .delete()
+                            .eq('id', serviceId);
                         
                         if (error) throw error;
                         
-                        navigation.navigate('ManageListings');
-                        Alert.alert('Success', 'Service deleted successfully');
-                      } catch (error) {
-                        // [LOG] (Removed error logs except for Alert/critical errors)'Error deleting service:', error);
-                        Alert.alert('Error', 'Failed to delete service');
-                      } finally {
+                        Alert.alert('Success', 'Service deleted successfully.');
+                        navigation.navigate('ManageListings'); // Or appropriate screen
+                        } catch (error) {
+                        Alert.alert('Deletion Error', `Failed to delete service: ${error.message}`);
+                        } finally {
                         setSaving(false);
-                      }
+                        }
                     } 
-                  }
-                ]
-              );
+                    }
+                ],
+                { cancelable: true }
+                );
             }}
-          >
+            >
             <Text style={styles.deleteButtonText}>Delete Service</Text>
-          </TouchableOpacity>
+            </TouchableOpacity>
         </Card>
       </ScrollView>
     </View>
   );
 };
 
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F8F8',
+    backgroundColor: COLORS.background, // Use theme color
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F8F8F8',
+    backgroundColor: COLORS.background,
   },
   scrollContainer: {
     flex: 1,
+  },
+  scrollContentContainer: {
     padding: 16,
   },
   formCard: {
+    backgroundColor: COLORS.cardBackground, // Use theme color
     padding: 16,
     marginBottom: 20,
+    borderRadius: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
   },
   formGroup: {
-    marginBottom: 16,
+    marginBottom: 18,
   },
   formRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    marginBottom: 18, // Added margin to formRow as well
   },
   label: {
     fontSize: 16,
-    fontWeight: '500',
+    fontFamily: FONTS.medium, // Use theme font
     marginBottom: 8,
     color: COLORS.text,
   },
   subLabel: {
     fontSize: 14,
-    fontWeight: '500',
+    fontFamily: FONTS.regular,
     marginBottom: 8,
-    marginTop: 4,
-    color: COLORS.gray,
+    color: COLORS.textMuted, // Use theme color
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 20, // Slightly larger
+    fontFamily: FONTS.bold, // Use theme font
     marginBottom: 16,
-    marginTop: 8,
-    color: COLORS.text,
+    color: COLORS.primary, // Use theme color
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.inputBorder, // Use theme color
+    paddingBottom: 8,
   },
   input: {
     borderWidth: 1,
-    borderColor: '#DDD',
+    borderColor: COLORS.inputBorder,
     borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingHorizontal: 14, // Increased padding
+    paddingVertical: 12,  // Increased padding
     fontSize: 16,
-    backgroundColor: 'white',
+    fontFamily: FONTS.regular,
+    backgroundColor: COLORS.inputBackground,
+    color: COLORS.text,
   },
   textArea: {
     height: 120,
@@ -1018,192 +796,112 @@ const styles = StyleSheet.create({
   charCount: {
     alignSelf: 'flex-end',
     fontSize: 12,
-    color: COLORS.gray,
+    color: COLORS.textMuted,
     marginTop: 4,
-  },
-  pickerContainer: {
-    borderWidth: 1,
-    borderColor: '#DDD',
-    borderRadius: 8,
-    backgroundColor: 'white',
-  },
-  picker: {
-    height: 50,
-  },
-  addressContainer: {
-    marginTop: 8,
-    marginBottom: 8,
-  },
-  imagesContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginTop: 8,
-  },
-  imageWrapper: {
-    position: 'relative',
-    margin: 4,
-  },
-  imagePreview: {
-    width: 100,
-    height: 100,
-    borderRadius: 8,
-  },
-  removeButton: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderRadius: 12,
-    width: 24,
-    height: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addImageButton: {
-    height: 44,
-    borderWidth: 1,
-    borderColor: COLORS.primary,
-    borderRadius: 8,
-    borderStyle: 'dashed',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 12,
-    flexDirection: 'row',
-    backgroundColor: '#F9F9F9',
-  },
-  addImageText: {
-    color: COLORS.primary,
-    marginLeft: 8,
-    fontWeight: '500',
-  },
-  labelRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  imageCount: {
-    fontSize: 14,
-    color: COLORS.gray,
     fontFamily: FONTS.regular,
   },
-  imagesScrollView: {
-    marginVertical: 10,
-  },
-  imagesScrollContent: {
-    paddingRight: 16,
-  },
-  imageCard: {
-    width: 120,
-    height: 120,
-    borderRadius: 12,
-    marginRight: 12,
-    overflow: 'hidden',
-    position: 'relative',
-    backgroundColor: '#f0f0f0',
+  // Styles for react-native-element-dropdown
+  pickerContainerStyle: { // Renamed to avoid conflict
+    height: 50, // Standard height
+    borderColor: COLORS.inputBorder,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
-  },
-  imagePreview: {
-    width: '100%',
-    height: '100%',
-  },
-  removeButton: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    borderRadius: 12,
-    width: 24,
-    height: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 1,
-    elevation: 2,
-  },
-  addImageCard: {
-    width: 120,
-    height: 120,
-    borderRadius: 12,
-    marginRight: 12,
-    borderWidth: 2,
-    borderColor: COLORS.primary,
-    borderStyle: 'dashed',
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.03)',
-  },
-  addImageText: {
-    marginTop: 8,
-    color: COLORS.primary,
-    fontSize: 14,
-    fontFamily: FONTS.medium,
-  },
-  helperText: {
-    fontSize: 12,
-    color: COLORS.gray,
-    marginTop: 8,
-    fontStyle: 'italic',
-    textAlign: 'center',
-  },
-  newImageBadge: {
-    position: 'absolute',
-    top: 8,
-    left: 8,
-    backgroundColor: COLORS.primary,
+    borderRadius: 8,
     paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 10,
+    backgroundColor: COLORS.inputBackground,
   },
-  newImageText: {
-    color: 'white',
-    fontSize: 10,
-    fontFamily: FONTS.bold,
+  pickerPlaceholderStyle: {
+    fontSize: 16,
+    color: COLORS.placeholder, // Use theme color
+    fontFamily: FONTS.regular,
   },
+  pickerSelectedTextStyle: {
+    fontSize: 16,
+    color: COLORS.text,
+    fontFamily: FONTS.regular,
+  },
+  pickerInputSearchStyle: {
+    height: 40,
+    fontSize: 16,
+    fontFamily: FONTS.regular,
+    color: COLORS.text,
+  },
+  pickerIconStyle: {
+    width: 20,
+    height: 20,
+  },
+  addressContainer: {
+    marginTop: 16, // Add some space before address section
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.inputBorder,
+  },
+  // Existing Images Display (if ModernImagePicker doesn't handle them)
+  existingImagesContainer: {
+    marginTop: 10,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  existingImageWrapper: {
+    position: 'relative',
+    marginRight: 10,
+    marginBottom: 10,
+  },
+  existingImage: {
+    width: 80, // Smaller previews for existing
+    height: 80,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.inputBorder,
+  },
+  removeImageBtn: {
+    position: 'absolute',
+    top: -5,
+    right: -5,
+    backgroundColor: 'rgba(255,255,255,0.8)',
+    borderRadius: 12,
+    padding: 2,
+  },
+  // Switch Toggle Styles
   switchContainer: {
     flexDirection: 'row',
     borderWidth: 1,
-    borderColor: '#DDD',
+    borderColor: COLORS.inputBorder,
     borderRadius: 8,
     overflow: 'hidden',
+    marginTop: 8,
   },
   switchOption: {
     flex: 1,
     paddingVertical: 12,
     alignItems: 'center',
-    backgroundColor: 'white',
+    backgroundColor: COLORS.inputBackground,
   },
   switchActive: {
     backgroundColor: COLORS.primary,
   },
   switchText: {
     fontSize: 14,
-    fontWeight: '500',
-    color: COLORS.gray,
+    fontFamily: FONTS.medium,
+    color: COLORS.text,
   },
   switchTextActive: {
-    color: 'white',
-  },
-  helperText: {
-    fontSize: 12,
-    color: COLORS.gray,
-    marginBottom: 8,
+    color: COLORS.white, // Use theme white
   },
   submitButton: {
-    marginTop: 16,
+    marginTop: 24, // More space before button
+    backgroundColor: COLORS.primary, // Ensure button uses theme
   },
   deleteButton: {
     marginTop: 16,
-    padding: 12,
+    paddingVertical: 12, // Make it feel like a button
     alignItems: 'center',
     borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.error, // Use theme error color
   },
   deleteButtonText: {
-    color: '#D32F2F',
-    fontWeight: '500',
+    color: COLORS.error,
+    fontFamily: FONTS.bold,
     fontSize: 16,
   },
 });

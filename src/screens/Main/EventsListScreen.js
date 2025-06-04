@@ -1,54 +1,30 @@
-import React, { useState, useRef } from 'react';
-import { View, Text, FlatList, Image, TouchableOpacity, StyleSheet, TextInput, ScrollView, Animated } from 'react-native';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, TextInput, ScrollView, Animated, ActivityIndicator, RefreshControl } from 'react-native';
 import ActionButton from '../../components/common/ActionButton';
+import { supabase } from '../../lib/supabaseClient';
+import { useFocusEffect } from '@react-navigation/native';
+import EventCard from '../../components/cards/EventCard';
+import { COLORS, FONTS } from '../../constants/theme';
 import AppHeader from '../../components/layout/AppHeader';
 import Feather from 'react-native-vector-icons/Feather';
 
-const dummyEvents = [
-  {
-    id: 'e1',
-    name: 'NDIS Social BBQ',
-    desc: 'Meet, eat and connect with other NDIS participants.',
-    date: '2025-06-02',
-    type: 'social',
-    image: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=800&q=80',
-  },
-  {
-    id: 'e2',
-    name: 'Financial Literacy Workshop',
-    desc: 'Learn to manage your NDIS funds.',
-    date: '2025-06-10',
-    type: 'educational',
-    image: 'https://images.unsplash.com/photo-1465101046530-73398c7f28ca?auto=format&fit=crop&w=800&q=80',
-  },
-  {
-    id: 'e3',
-    name: 'Inclusive Sports Day',
-    desc: 'Try out wheelchair basketball and more!',
-    date: '2025-06-15',
-    type: 'sports',
-    image: 'https://images.unsplash.com/photo-1503676382389-4809596d5290?auto=format&fit=crop&w=800&q=80',
-  },
-  {
-    id: 'e4',
-    name: 'Art Therapy Session',
-    desc: 'Express yourself through art in a supportive environment.',
-    date: '2025-06-20',
-    type: 'social',
-    image: 'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?auto=format&fit=crop&w=800&q=80',
-  },
-];
-
+// Event categories for filtering
 const EVENT_FILTERS = [
   { key: 'all', label: 'All' },
   { key: 'social', label: 'Social' },
   { key: 'educational', label: 'Educational' },
   { key: 'sports', label: 'Sports' },
+  { key: 'art', label: 'Art' },
+  { key: 'health', label: 'Health' }
 ];
 
 const EventsListScreen = ({ navigation }) => {
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState('all');
+  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [viewMode, setViewMode] = useState('list'); // 'list' or 'grid'
   
   // Animation values for the ActionButton
   const fadeAnim = useRef(new Animated.Value(1)).current;
@@ -56,24 +32,84 @@ const EventsListScreen = ({ navigation }) => {
   const [isScrolling, setIsScrolling] = useState(false);
   const scrollEndTimer = useRef(null);
 
-  const filteredEvents = dummyEvents.filter(event => {
-    const matchType = activeFilter === 'all' || event.type === activeFilter;
-    const matchSearch = event.name.toLowerCase().includes(search.toLowerCase()) || event.desc.toLowerCase().includes(search.toLowerCase());
+  // Fetch events when the screen is focused or refreshed
+  const fetchEvents = async (isRefreshing = false) => {
+    try {
+      if (!isRefreshing) setLoading(true);
+      
+      // Fetch events using our events_with_details view
+      const { data, error } = await supabase
+        .from('events_with_details')
+        .select('*')
+        .order('start_time', { ascending: true });
+        
+      if (error) throw error;
+      
+      setEvents(data || []);
+    } catch (error) {
+      console.error('Error fetching events:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+  
+  // Initial fetch
+  useEffect(() => {
+    fetchEvents();
+  }, []);
+  
+  // Refresh on focus
+  useFocusEffect(
+    useCallback(() => {
+      fetchEvents();
+      return () => {};
+    }, [])
+  );
+  
+  // Handle pull-to-refresh
+  const handleRefresh = () => {
+    setRefreshing(true);
+    fetchEvents(true);
+  };
+  
+  // Filter events based on search and category
+  const filteredEvents = events.filter(event => {
+    const matchType = activeFilter === 'all' || event.category === activeFilter;
+    const matchSearch = 
+      event.title?.toLowerCase().includes(search.toLowerCase()) ||
+      event.description?.toLowerCase().includes(search.toLowerCase()) ||
+      false;
     return matchType && matchSearch;
   });
 
+  // Toggle view mode between list and grid
+  const toggleViewMode = () => {
+    setViewMode(viewMode === 'list' ? 'grid' : 'list');
+  };
+
+  // Render an event card
   const renderEvent = ({ item }) => (
-    <View style={styles.eventCard}>
-      <Image source={{ uri: item.image }} style={styles.eventCardImage} />
-      <View style={styles.eventCardContent}>
-        <Text style={styles.eventCardTitle}>{item.name}</Text>
-        <Text style={styles.eventCardDesc}>{item.desc}</Text>
-        <Text style={styles.eventCardDate}>{item.date}</Text>
-        <TouchableOpacity style={styles.joinBtn}><Text style={styles.joinBtnText}>Join</Text></TouchableOpacity>
-      </View>
-    </View>
+    <EventCard
+      event={item}
+      onPress={() => navigation.navigate('EventDetail', { eventId: item.id })}
+      listView={viewMode === 'list'}
+      testID={`event-card-${item.id}`}
+    />
   );
 
+  if (loading) {
+    return (
+      <View style={{ flex: 1, backgroundColor: '#fff' }}>
+        <AppHeader title="Events" navigation={navigation} canGoBack={true} />
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+          <Text style={{ marginTop: 12, color: COLORS.darkGray }}>Loading events...</Text>
+        </View>
+      </View>
+    );
+  }
+  
   return (
     <View style={{ flex: 1, backgroundColor: '#fff' }}>
       {/* Floating Action Button with fade animation */}
@@ -87,7 +123,16 @@ const EventsListScreen = ({ navigation }) => {
           size={56}
         />
       </Animated.View>
-      <AppHeader title="Events" navigation={navigation} canGoBack={true} />
+      <AppHeader 
+        title="Events" 
+        navigation={navigation} 
+        canGoBack={true} 
+        rightElement={
+          <TouchableOpacity onPress={toggleViewMode} style={{ padding: 5 }}>
+            <Feather name={viewMode === 'list' ? 'grid' : 'list'} size={22} color={COLORS.darkGray} />
+          </TouchableOpacity>
+        }
+      />
       {/* Search and filter row */}
       <View style={styles.searchRow}>
         <View style={styles.searchBarWrap}>
@@ -99,10 +144,11 @@ const EventsListScreen = ({ navigation }) => {
             onChangeText={setSearch}
             placeholderTextColor="#aaa"
             returnKeyType="search"
+            clearButtonMode="while-editing"
           />
         </View>
       </View>
-      {/* Filter section (persistent) */}
+      {/* Filter section with categories */}
       <View style={styles.filterSection}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll} contentContainerStyle={{paddingHorizontal: 10}}>
           {EVENT_FILTERS.map(f => (
@@ -117,13 +163,36 @@ const EventsListScreen = ({ navigation }) => {
         </ScrollView>
       </View>
       {/* Listing count */}
-      <Text style={styles.listingCount}>{filteredEvents.length} Events</Text>
-      <Animated.FlatList
-        data={filteredEvents}
-        renderItem={renderEvent}
-        keyExtractor={item => item.id}
-        contentContainerStyle={{ padding: 18, paddingTop: 6 }}
-        showsVerticalScrollIndicator={false}
+      <View style={styles.listingCountContainer}>
+        <Text style={styles.listingCount}>{filteredEvents.length} Events</Text>
+      </View>
+      {events.length === 0 && !loading ? (
+        <View style={styles.emptyState}>
+          <Feather name="calendar" size={48} color={COLORS.lightGray} />
+          <Text style={styles.emptyStateText}>No events found</Text>
+          <Text style={styles.emptyStateSubText}>Check back soon for upcoming events</Text>
+        </View>
+      ) : (
+        <Animated.FlatList
+          data={filteredEvents}
+          renderItem={renderEvent}
+          keyExtractor={item => item.id}
+          contentContainerStyle={{
+            padding: 16,
+            paddingTop: 8,
+            paddingBottom: viewMode === 'grid' ? 90 : 80 // Extra padding at bottom for FAB
+          }}
+          numColumns={viewMode === 'grid' ? 2 : 1}
+          columnWrapperStyle={viewMode === 'grid' ? { justifyContent: 'space-between' } : null}
+          showsVerticalScrollIndicator={false}
+          refreshControl={(
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              colors={[COLORS.primary]}
+              tintColor={COLORS.primary}
+            />
+          )}
         onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { y: scrollY } } }],
           { 
@@ -158,6 +227,7 @@ const EventsListScreen = ({ navigation }) => {
         )}
         scrollEventThrottle={16}
       />
+      )}
     </View>
   );
 };
@@ -169,6 +239,37 @@ const styles = StyleSheet.create({
     bottom: 20, // Close to the bottom navbar
     right: 16, // Equal padding from right edge
     zIndex: 1000, // Ensure it's above all content
+  },
+  listingCountContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: COLORS.white,
+    borderBottomWidth: 1,
+    borderColor: '#f0f0f0',
+  },
+  listingCount: {
+    fontSize: 14,
+    color: COLORS.darkGray,
+    fontFamily: FONTS.medium,
+  },
+  emptyState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  emptyStateText: {
+    fontSize: 18,
+    fontFamily: FONTS.medium,
+    color: COLORS.darkGray,
+    marginTop: 12,
+  },
+  emptyStateSubText: {
+    fontSize: 14,
+    fontFamily: FONTS.regular,
+    color: COLORS.gray,
+    marginTop: 8,
+    textAlign: 'center',
   },
   filterSection: {
     backgroundColor: '#fff',
@@ -183,6 +284,27 @@ const styles = StyleSheet.create({
     paddingTop: 14,
     paddingBottom: 6,
     backgroundColor: '#fff',
+  },
+  filterScroll: {
+    flexGrow: 0,
+  },
+  filterChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#f2f4fa',
+    marginHorizontal: 4,
+  },
+  filterChipActive: {
+    backgroundColor: COLORS.primary,
+  },
+  filterChipText: {
+    fontSize: 14,
+    color: COLORS.darkGray,
+    fontFamily: FONTS.medium,
+  },
+  filterChipTextActive: {
+    color: COLORS.white,
   },
   searchBarWrap: {
     flexDirection: 'row',

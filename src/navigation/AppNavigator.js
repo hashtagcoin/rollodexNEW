@@ -11,7 +11,7 @@ import ProviderStackNavigator from './ProviderStackNavigator';
 import AuthStack from './AuthStack';
 
 // Import Detail Screens
-import ServiceDetailScreen from '../screens/Main/ServiceDetailScreen';
+import ServiceDetailScreen from '../screens/Details/ServiceDetailScreen';
 import HousingDetailScreen from '../screens/Details/HousingDetailScreen';
 import EventDetailScreen from '../screens/Main/EventDetailScreen';
 import GroupDetailScreen from '../screens/Main/GroupDetailScreen';

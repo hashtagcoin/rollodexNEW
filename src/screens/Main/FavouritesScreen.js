@@ -1,33 +1,38 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  FlatList, 
-  TouchableOpacity, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
   Image,
-  Dimensions
+  Dimensions,
+  Alert
 } from 'react-native';
-import { useFocusEffect, useNavigation } from '@react-navigation/native'; 
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabaseClient';
 import { COLORS, SIZES, FONTS, SHADOWS } from '../../constants/theme';
-import { CardStyles, ConsistentHeightTitle, isSingleLineTitle } from '../../constants/CardStyles';
+// Assuming isSingleLineTitle from CardStyles might be different or not used due to local redefinition
+import { CardStyles, ConsistentHeightTitle /*, isSingleLineTitle as importedIsSingleLineTitle */ } from '../../constants/CardStyles';
+import { getValidImageUrl } from '../../utils/imageHelper';
 import SearchComponent from '../../components/common/SearchComponent';
 import AppHeader from '../../components/layout/AppHeader';
 import ServiceCardComponent from '../../components/cards/ServiceCard';
 import HousingCardComponent from '../../components/cards/HousingCard';
+import EventFavoriteCard from '../../components/cards/EventFavoriteCard';
 import ShareTrayModal from '../../components/common/ShareTrayModal';
 
 const { width } = Dimensions.get('window');
 
 // Constants
 const CARD_MARGIN = 10;
+const PAGE_SIZE = 10; // Moved PAGE_SIZE to be a top-level constant
 
-const FavouritesScreen = () => { 
-  const navigation = useNavigation(); 
+const FavouritesScreen = () => {
+  const navigation = useNavigation();
   const flatListRef = useRef(null);
   const [favorites, setFavorites] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -35,54 +40,35 @@ const FavouritesScreen = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [viewMode, setViewMode] = useState('Grid');
-  const [sortConfig, setSortConfig] = useState({ field: 'favorited_at', direction: 'desc' });
+  const [sortConfig, setSortConfig] = useState({ field: 'created_at', direction: 'desc' });
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [shareModalVisible, setShareModalVisible] = useState(false);
   const [itemToShare, setItemToShare] = useState(null);
-  
-  // Reset scroll position when tab is focused
-  useFocusEffect(
-    useCallback(() => {
-      // Reset scroll position
-      if (flatListRef.current) {
-        flatListRef.current.scrollToOffset({ offset: 0, animated: false });
-      }
-      
-      // Reset data state
-      setPage(0);
-      setSelectedCategory('All');
-      setSearchTerm('');
-      
-      // Refresh data
-      fetchFavorites(0, true);
-    }, [])
-  );
 
-  const categories = ['All', 'Services', 'Events', 'Housing', 'Groups', 'Housing Groups']; 
-  const PAGE_SIZE = 10;
+  const categories = ['All', 'Services', 'Events', 'Housing', 'Groups', 'Housing Groups'];
 
   const mapCategoryToItemType = (category) => {
     switch (category) {
       case 'Services':
         return 'service_provider';
       case 'Events':
-        return 'group_events';
-      case 'Housing': 
+        return 'group_event'; // Assuming 'Events' might actually map to 'group_event' based on renderItem logic for 'event' type
+      case 'Housing':
         return 'housing_listing';
       case 'Groups':
         return 'group';
       case 'Housing Groups':
         return 'housing_group';
       default:
-        return null; 
+        return null;
     }
   };
 
-  const fetchFavorites = async (pageNum = 0, isRefreshing = false) => {
-    console.log(`[FavouritesScreen] fetchFavorites called. Page: ${pageNum}, Refreshing: ${isRefreshing}, Loading: ${loading}, HasMore: ${hasMore}`);
-    if ((!isRefreshing && loading) || (pageNum > 0 && !hasMore)) {
+  const fetchFavorites = useCallback(async (pageNum = 0, isRefreshing = false) => {
+    console.log(`[FavouritesScreen] fetchFavorites called. Page: ${pageNum}, Refreshing: ${isRefreshing}, Loading: ${loading}, HasMore: ${hasMore}, Category: ${selectedCategory}, Search: ${searchTerm}`);
+    if ((!isRefreshing && loading && pageNum > 0) || (pageNum > 0 && !hasMore)) { // Adjusted condition slightly: loading check mainly for non-refresh, non-initial loads
       console.log('[FavouritesScreen] fetchFavorites: Bailing out due to loading or no more data.');
       return;
     }
@@ -91,6 +77,7 @@ const FavouritesScreen = () => {
       if (pageNum === 0) {
         console.log('[FavouritesScreen] fetchFavorites: Setting loading to true (pageNum is 0).');
         setLoading(true);
+        if (!isRefreshing) setFavorites([]); // Clear existing favorites on initial load for new filters
       } else {
         console.log('[FavouritesScreen] fetchFavorites: Setting loadingMore to true.');
         setLoadingMore(true);
@@ -102,8 +89,8 @@ const FavouritesScreen = () => {
       }
 
       let query = supabase
-        .from('user_favorites_detailed')
-        .select('*')
+        .from('favorites')
+        .select('*') // Just select all columns from favorites
         .eq('user_id', user.id);
 
       const dbItemType = mapCategoryToItemType(selectedCategory);
@@ -123,132 +110,234 @@ const FavouritesScreen = () => {
       const to = from + PAGE_SIZE - 1;
       query = query.range(from, to);
 
-      const { data, error, count } = await query;
-
+      const { data, error } = await query; // Removed count as it wasn't used
+      console.log('[FavouritesScreen] Supabase query result (favorites table):', { data, error });
       if (error) {
         throw error;
       }
 
-      const favoritesWithAppStatus = await Promise.all(
-        data.map(async (favorite) => {
-          if (favorite.item_type === 'housing_group') {
-            // Check if user is a member of this housing group
-            const { data: memberData, error: memberError } = await supabase
-              .from('housing_group_members')
-              .select('id, status, join_date')
-              .eq('user_id', user.id)
-              .eq('group_id', favorite.item_id)
-              .single();
+      if (!data) { // Handle null data case
+          setLoading(false);
+          setRefreshing(false);
+          setLoadingMore(false);
+          setHasMore(false);
+          if (pageNum === 0) setFavorites([]);
+          return;
+      }
 
-            // Get additional housing group data
-            const { data: groupData, error: groupError } = await supabase
-              .from('housing_groups')
-              .select('*')
-              .eq('id', favorite.item_id)
-              .single();
-              
-            if (!memberError && memberData) {
-              // User is a member (pending or approved)
-              return { 
-                ...favorite, 
-                membership_status: memberData.status,
-                membership_id: memberData.id,
-                join_date: memberData.join_date,
-                housing_group_data: groupError ? null : groupData
-              };
-            } else {
-              // Check if user has applied to the related housing listing
-              const housing_listing_id = groupError ? null : groupData?.listing_id;
-              
-              if (housing_listing_id) {
-                const { data: appData, error: appError } = await supabase
-                  .from('housing_applications')
-                  .select('status')
-                  .eq('user_id', user.id)
-                  .eq('listing_id', housing_listing_id)
+      const favoritesWithEnrichedData = await Promise.all(
+        data.map(async (favorite) => {
+          let enriched = { ...favorite }; // Contains favorite.id, favorite.item_id, etc.
+          try {
+            switch (favorite.item_type) {
+              case 'service_provider': {
+                const { data: service, error: serviceErr } = await supabase
+                  .from('services')
+                  .select('*')
+                  .eq('id', favorite.item_id)
                   .single();
-                  
-                if (!appError && appData) {
-                  return { 
-                    ...favorite, 
-                    application_status: appData.status,
-                    housing_group_data: groupData
-                  };
-                }
+                if (!serviceErr && service) enriched = { ...enriched, ...service, id: favorite.item_id }; // Ensure original item_id is used as id if service table also has 'id'
+                else if (serviceErr) console.warn(`[Enrichment] Service ${favorite.item_id}:`, serviceErr.message);
+                break;
               }
-              
-              // User is not a member and hasn't applied
-              return { 
-                ...favorite, 
-                membership_status: null,
-                application_status: null,
-                housing_group_data: groupError ? null : groupData
-              };
+              case 'housing_listing': {
+                const { data: housing, error: housingErr } = await supabase
+                  .from('housing_listings')
+                  .select('*')
+                  .eq('id', favorite.item_id)
+                  .single();
+                if (!housingErr && housing) enriched = { ...enriched, ...housing, id: favorite.item_id };
+                else if (housingErr) console.warn(`[Enrichment] Housing ${favorite.item_id}:`, housingErr.message);
+                break;
+              }
+              case 'group_event': { // This was 'Events' in mapCategoryToItemType, ensure consistency
+                const { data: event, error: eventErr } = await supabase
+                  .from('group_events')
+                  .select('*')
+                  .eq('id', favorite.item_id)
+                  .single();
+                if (!eventErr && event) enriched = { ...enriched, ...event, id: favorite.item_id };
+                else if (eventErr) console.warn(`[Enrichment] Group Event ${favorite.item_id}:`, eventErr.message);
+                break;
+              }
+              case 'group': {
+                const { data: groupData, error: groupError } = await supabase
+                  .from('groups')
+                  .select('id, name, description, avatar_url, imageurl, category, is_public, group_members ( count )')
+                  .eq('id', favorite.item_id)
+                  .single();
+                if (!groupError && groupData) {
+                  enriched = {
+                    ...enriched, // Original favorite data
+                    ...groupData, // Group specific data
+                    id: favorite.item_id, // Ensure item_id from favorite is the main id
+                    members: groupData.group_members && groupData.group_members.length > 0 ? groupData.group_members[0].count : 0,
+                    image: groupData.imageurl || groupData.avatar_url
+                  };
+                } else if (groupError) {
+                  console.warn(`[FavouritesScreen] Enrichment error for group ${favorite.item_id}:`, groupError.message);
+                }
+                break;
+              }
+              case 'housing_group': {
+                const { data: memberData, error: memberError } = await supabase
+                  .from('housing_group_members')
+                  .select('id, status, join_date')
+                  .eq('user_id', user.id)
+                  .eq('group_id', favorite.item_id)
+                  .single();
+
+                const { data: hgData, error: hgError } = await supabase
+                  .from('housing_groups')
+                  .select('*, housing_listings:listing_id (*)')
+                  .eq('id', favorite.item_id)
+                  .single();
+
+                enriched.id = favorite.item_id; // Ensure item_id is the main id
+
+                if (hgError) {
+                  console.warn(`[FavouritesScreen] Enrichment error for housing_group ${favorite.item_id}:`, hgError.message);
+                  enriched.housing_group_data = null;
+                } else if (hgData) {
+                  enriched.housing_group_data = {
+                    ...hgData,
+                    housing_listing_data: hgData.housing_listings || null,
+                  };
+                } else {
+                  enriched.housing_group_data = {}; // Ensure it's an object
+                }
+
+
+                if (!memberError && memberData) {
+                  enriched.membership_status = memberData.status;
+                  enriched.membership_id = memberData.id; // This is the membership ID
+                  enriched.join_date = memberData.join_date;
+                } else {
+                  enriched.membership_status = null;
+                  const listingIdForAppCheck = hgData?.listing_id;
+                  if (listingIdForAppCheck) {
+                    const { data: appData, error: appError } = await supabase
+                      .from('housing_applications')
+                      .select('status')
+                      .eq('user_id', user.id)
+                      .eq('listing_id', listingIdForAppCheck)
+                      .order('created_at', { ascending: false }) // Get the latest application
+                      .limit(1)
+                      .single();
+                    if (!appError && appData) {
+                      enriched.application_status = appData.status;
+                    } else {
+                      enriched.application_status = null;
+                    }
+                  } else {
+                    enriched.application_status = null;
+                  }
+                }
+                if (!enriched.housing_group_data && !hgError) { // Ensure housing_group_data exists
+                    enriched.housing_group_data = {};
+                }
+                break;
+              }
+              // The original code had a case for 'event' in renderItem, but not in enrichment.
+              // Assuming 'group_event' is the intended type for events.
+              default:
+                console.warn('[FavouritesScreen] Unknown item type for enrichment:', favorite.item_type);
+                break;
             }
+          } catch (err) {
+            console.warn('[FavouritesScreen] Enrichment failed for', favorite.item_type, favorite.item_id, err);
           }
-          return favorite;
+          return enriched;
         })
       );
 
+      console.log('[FavouritesScreen] favoritesWithEnrichedData after enrichment:', JSON.stringify(favoritesWithEnrichedData.length, null, 2));
       setFavorites(prev => {
-        const newFavorites = isRefreshing || pageNum === 0 ? favoritesWithAppStatus : [...prev, ...favoritesWithAppStatus];
+        const newFavorites = isRefreshing || pageNum === 0 ? favoritesWithEnrichedData : [...prev, ...favoritesWithEnrichedData];
+        console.log('[FavouritesScreen] setFavorites called. New favorites count:', newFavorites.length);
         return newFavorites;
       });
       setHasMore(data.length === PAGE_SIZE);
       setPage(pageNum);
 
     } catch (error) {
-      // Error handled silently
+      console.error('[FavouritesScreen] fetchFavorites error:', error);
+      // Alert.alert('Error', 'Could not fetch favorites.'); // Consider user-facing error
     } finally {
       setLoading(false);
       setRefreshing(false);
       setLoadingMore(false);
     }
-  };
+  }, [selectedCategory, searchTerm, sortConfig, loading, hasMore]); // Added loading, hasMore as they affect conditional fetching logic
+
+  // Reset scroll, state, and fetch data when tab is focused or critical filters change
+  useFocusEffect(
+    useCallback(() => {
+      if (flatListRef.current) {
+        flatListRef.current.scrollToOffset({ offset: 0, animated: false });
+      }
+      // Reset page state and filters
+      setPage(0); // Reset page for new filter context
+      // The actual fetch will be triggered by the effect below due to state changes
+      // OR if state is already what we want, we fetch directly.
+      if (selectedCategory === 'All' && searchTerm === '') {
+        fetchFavorites(0, true); // Fetch if filters are already at default
+      } else {
+        // These will trigger the fetching effect if they cause a state change
+        setSelectedCategory('All');
+        setSearchTerm('');
+      }
+    }, []) // Runs once when screen focuses to reset
+  );
+
+  // Fetch data when selectedCategory, searchTerm, or sortConfig change
+  // This also covers the initial fetch after the reset effect sets category/term
+  useEffect(() => {
+    console.log("[FavouritesScreen] Filters changed or initial mount, fetching page 0. Category:", selectedCategory, "Search:", searchTerm);
+    setPage(0); // Reset page when filters change
+    fetchFavorites(0, true); // Fetch with new filters, as a refresh
+  }, [selectedCategory, searchTerm, sortConfig]); // Note: fetchFavorites is not a dep here to avoid loop, it's called directly.
 
   const onRefresh = useCallback(() => {
-    setRefreshing(true);
+    console.log("[FavouritesScreen] onRefresh called");
+    setRefreshing(true); // Handled inside fetchFavorites now
+    setPage(0); // Reset page on refresh
     fetchFavorites(0, true);
-  }, [selectedCategory, searchTerm, sortConfig]);
+  }, [fetchFavorites]); // fetchFavorites is memoized
 
   const loadMore = useCallback(() => {
+    console.log("[FavouritesScreen] loadMore called. HasMore:", hasMore, "LoadingMore:", loadingMore, "Loading:", loading);
     if (!loading && !loadingMore && hasMore) {
       fetchFavorites(page + 1);
     }
   }, [page, loading, loadingMore, hasMore, fetchFavorites]);
 
-  useFocusEffect(
-    useCallback(() => {
-      fetchFavorites(0, true);
-      return () => {
-        // Cleanup function
-      };
-    }, [selectedCategory, searchTerm, sortConfig])
-  );
 
   const toggleFavorite = async (itemId, itemType) => {
     try {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
-
       if (userError || !user) {
-        // Cannot proceed without authenticated user
-        return; 
+        Alert.alert("Authentication Error", "You must be logged in to change favorites.");
+        return;
       }
 
       const { error } = await supabase
         .from('favorites')
         .delete()
-        .eq('user_id', user.id) // Corrected
+        .eq('user_id', user.id)
         .eq('item_id', itemId)
         .eq('item_type', itemType);
 
       if (error) {
-        throw error; 
+        throw error;
       }
-
+      // Refresh list after unfavoriting
       setFavorites(prev => prev.filter(item => !(item.item_id === itemId && item.item_type === itemType)));
+      // Or optionally, fully refetch:
+      // fetchFavorites(0, true); 
     } catch (error) {
-      // Error handled silently
+      console.error('[FavouritesScreen] toggleFavorite error:', error);
+      Alert.alert('Error', 'Could not update favorites.');
     }
   };
 
@@ -262,505 +351,326 @@ const FavouritesScreen = () => {
     setItemToShare(null);
   };
 
-  const handleLeaveHousingGroup = async (groupId, membershipId) => {
-    try {
-      if (!membershipId) {
-        return;
-      }
-      
-      const { error } = await supabase
-        .from('housing_group_members')
-        .delete()
-        .eq('id', membershipId);
-        
-      if (error) {
-        return;
-      }
-      
-      // Refresh the favorites list
-      fetchFavorites(0, true);
-    } catch (error) {
-      // Error handled silently
-    }
+  // Function to measure title text width to determine if it's single line
+  // This is a local definition, shadowing any imported one.
+  const isSingleLineTitleLocal = (title) => {
+    if (!title) return true; // Or false, depending on desired behavior for null/undefined titles
+    const avgCharWidth = 10; 
+    const maxChars = width / avgCharWidth * 0.4; // Approx 40% of screen width for a grid item title
+    return title.length < maxChars;
   };
 
-  // Function to measure title text width to determine if it's single line
-  const isSingleLineTitle = (title) => {
-    // Approximate calculation based on average character width
-    const avgCharWidth = 10; // Approximate width in pixels of average character
-    const maxChars = 25; // Approximate characters that fit on one line
-    return title?.length < maxChars;
-  };
-  
   const renderItem = ({ item }) => {
-    console.log('[FavouritesScreen] renderItem called for item:', JSON.stringify(item, null, 2));
-    
-    // Check if title is single line for housing groups
-    const singleLineTitle = item.item_type === 'housing_group' && isSingleLineTitle(item.item_title);
-    
+    // console.log('[FavouritesScreen] renderItem called for item:', JSON.stringify(item, null, 2));
+    // Use the locally defined isSingleLineTitle
+    const titleIsSingleLine = item.item_type === 'housing_group' && item.housing_group_data?.name
+                              ? isSingleLineTitleLocal(item.housing_group_data.name)
+                              : (item.item_title ? isSingleLineTitleLocal(item.item_title) : true);
+
+
     const commonCardProps = {
       onPress: () => {
-        if (item.item_type === 'service_provider' && item.item_id) {
-          console.log(`[FavouritesScreen] Navigating to ServiceDetail for ID: ${item.item_id}`);
-          navigation.navigate('ServiceDetail', { serviceId: item.item_id });
-        } else if (item.item_type === 'housing_listing' && item.item_id) {
-          console.log(`[FavouritesScreen] Navigating to HousingDetail for ID: ${item.item_id}`);
-          const housingItemForNav = {
-            id: item.item_id,
-            title: item.item_title,
-            suburb: item.housing_suburb,
-            rent_amount: item.housing_weekly_rent,
-            rent_frequency: 'week',
-            bedrooms: item.housing_bedrooms,
-            bathrooms: item.housing_bathrooms,
-            property_type: item.housing_property_type,
-            media_urls: item.item_image_url ? [item.item_image_url] : [],
-            available_from: item.housing_availability_date,
-          };
-          navigation.navigate('HousingDetail', { item: housingItemForNav }); 
-        } else if (item.item_type === 'group_events' && item.item_id) { 
-          console.log(`[FavouritesScreen] Navigating to EventDetail for ID: ${item.item_id}`);
-          navigation.navigate('EventDetail', { eventId: item.item_id });
-        } else if (item.item_type === 'group' && item.item_id) {
-          console.log(`[FavouritesScreen] Navigating to GroupDetail for ID: ${item.item_id}`);
-          navigation.navigate('GroupDetail', { groupId: item.item_id });
-        } else if (item.item_type === 'housing_group' && item.item_id) {
-          console.log(`[FavouritesScreen] Navigating to HousingGroupDetail for ID: ${item.item_id}`);
-          navigation.navigate('HousingGroupDetail', { groupId: item.item_id }); 
+        // Ensure item.id or item.item_id is correctly referencing the actual entity ID
+        const entityId = item.item_id; // This should be the ID of the service, housing, group etc.
+        switch (item.item_type) {
+          case 'service_provider':
+            navigation.navigate('ServiceProviderDetail', { providerId: entityId, service_provider_name: item.item_title || item.name });
+            break;
+          case 'housing_listing':
+            navigation.navigate('HousingDetailScreen', { listingId: entityId });
+            break;
+          case 'group':
+            navigation.navigate('GroupDetail', { groupId: entityId });
+            break;
+          case 'housing_group':
+            navigation.navigate('HousingGroupDetailScreen', { housingGroupId: entityId });
+            break;
+          case 'group_event': // Assuming 'event' favorites are stored as 'group_event' type
+             navigation.navigate('GroupEventDetailScreen', { eventId: entityId, groupId: item.group_id });
+            break;
+          default:
+            console.warn(`[FavouritesScreen] No specific navigation path for item_type: ${item.item_type} in commonCardProps.onPress`);
+            break;
         }
       },
       isFavorited: true,
-      onToggleFavorite: () => toggleFavorite(item.item_id, item.item_type),
+      onToggleFavorite: () => toggleFavorite(item.item_id, item.item_type), // Corrected: removed third argument
       displayAs: viewMode === 'Grid' ? 'grid' : 'list',
-      onSharePress: () => handleOpenShareTray(item)
+      onSharePress: () => handleOpenShareTray(item),
     };
-    switch (item.item_type) {
-      case 'service_provider':
-        const serviceCardItem = {
-          id: item.item_id,
-          title: item.item_title || 'Service Title',
-          description: item.item_description || 'No description available.',
-          media_urls: item.item_image_url ? [item.item_image_url] : [], 
-          category: item.service_category || 'Service',         
-          price: item.service_price,                          
-          rating: item.service_rating,                        
-          reviews: item.service_reviews,                      
-          address_suburb: item.service_address_suburb,        
-        };
-        console.log('[FavouritesScreen] Rendering ServiceCardComponent with item:', JSON.stringify(serviceCardItem, null, 2));
-        return <ServiceCardComponent item={serviceCardItem} {...commonCardProps} />;
-      
-      case 'housing_listing': 
-        const housingCardItem = {
-          id: item.item_id,
-          title: item.item_title || 'Housing Title',
-          media_urls: item.item_image_url ? [item.item_image_url] : [], 
-          suburb: item.housing_suburb || 'Suburb N/A',
-          rent_amount: item.housing_weekly_rent, 
-          rent_frequency: 'week', 
-          bedrooms: item.housing_bedrooms,
-          bathrooms: item.housing_bathrooms,
-          property_type: item.housing_property_type,
-          available_from: item.housing_availability_date, 
-        };
-        console.log('[FavouritesScreen] Rendering HousingCardComponent with item:', JSON.stringify(housingCardItem, null, 2));
-        return <HousingCardComponent item={housingCardItem} {...commonCardProps} />;
+    
+    // Ensure item.id is consistently the actual item's ID from its original table,
+    // and favorite-specific ID (if needed for deletion directly by favorite PK) is item.favorite_id_pk or similar
+    // For toggleFavorite, item.item_id (entity ID) and item.item_type are used.
 
-      case 'group_events': 
-        console.log('[FavouritesScreen] Rendering local EventCard for item:', JSON.stringify(item, null, 2));
+    switch (item.item_type) {
+      // Case 'event' was present but 'group_event' seems to be the actual type based on enrichment logic.
+      // If 'event' is a distinct type, its enrichment and card handling need to be defined.
+      // For now, assuming events are 'group_event'.
+      case 'group_event':
+        console.log('[FavouritesScreen] Rendering EventFavoriteCard for group_event:', item.item_id);
+        const groupEventCardItem = {
+          id: item.item_id, // Main ID for the event
+          item_id: item.item_id, // Redundant but for clarity if card expects it
+          item_type: item.item_type,
+          item_title: item.title || item.item_title || 'Group Event', // Fallback chain
+          description: item.description,
+          item_image_url: getValidImageUrl(item.image_url),
+          event_start_time: item.start_time || item.event_start_time,
+          event_location: { address: item.location?.full_address || item.location_address, ...item.location },
+          event_category: item.category,
+          group_id: item.group_id, // Important for navigation
+        };
         return (
-          <View style={styles.cardContainer}>
-            <Image source={{ uri: item.item_image_url || 'https://via.placeholder.com/150' }} style={styles.cardImage} />
-            <Text style={styles.cardTitle}>{item.item_title || 'Event Title'}</Text>
-            <Text>{item.event_location?.description || item.event_location?.address || 'Location TBD'}</Text> 
-            <Text>{new Date(item.event_start_time).toLocaleString()}</Text>
-            <View style={styles.actionsContainer}>
-              <TouchableOpacity onPress={() => toggleFavorite(item.item_id, item.item_type)} style={styles.favButton}>
-                <Ionicons name="heart" size={24} color={COLORS.RED} />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => handleOpenShareTray(item)} style={styles.shareButton}>
-                <Ionicons name="share-social-outline" size={24} color={COLORS.primary} />
-              </TouchableOpacity>
-            </View>
-          </View>
+          <EventFavoriteCard
+            item={groupEventCardItem}
+            displayAs={commonCardProps.displayAs}
+            onSharePress={commonCardProps.onSharePress}
+            onPress={() => navigation.navigate('GroupEventDetailScreen', { eventId: groupEventCardItem.id, groupId: groupEventCardItem.group_id })}
+            onRemoveFavorite={commonCardProps.onToggleFavorite}
+            testID={`group-event-card-${groupEventCardItem.id}`}
+          />
         );
-      case 'housing_group':
-        console.log('[FavouritesScreen] Rendering enhanced HousingGroupCard for item:', JSON.stringify(item, null, 2));
-        if (viewMode === 'Grid') {
-          // Grid view rendering with CardStyles for consistent width
-          return (
-            <View style={CardStyles.gridCardWrapper}>
-              <TouchableOpacity 
-                style={CardStyles.gridCardContainer} 
-                onPress={commonCardProps.onPress} 
-                activeOpacity={0.8}
-              >
-                <View style={CardStyles.gridCardInner}>
-                  <View style={CardStyles.gridImageContainer}>
-                    {!item.item_image_url ? (
-                      <View style={{alignItems: 'center', justifyContent: 'center', height: '100%'}}>
-                        <Ionicons name="home-outline" size={60} color={COLORS.darkGray} />
-                      </View>
-                    ) : (
-                      <Image 
-                        source={{ uri: item.item_image_url }} 
-                        style={CardStyles.gridImage}
-                        onError={() => console.log('Housing Group Image Error')} 
-                      />
-                    )}
-                    <TouchableOpacity 
-                      style={CardStyles.iconContainer} 
-                      onPress={() => toggleFavorite(item.item_id, item.item_type)}
-                    >
-                      <View style={CardStyles.iconCircleActive}> 
-                        <Ionicons name="heart" style={CardStyles.favoriteIconActive} />
-                      </View>
-                    </TouchableOpacity>
-                  </View>
-                  
-                  <View style={{padding: 10}}>
-                    <ConsistentHeightTitle 
-                      title={item.item_title || 'Unnamed Group'} 
-                      style={[CardStyles.title, {marginBottom: 0}]} 
-                      numberOfLines={1} 
-                    />
-                    <Text style={[CardStyles.subtitle, {marginTop: 0, marginBottom: 2}]} numberOfLines={2}>{item.item_description || 'No description'}</Text>
-                    <View style={{flexDirection: 'row', marginTop: 0, alignItems: 'center', justifyContent: 'space-between'}}>
-                      <View style={{flexDirection: 'row', alignItems: 'center'}}>
-                        <Ionicons name="people-outline" size={14} color={COLORS.darkGray} style={{marginRight: 4}} />
-                        <Text style={{fontSize: SIZES.body5, color: COLORS.darkGray}} numberOfLines={1}>
-                          {item.housing_group_data?.current_members}/{item.housing_group_data?.max_members || 'TBD'}
-                        </Text>
-                      </View>
-                      {/* Application Status Badge */}
-                      {item.membership_status === 'approved' && (
-                        <View style={{backgroundColor: COLORS.success + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4}}>
-                          <Text style={{fontSize: SIZES.body5, color: COLORS.success, fontWeight: '500'}}>Member</Text>
-                        </View>
-                      )}
-                      {item.membership_status === 'pending' && (
-                        <View style={{backgroundColor: '#FFA500' + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4}}>
-                          <Text style={{fontSize: SIZES.body5, color: '#FFA500', fontWeight: '500'}}>Pending</Text>
-                        </View>
-                      )}
-                      {!item.membership_status && item.application_status === 'pending' && (
-                        <View style={{backgroundColor: '#FFA500' + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4}}>
-                          <Text style={{fontSize: SIZES.body5, color: '#FFA500', fontWeight: '500'}}>Pending</Text>
-                        </View>
-                      )}
-                    </View>
-                    {/* Position container for bottom right Leave button */}
-                    <View style={{position: 'relative', marginTop: 5, height: 20, flexDirection: 'row', justifyContent: 'flex-end'}}>
-                      {/* Leave Button - shown for all housing groups temporarily for testing */}
-                      <TouchableOpacity
-                        onPress={() => {
-                          console.log('Leave button pressed for housing group:', item.item_id);
-                          console.log('Membership status:', item.membership_status);
-                          console.log('Membership ID:', item.membership_id);
-                          handleLeaveHousingGroup(item.item_id, item.membership_id || 'test-id');
-                        }}
-                        style={{
-                          position: 'absolute',
-                          bottom: 0,
-                          right: 0,
-                          backgroundColor: 'rgba(255, 0, 0, 0.2)',
-                          paddingHorizontal: 8,
-                          paddingVertical: 3,
-                          borderRadius: 4,
-                        }}
-                      >
-                        <Ionicons name="exit-outline" size={16} color="red" />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                </View>
-              </TouchableOpacity>
-            </View>
-          );
-        } else {
-          // List view rendering - use CardStyles for consistent height
-          return (
-            <TouchableOpacity 
-              style={CardStyles.listCardContainer} 
-              onPress={commonCardProps.onPress} 
-              activeOpacity={0.8}
-            >
-              <View style={CardStyles.listCardInner}> 
-                <View style={CardStyles.listImageContainer}> 
-                  {!item.item_image_url ? (
-                    <Ionicons name="home-outline" size={40} color={COLORS.darkGray} />
-                  ) : (
-                    <Image 
-                      source={{ uri: item.item_image_url }} 
-                      style={CardStyles.listImage}
-                      onError={() => console.log('Housing Group Image Error')} 
-                    />
-                  )}
-                  <TouchableOpacity 
-                    style={CardStyles.iconContainer} 
-                    onPress={() => toggleFavorite(item.item_id, item.item_type)}
-                  >
-                    <View style={CardStyles.iconCircleActive}> 
-                      <Ionicons name="heart" style={CardStyles.favoriteIconActive} />
-                    </View>
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={[CardStyles.iconContainer, { top: 48 }]}
-                    onPress={() => handleOpenShareTray(item)}
-                  >
-                    <View style={CardStyles.iconCircle}> 
-                      <Ionicons name="share-social-outline" style={CardStyles.favoriteIcon} />
-                    </View>
-                  </TouchableOpacity>
-                </View>
-                
-                <View style={CardStyles.listContentContainer}> 
-                  <View style={[CardStyles.topSection, {marginBottom: 0, justifyContent: 'space-between'}]}> 
-                    <ConsistentHeightTitle 
-                      title={item.item_title || 'Unnamed Group'} 
-                      style={[CardStyles.title, {flex: 1, paddingRight: 5, marginBottom: 0}]} 
-                      numberOfLines={1} 
-                    />
-                    {/* Application Status Badge */}
-                    {item.membership_status === 'approved' && (
-                      <View style={{backgroundColor: COLORS.success + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4}}>
-                        <Text style={{fontSize: SIZES.body5, color: COLORS.success, fontWeight: '500'}}>Member</Text>
-                      </View>
-                    )}
-                    {item.membership_status === 'pending' && (
-                      <View style={{backgroundColor: '#FFA500' + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4}}>
-                        <Text style={{fontSize: SIZES.body5, color: '#FFA500', fontWeight: '500'}}>Pending</Text>
-                      </View>
-                    )}
-                    {!item.membership_status && item.application_status === 'pending' && (
-                      <View style={{backgroundColor: '#FFA500' + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4}}>
-                        <Text style={{fontSize: SIZES.body5, color: '#FFA500', fontWeight: '500'}}>Pending</Text>
-                      </View>
-                    )}
-                  </View>
-                  <Text style={[CardStyles.subtitle, {marginTop: 0, marginBottom: 0}]} numberOfLines={2}>{item.item_description || 'No description available'}</Text>
-                  <View style={[CardStyles.bottomSection, {marginTop: 4, flexDirection: 'row', alignItems: 'center'}]}>
-                    <View style={{flexDirection: 'row', alignItems: 'center', flex: 1}}>
-                      <View style={{flexDirection: 'row', alignItems: 'center', marginRight: 15}}>
-                        <Ionicons name="people-outline" size={16} color={COLORS.darkGray} />
-                        <Text style={[CardStyles.subtitle, {marginLeft: 4, color: COLORS.darkGray}]} numberOfLines={1}>
-                          {item.housing_group_data?.current_members}/{item.housing_group_data?.max_members || 'TBD'} members
-                        </Text>
-                      </View>
-                      <View style={{flexDirection: 'row', alignItems: 'center', flex: 1}}>
-                        <Ionicons name="calendar-outline" size={16} color={COLORS.darkGray} />
-                        <Text style={[CardStyles.subtitle, {marginLeft: 4, color: COLORS.darkGray}]} numberOfLines={1}>
-                          {item.housing_group_data?.move_in_date ? new Date(item.housing_group_data.move_in_date).toLocaleDateString() : 'Flexible'}
-                        </Text>
-                      </View>
-                    </View>
-                    {/* Leave Button (exit icon) - shown for all housing groups temporarily for testing */}
-                    <TouchableOpacity
-                      onPress={() => {
-                        console.log('Leave button pressed for housing group (list view):', item.item_id);
-                        console.log('Membership status:', item.membership_status);
-                        console.log('Membership ID:', item.membership_id);
-                        handleLeaveHousingGroup(item.item_id, item.membership_id || 'test-id');
-                      }}
-                      style={{
-                        backgroundColor: 'rgba(255, 0, 0, 0.2)',
-                        paddingHorizontal: 8,
-                        paddingVertical: 3,
-                        borderRadius: 4,
-                        marginLeft: 'auto',
-                        alignItems: 'center'
-                      }}
-                    >
-                      <Ionicons name="exit-outline" size={16} color="red" />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </View>
-            </TouchableOpacity>
-          );
-        }
+
+      case 'service_provider':
+        console.log('[FavouritesScreen] Rendering ServiceCardComponent for:', item.item_id);
+        const serviceProviderItem = {
+            id: item.item_id, // Use item_id as the primary id for the card
+            ...item, // Spread the enriched item data
+            name: item.name || item.item_title, // Ensure name is present
+        };
+        // delete serviceProviderItem.item_id; // Avoid duplicate id fields if item itself has id
+        return <ServiceCardComponent item={serviceProviderItem} {...commonCardProps} />;
+
+      case 'housing_listing':
+        console.log('[FavouritesScreen] Rendering HousingCardComponent for:', item.item_id);
+        const housingListingItem = {
+            id: item.item_id,
+            ...item,
+            title: item.title || item.item_title,
+        };
+        return <HousingCardComponent item={housingListingItem} {...commonCardProps} />;
+
       case 'group':
-        console.log('[FavouritesScreen] Rendering local GroupCard for item:', JSON.stringify(item, null, 2));
-        // Check if any essential data is missing
-        if (!item.item_title) {
-          console.warn('[FavouritesScreen] Group missing title:', item.item_id);
-        }
-        if (!item.item_description) {
-          console.warn('[FavouritesScreen] Group missing description:', item.item_id);
-        }
-        if (!item.item_image_url) {
-          console.warn('[FavouritesScreen] Group missing image URL:', item.item_id);
-        }
+        console.log('[FavouritesScreen] Rendering Group:', item.item_id, 'ViewMode:', viewMode);
+        const groupImageUrl = getValidImageUrl(item.image || item.avatar_url, 'groupavatars');
+        const groupName = item.name || item.item_title || 'Unnamed Group';
+        const groupDescription = item.description || 'No description available.';
+        const groupMembers = item.members != null ? `${item.members} members` : '';
+
         if (viewMode === 'Grid') {
           return (
-            <View style={CardStyles.gridCardWrapper}>
-              <TouchableOpacity 
-                style={CardStyles.gridCardContainer} 
-                onPress={commonCardProps.onPress} 
+            <View style={CardStyles.gridCardWrapper} testID={`group-card-grid-${item.item_id}`}>
+              <TouchableOpacity
+                style={CardStyles.gridCardContainer}
+                onPress={commonCardProps.onPress}
                 activeOpacity={0.8}
               >
                 <View style={CardStyles.gridCardInner}>
                   <View style={CardStyles.gridImageContainer}>
-                    {!item.item_image_url ? (
-                      <View style={{alignItems: 'center', justifyContent: 'center', height: '100%'}}>
-                        <Ionicons name="people-outline" size={60} color={COLORS.darkGray} />
-                      </View>
+                    {groupImageUrl ? (
+                      <Image source={{ uri: groupImageUrl }} style={CardStyles.gridImage} resizeMode="cover" />
                     ) : (
-                      <Image 
-                        source={{ uri: item.item_image_url }} 
-                        style={CardStyles.gridImage}
-                        onError={() => console.log('Group Image Error')} 
-                      />
+                      <View style={[CardStyles.gridImage, CardStyles.gridCardPlaceholderImage]}>
+                        <Ionicons name="people-outline" size={SIZES.xxxLarge} color={COLORS.mediumGray} />
+                      </View>
                     )}
-                    <TouchableOpacity 
-                      style={CardStyles.iconContainer} 
-                      onPress={() => toggleFavorite(item.item_id, item.item_type)}
+                    <TouchableOpacity
+                        style={CardStyles.iconContainer}
+                        onPress={commonCardProps.onToggleFavorite}
                     >
-                      <View style={CardStyles.iconCircleActive}> 
-                        <Ionicons name="heart" style={CardStyles.favoriteIconActive} />
-                      </View>
+                        <View style={CardStyles.iconCircleActive}>
+                          <Ionicons name="heart" size={20} style={CardStyles.favoriteIconActive} />
+                        </View>
                     </TouchableOpacity>
-                    <TouchableOpacity 
-                      style={[CardStyles.iconContainer, { top: 48 }]}
-                      onPress={() => handleOpenShareTray(item)}
-                    >
-                      <View style={CardStyles.iconCircle}> 
-                        <Ionicons name="share-social-outline" style={CardStyles.favoriteIcon} />
-                      </View>
-                    </TouchableOpacity>
+                    {commonCardProps.onSharePress && (
+                        <TouchableOpacity
+                            style={[CardStyles.iconContainer, { top: 48 }]}
+                            onPress={commonCardProps.onSharePress}
+                        >
+                            <View style={CardStyles.iconCircle}>
+                              <Ionicons name="share-social-outline" size={20} style={CardStyles.favoriteIcon} />
+                            </View>
+                        </TouchableOpacity>
+                    )}
                   </View>
-                  
-                  <View style={{padding: 10}}>
-                    <ConsistentHeightTitle 
-                      title={item.item_title || 'Unnamed Group'} 
-                      style={[CardStyles.title, {marginBottom: 0}]} 
-                      numberOfLines={1} 
-                    />
-                    <Text style={[CardStyles.subtitle, {marginTop: 0, marginBottom: 2}]} numberOfLines={2}>{item.item_description || 'No description'}</Text>
+                  <View style={{padding: 8}}>
+                    <Text style={[CardStyles.title, {marginBottom: 4}]} numberOfLines={1}>{groupName}</Text>
+                    <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4}}>
+                        {groupMembers ? <Text style={CardStyles.subtitle} numberOfLines={1}>{groupMembers}</Text> : <View/>}
+                    </View>
+                    <Text style={CardStyles.subtitle} numberOfLines={2}>{groupDescription}</Text>
                   </View>
                 </View>
               </TouchableOpacity>
             </View>
           );
-        } else {
+        } else { // List view for 'group'
           return (
-            <TouchableOpacity 
-              style={CardStyles.listCardContainer} 
-              onPress={commonCardProps.onPress} 
+            <TouchableOpacity
+              style={CardStyles.listCardContainer}
+              onPress={commonCardProps.onPress}
               activeOpacity={0.8}
+              testID={`group-card-list-${item.item_id}`}
             >
-              <View style={CardStyles.listCardInner}> 
-                <View style={CardStyles.listImageContainer}> 
-                  {!item.item_image_url ? (
-                    <Ionicons name="people-outline" size={40} color={COLORS.darkGray} />
+              <View style={CardStyles.listCardInner}>
+                <View style={CardStyles.listImageContainer}>
+                  {groupImageUrl ? (
+                    <Image source={{ uri: groupImageUrl }} style={CardStyles.listImage} onError={(e) => console.log('Group List Image Error:', e.nativeEvent.error)} />
                   ) : (
-                    <Image 
-                      source={{ uri: item.item_image_url }} 
-                      style={CardStyles.listImage}
-                      onError={() => console.log('Group Image Error')} 
-                    />
+                    <View style={CardStyles.listPlaceholderImage}><Ionicons name="people-outline" size={SIZES.xLarge} color={COLORS.mediumGray} /></View>
                   )}
-                  <TouchableOpacity 
-                    style={CardStyles.iconContainer} 
-                    onPress={() => toggleFavorite(item.item_id, item.item_type)}
-                  >
-                    <View style={CardStyles.iconCircleActive}> 
-                      <Ionicons name="heart" style={CardStyles.favoriteIconActive} />
-                    </View>
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={[CardStyles.iconContainer, { top: 48 }]}
-                    onPress={() => handleOpenShareTray(item)}
-                  >
-                    <View style={CardStyles.iconCircle}> 
-                      <Ionicons name="share-social-outline" style={CardStyles.favoriteIcon} />
-                    </View>
-                  </TouchableOpacity>
                 </View>
-                
-                <View style={CardStyles.listContentContainer}> 
-                  <View style={[CardStyles.topSection, {marginBottom: 0}]}> 
-                    <ConsistentHeightTitle 
-                      title={item.item_title || 'Unnamed Group'} 
-                      style={[CardStyles.title, {flex: 1, paddingRight: 5, marginBottom: 0}]} 
-                      numberOfLines={1} 
-                    />
-                  </View>
-                  <Text style={[CardStyles.subtitle, {marginTop: 0, marginBottom: 0}]} numberOfLines={2}>{item.item_description || 'No description available'}</Text>
+                <View style={CardStyles.listContentContainer}>
+                    <View style={CardStyles.topSection}>
+                        <Text style={[CardStyles.title, {flex:1}]} numberOfLines={1}>{groupName}</Text>
+                    </View>
+                    {groupMembers ? <Text style={CardStyles.subtitle} numberOfLines={1}>{groupMembers}</Text> : null}
+                    <Text style={[CardStyles.subtitle, {marginVertical: 4}]} numberOfLines={2}>{groupDescription}</Text>
+                </View>
+                <View style={CardStyles.listIconContainer}>
+                  <TouchableOpacity onPress={commonCardProps.onToggleFavorite} style={CardStyles.listIconWrapper}><Ionicons name="heart" size={24} color={COLORS.primary} /></TouchableOpacity>
+                  <TouchableOpacity onPress={commonCardProps.onSharePress} style={CardStyles.listIconWrapper}><Ionicons name="share-social-outline" size={24} color={COLORS.primary} /></TouchableOpacity>
                 </View>
               </View>
             </TouchableOpacity>
           );
         }
-      default:
-        console.warn(`[FavouritesScreen] Unknown item_type: ${item.item_type} for item ID: ${item.item_id}`);
+
+      case 'housing_group':
+        console.log('[FavouritesScreen] Rendering Housing Group:', item.item_id, 'ViewMode:', viewMode);
+        const hgData = item.housing_group_data; // This is the object { name: ..., housing_listing_data: ... }
+        const listingData = hgData?.housing_listing_data; // This is the actual listing object or null
+        let hgImageUrl = null;
+        if (listingData?.media_urls?.length > 0) {
+          hgImageUrl = getValidImageUrl(listingData.media_urls[0], 'housingimages');
+        } else if (hgData?.avatar_url) {
+          hgImageUrl = getValidImageUrl(hgData.avatar_url, 'housinggroupavatar');
+        }
+        const hgTitle = hgData?.name || item.item_title || 'Unnamed Housing Group';
+        const hgMembers = (hgData?.current_members != null && hgData?.max_members != null)
+                          ? `${hgData.current_members}/${hgData.max_members} members`
+                          : (hgData?.member_count != null ? `${hgData.member_count} members` : '');
+
+
+        let hgLocationDisplayValue = 'Location not specified';
+        if (listingData?.location_text) {
+          hgLocationDisplayValue = listingData.location_text;
+        } else if (listingData?.address) {
+          if (typeof listingData.address === 'string') {
+            hgLocationDisplayValue = listingData.address;
+          } else if (typeof listingData.address === 'object' && listingData.address !== null) {
+            hgLocationDisplayValue = listingData.address.suburb || listingData.address.city || 'Address available';
+          }
+        }
+        if (typeof hgLocationDisplayValue !== 'string' || hgLocationDisplayValue.trim() === '') {
+            hgLocationDisplayValue = 'Location not specified';
+        }
+
         if (viewMode === 'Grid') {
           return (
-            <View style={CardStyles.gridCardWrapper}>
-              <TouchableOpacity 
-                style={CardStyles.gridCardContainer} 
-                onPress={commonCardProps.onPress} 
+            <View style={CardStyles.gridCardWrapper} testID={`housinggroup-card-grid-${item.item_id}`}>
+              <TouchableOpacity
+                style={CardStyles.gridCardContainer}
+                onPress={commonCardProps.onPress}
                 activeOpacity={0.8}
               >
                 <View style={CardStyles.gridCardInner}>
                   <View style={CardStyles.gridImageContainer}>
-                    <View style={{alignItems: 'center', justifyContent: 'center', height: '100%'}}>
-                      <Ionicons name="help-outline" size={60} color={COLORS.darkGray} />
-                    </View>
-                    <TouchableOpacity 
-                      style={CardStyles.iconContainer} 
-                      onPress={() => toggleFavorite(item.item_id, item.item_type)}
-                    >
-                      <View style={CardStyles.iconCircleActive}> 
-                        <Ionicons name="heart" style={CardStyles.favoriteIconActive} />
+                    {hgImageUrl ? (
+                      <Image source={{ uri: hgImageUrl }} style={CardStyles.gridImage} resizeMode="cover" />
+                    ) : (
+                      <View style={[CardStyles.gridImage, CardStyles.gridCardPlaceholderImage]}>
+                        <Ionicons name="home-outline" size={SIZES.xxxLarge} color={COLORS.mediumGray} />
                       </View>
+                    )}
+                    <TouchableOpacity
+                        style={CardStyles.iconContainer}
+                        onPress={commonCardProps.onToggleFavorite}
+                    >
+                        <View style={CardStyles.iconCircleActive}>
+                          <Ionicons name="heart" size={20} style={CardStyles.favoriteIconActive} />
+                        </View>
                     </TouchableOpacity>
+                    {commonCardProps.onSharePress && (
+                        <TouchableOpacity
+                            style={[CardStyles.iconContainer, { top: 48 }]}
+                            onPress={commonCardProps.onSharePress}
+                        >
+                            <View style={CardStyles.iconCircle}>
+                              <Ionicons name="share-social-outline" size={20} style={CardStyles.favoriteIcon} />
+                            </View>
+                        </TouchableOpacity>
+                    )}
                   </View>
-                  
-                  <View style={{padding: 10}}>
-                    <Text style={{fontSize: SIZES.body5, color: COLORS.gray, marginBottom: 4}}>Unsupported type: {item.item_type}</Text>
-                    <ConsistentHeightTitle 
-                      title={item.item_title || 'Unnamed Group'} 
-                      style={[CardStyles.title, {marginBottom: 0}]} 
-                      numberOfLines={1} 
-                    />
+                  <View style={{padding: 8}}>
+                    <Text style={[CardStyles.title, {marginBottom: 4}]} numberOfLines={titleIsSingleLine ? 1 : 2}>{hgTitle}</Text>
+                    <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 4}}>
+                        <Ionicons name="location-outline" size={16} color={COLORS.textSecondary} />
+                        <Text style={[CardStyles.subtitle, {marginLeft: 4}]} numberOfLines={1}>{hgLocationDisplayValue}</Text>
+                    </View>
+                    {hgMembers ? <Text style={CardStyles.subtitle} numberOfLines={1}>{hgMembers}</Text> : null}
                   </View>
                 </View>
               </TouchableOpacity>
             </View>
           );
-        } else {
+        } else { // List view for 'housing_group'
           return (
-            <TouchableOpacity 
-              style={CardStyles.listCardContainer} 
-              onPress={commonCardProps.onPress} 
+            <TouchableOpacity
+              style={CardStyles.listCardContainer}
+              onPress={commonCardProps.onPress}
               activeOpacity={0.8}
+              testID={`housinggroup-card-list-${item.item_id}`}
             >
-              <View style={CardStyles.listCardInner}> 
-                <View style={CardStyles.listImageContainer}> 
-                  <View style={{alignItems: 'center', justifyContent: 'center', height: '100%'}}>
-                    <Ionicons name="help-outline" size={40} color={COLORS.darkGray} />
-                  </View>
-                  <TouchableOpacity 
-                    style={CardStyles.iconContainer} 
-                    onPress={() => toggleFavorite(item.item_id, item.item_type)}
-                  >
-                    <View style={CardStyles.iconCircleActive}> 
-                      <Ionicons name="heart" style={CardStyles.favoriteIconActive} />
-                    </View>
-                  </TouchableOpacity>
+              <View style={CardStyles.listCardInner}>
+                <View style={CardStyles.listImageContainer}>
+                  {hgImageUrl ? (
+                    <Image source={{ uri: hgImageUrl }} style={CardStyles.listImage} onError={(e) => console.log('Housing Group List Image Error:', e.nativeEvent.error)} />
+                  ) : (
+                    <View style={CardStyles.listPlaceholderImage}><Ionicons name="home-outline" size={SIZES.xLarge} color={COLORS.mediumGray} /></View>
+                  )}
                 </View>
-                
-                <View style={CardStyles.listContentContainer}> 
-                  <Text style={{fontSize: SIZES.body5, color: COLORS.gray, marginBottom: 4}}>Unsupported type: {item.item_type}</Text>
-                  <ConsistentHeightTitle 
-                    title={item.item_title} 
-                    style={[CardStyles.title, {marginBottom: 0}]} 
-                    numberOfLines={1} 
-                  />
+                <View style={CardStyles.listContentContainer}>
+                    <View style={CardStyles.topSection}>
+                        <Text style={[CardStyles.title, {flex:1}]} numberOfLines={1}>{hgTitle}</Text>
+                    </View>
+                    <Text style={CardStyles.subtitle} numberOfLines={1}>{hgLocationDisplayValue}</Text>
+                    {hgMembers ? <Text style={[CardStyles.subtitle, {marginTop: 4}]} numberOfLines={1}>{hgMembers}</Text> : null}
+                </View>
+                <View style={CardStyles.listIconContainer}>
+                  <TouchableOpacity onPress={commonCardProps.onToggleFavorite} style={CardStyles.listIconWrapper}><Ionicons name="heart" size={24} color={COLORS.primary} /></TouchableOpacity>
+                  <TouchableOpacity onPress={commonCardProps.onSharePress} style={CardStyles.listIconWrapper}><Ionicons name="share-social-outline" size={24} color={COLORS.primary} /></TouchableOpacity>
                 </View>
               </View>
             </TouchableOpacity>
+          );
+        }
+
+      default:
+        console.warn(`[FavouritesScreen] Unknown item_type in renderItem: ${item.item_type} for item ID: ${item.item_id}`);
+        const defaultTitle = item.item_title || `Unknown Item: ${item.item_id}`;
+        // Ensure CardStyles has definitions for these placeholder styles if they are different
+        // from the standard ones like CardStyles.title, CardStyles.subtitle
+        if (viewMode === 'Grid') {
+          return (
+            <View style={CardStyles.gridCardWrapper} testID={`unknown-card-grid-${item.item_id}`}>
+              <View style={[CardStyles.gridCardContainer, CardStyles.gridCardPlaceholderImage, {alignItems:'center', justifyContent:'center'}]}>
+                <Ionicons name="help-circle-outline" size={SIZES.xxxLarge} color={COLORS.mediumGray} />
+                <Text style={[CardStyles.title, {textAlign:'center'}]} numberOfLines={2}>{defaultTitle}</Text>
+                <Text style={[CardStyles.subtitle, {textAlign:'center'}]}>{`Type: ${item.item_type}`}</Text>
+              </View>
+            </View>
+          );
+        } else {
+          return (
+            <View style={[CardStyles.listCardContainer, {alignItems:'center'}]} testID={`unknown-card-list-${item.item_id}`}>
+              <Ionicons name="help-circle-outline" size={SIZES.xLarge} color={COLORS.mediumGray} style={{marginRight: SIZES.base}}/>
+              <View style={CardStyles.listContentContainer}>
+                <Text style={CardStyles.title} numberOfLines={2}>{defaultTitle}</Text>
+                <Text style={CardStyles.subtitle}>{`Type: ${item.item_type}`}</Text>
+              </View>
+            </View>
           );
         }
     }
@@ -769,42 +679,56 @@ const FavouritesScreen = () => {
   return (
     <View style={styles.container}>
       <AppHeader title="Favorites" navigation={navigation} />
-      <SearchComponent 
+      <SearchComponent
         categories={categories}
         selectedCategory={selectedCategory}
-        onCategoryChange={setSelectedCategory}
+        onCategoryChange={(category) => {
+            console.log("Category changed to:", category);
+            setSelectedCategory(category);
+        }}
         searchTerm={searchTerm}
-        onSearchChange={setSearchTerm}
+        onSearchChange={(term) => {
+            console.log("Search term changed to:", term);
+            setSearchTerm(term);
+        }}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
         sortConfig={sortConfig}
-        onSortChange={setSortConfig}
+        onSortChange={(config) => {
+            console.log("Sort config changed to:", config);
+            setSortConfig(config);
+        }}
         showSortOptions={true}
       />
-      {loading && favorites.length === 0 ? (
+      {loading && favorites.length === 0 && page === 0 ? ( // Show loader only on initial full load
         <ActivityIndicator size="large" color={COLORS.primary} style={styles.loader} />
-      ) : favorites.length === 0 ? (
+      ) : !loading && favorites.length === 0 ? ( // Show empty only if not loading and no favorites
         <View style={styles.emptyContainer}>
           <Ionicons name="heart-dislike-outline" size={80} color={COLORS.gray} />
           <Text style={styles.emptyText}>You haven't favorited anything yet.</Text>
+          <Text style={styles.emptySubText}>Tap the heart on items to add them here!</Text>
         </View>
       ) : (
         <FlatList
           ref={flatListRef}
           data={favorites}
           renderItem={renderItem}
-          keyExtractor={(item, index) => `${item.item_id}-${item.item_type}-${index}`}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          keyExtractor={(item, index) => `${item.item_type}-${item.item_id}-${index}`} // Ensure item_id is unique per type
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} tintColor={COLORS.primary}/>}
           onEndReached={loadMore}
           onEndReachedThreshold={0.5}
-          ListFooterComponent={loadingMore ? <ActivityIndicator size="small" color={COLORS.primary} /> : null}
+          ListFooterComponent={loadingMore ? <ActivityIndicator size="small" color={COLORS.primary} style={{ marginVertical: 20 }}/> : null}
           numColumns={viewMode === 'Grid' ? 2 : 1}
           key={viewMode} // Important for re-rendering on viewMode change
           contentContainerStyle={viewMode === 'Grid' ? styles.gridContainer : styles.listContainer}
           columnWrapperStyle={viewMode === 'Grid' ? styles.columnWrapper : null}
+          // Performance settings
+          initialNumToRender={PAGE_SIZE / 2}
+          maxToRenderPerBatch={PAGE_SIZE / 2}
+          windowSize={PAGE_SIZE + 5} // Roughly current page items + 1 page ahead and 1 behind
         />
       )}
-      <ShareTrayModal 
+      <ShareTrayModal
         visible={shareModalVisible}
         onClose={handleCloseShareTray}
         itemToShare={itemToShare}
@@ -816,66 +740,48 @@ const FavouritesScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.lightGray,
+    backgroundColor: COLORS.lightGray, // Or COLORS.background for consistency
   },
   loader: {
-    marginTop: 20,
+    flex: 1, // To center it if it's the only thing
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
-    backgroundColor: COLORS.white,
+    backgroundColor: COLORS.white, // Or transparent to see container bg
   },
   emptyText: {
-    fontSize: SIZES.h3,
-    fontWeight: 'bold',
-    marginTop: 16,
+    fontSize: SIZES.h3, // Use FONTS.h3
+    fontFamily: FONTS.bold,
+    marginTop: SIZES.medium,
     color: COLORS.darkGray,
+    textAlign: 'center',
+  },
+  emptySubText: {
+    fontSize: SIZES.body3, // Use FONTS.body3
+    fontFamily: FONTS.regular,
+    marginTop: SIZES.base,
+    color: COLORS.gray,
+    textAlign: 'center',
   },
   gridContainer: {
-    paddingBottom: 20,
-    paddingHorizontal: CARD_MARGIN,
+    paddingBottom: SIZES.large, // Use theme sizes
+    paddingHorizontal: CARD_MARGIN / 2, // Adjust for half margin on sides
   },
   listContainer: {
-    paddingBottom: 20,
+    paddingBottom: SIZES.large,
     paddingHorizontal: CARD_MARGIN,
   },
   columnWrapper: {
     justifyContent: 'space-between',
+    paddingHorizontal: CARD_MARGIN / 2, // Distribute remaining margin
   },
-  cardContainer: {
-    backgroundColor: COLORS.white,
-    borderRadius: 12,
-    marginBottom: 12,
-    ...SHADOWS.small,
-    width: '100%',
-  },
-  cardImage: {
-    width: '100%',
-    height: 150,
-    marginBottom: 8,
-    borderTopLeftRadius: 12,
-    borderTopRightRadius: 12,
-  },
-  cardTitle: {
-    fontSize: SIZES.h4,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  favButton: {
-    padding: 4, 
-  },
-  shareButton: {
-    padding: 4, 
-  },
-  actionsContainer: { 
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 8,
-  },
+  // Card specific styles were removed as they should come from CardStyles.js
+  // If any were truly unique to this screen, they can be re-added or moved to CardStyles
 });
 
 export default FavouritesScreen;

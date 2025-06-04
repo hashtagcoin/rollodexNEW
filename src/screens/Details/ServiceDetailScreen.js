@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, Linking, ActivityIndicator, FlatList } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, Linking, ActivityIndicator, FlatList, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import AppHeader from '../../components/layout/AppHeader';
@@ -20,6 +20,7 @@ const ServiceDetailScreen = ({ route }) => {
   const [serviceData, setServiceData] = useState(null);
   const [liked, setLiked] = useState(false);
   const [showAvailabilityModal, setShowAvailabilityModal] = useState(false);
+  const [favoriteLoading, setFavoriteLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedTime, setSelectedTime] = useState(null);
   const [selectedTimeDisplay, setSelectedTimeDisplay] = useState(null);
@@ -83,60 +84,148 @@ const ServiceDetailScreen = ({ route }) => {
   }, [serviceData]);
 
   // Fetch service details from Supabase
-  useEffect(() => {
-    const fetchServiceDetails = async () => {
-      try {
-        setLoading(true);
+  const fetchServiceDetails = useCallback(async () => {
+    try {
+      setLoading(true);
+      
+      // Fetch the service and provider details in a single query with a join
+      const { data, error } = await supabase
+        .from('services')
+        .select(`
+          id, title, description, category, format, price, available, media_urls,
+          service_providers!inner(
+            business_name, credentials, verified, service_area, business_description, logo_url
+          )
+        `)
+        .eq('id', serviceId)
+        .single();
         
-        // Fetch the service and provider details in a single query with a join
-        const { data, error } = await supabase
-          .from('services')
-          .select(`
-            id, title, description, category, format, price, available, media_urls,
-            service_providers!inner(
-              business_name, credentials, verified, service_area, business_description, logo_url
-            )
-          `)
-          .eq('id', serviceId)
-          .single();
-          
-        if (error) throw error;
-        
-        // Format the data for our UI
-        if (data) {
-          setServiceData({
-            id: data.id,
-            title: data.title,
-            description: data.description,
-            category: data.category,
-            format: data.format,
-            price: data.price,
-            available: data.available,
-            media_urls: data.media_urls,
-            business_name: data.service_providers.business_name,
-            credentials: data.service_providers.credentials,
-            verified: data.service_providers.verified,
-            service_area: data.service_providers.service_area,
-            business_description: data.service_providers.business_description,
-            logo_url: data.service_providers.logo_url,
-            // Adding mock data for fields not in the database
-            rating: 4.8,
-            subtitle: `${data.category} services - ${data.format}`,
-            support_types: [data.category, data.format === 'Online' ? 'Remote Support' : 'In-Person Support'],
-            availability: data.available ? 'Monday–Friday' : 'Currently Unavailable',
-            ndis_number: '4-6785-8920'
-          });
-        }
-      } catch (err) {
-        console.error('Error fetching service details:', err);
-        setError(err.message);
-      } finally {
-        setLoading(false);
+      if (error) throw error;
+      
+      // Format the data for our UI
+      if (data) {
+        setServiceData({
+          id: data.id,
+          title: data.title,
+          description: data.description,
+          category: data.category,
+          format: data.format,
+          price: data.price,
+          available: data.available,
+          media_urls: data.media_urls,
+          business_name: data.service_providers.business_name,
+          credentials: data.service_providers.credentials,
+          verified: data.service_providers.verified,
+          service_area: data.service_providers.service_area,
+          business_description: data.service_providers.business_description,
+          logo_url: data.service_providers.logo_url,
+          // Adding mock data for fields not in the database
+          rating: 4.8,
+          subtitle: `${data.category} services - ${data.format}`,
+          support_types: [data.category, data.format === 'Online' ? 'Remote Support' : 'In-Person Support'],
+          availability: data.available ? 'Monday–Friday' : 'Currently Unavailable',
+          ndis_number: '4-6785-8920'
+        });
       }
-    };
-    
-    fetchServiceDetails();
+    } catch (err) {
+      console.error('Error fetching service details:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   }, [serviceId]);
+  
+  // Initial data fetch
+  useEffect(() => {
+    fetchServiceDetails();
+    checkIfFavorited();
+  }, [fetchServiceDetails]);
+  
+  // Check if this service is in user's favorites
+  const checkIfFavorited = useCallback(async () => {
+    try {
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError || !user) {
+        console.log('[ServiceDetailScreen] Not logged in, cannot check favorites');
+        return;
+      }
+      
+      const { data, error } = await supabase
+        .from('favorites')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('item_id', serviceId)
+        .eq('item_type', 'service_provider');
+        
+      if (error) {
+        console.error('[ServiceDetailScreen] Error checking favorites:', error);
+        return;
+      }
+      
+      setLiked(data && data.length > 0);
+    } catch (err) {
+      console.error('[ServiceDetailScreen] Exception checking favorites:', err);
+    }
+  }, [serviceId]);
+  
+  // Toggle favorite status in Supabase
+  const toggleFavorite = useCallback(async () => {
+    try {
+      setFavoriteLoading(true);
+      
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError || !user) {
+        Alert.alert('Authentication Error', 'You must be logged in to favorite items.');
+        setFavoriteLoading(false);
+        return;
+      }
+      
+      if (liked) {
+        // Remove from favorites
+        const { error } = await supabase
+          .from('favorites')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('item_id', serviceId)
+          .eq('item_type', 'service_provider');
+          
+        if (error) {
+          console.error('[ServiceDetailScreen] Error removing favorite:', error);
+          Alert.alert('Error', 'Could not remove from favorites. Please try again.');
+        } else {
+          setLiked(false);
+          console.log('[ServiceDetailScreen] Removed from favorites');
+        }
+      } else {
+        // Add to favorites using upsert to handle potential conflicts
+        const { error } = await supabase
+          .from('favorites')
+          .upsert({
+            user_id: user.id,
+            item_id: serviceId,
+            item_type: 'service_provider'
+          }, {
+            onConflict: 'user_id,item_id,item_type',
+            ignoreDuplicates: true
+          });
+          
+        if (error) {
+          console.error('[ServiceDetailScreen] Error adding favorite:', error);
+          Alert.alert('Error', 'Could not add to favorites. Please try again.');
+        } else {
+          setLiked(true);
+          console.log('[ServiceDetailScreen] Added to favorites');
+        }
+      }
+    } catch (err) {
+      console.error('[ServiceDetailScreen] Exception in toggleFavorite:', err);
+      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
+    } finally {
+      setFavoriteLoading(false);
+    }
+  }, [serviceId, liked]);
   
   // Generate stars based on rating
   const renderStars = (rating) => {
@@ -359,15 +448,20 @@ const ServiceDetailScreen = ({ route }) => {
           {/* Like button - styled to match ServiceCard */}
           <TouchableOpacity 
             style={styles.heartIconContainer}
-            onPress={() => setLiked(!liked)}
+            onPress={toggleFavorite}
             activeOpacity={0.8}
+            disabled={favoriteLoading}
           >
             <View style={styles.heartIconCircle}>
-              <Ionicons 
-                name={liked ? "heart" : "heart-outline"} 
-                size={20} 
-                color={liked ? "#FF6B6B" : "white"} 
-              />
+              {favoriteLoading ? (
+                <ActivityIndicator size="small" color={liked ? "#FF6B6B" : "white"} />
+              ) : (
+                <Ionicons 
+                  name={liked ? "heart" : "heart-outline"} 
+                  size={20} 
+                  color={liked ? "#FF6B6B" : "white"} 
+                />
+              )}
             </View>
           </TouchableOpacity>
         </View>
