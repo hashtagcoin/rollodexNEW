@@ -57,7 +57,7 @@ const MOCK_NOTIFICATIONS = [
     created_at: new Date(Date.now() - 25 * 60 * 1000).toISOString()
   },
   {
-    id: '3',
+    id: '3a', // Corrected duplicate ID
     user_id: 'current-user-id',
     type: 'HOUSING',
     title: 'New housing recommendation',

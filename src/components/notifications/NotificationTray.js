@@ -379,9 +379,25 @@ const NotificationTray = ({ visible, onClose, notifications = [], loading = fals
             />
           }
         >
-          {notifications.map((notification) => (
+          {notifications.map((notification, index) => {
+            const notificationId = notification && notification.id !== undefined && notification.id !== null 
+              ? notification.id.toString() 
+              : null;
+
+            const key = notificationId !== null 
+              ? notificationId 
+              : `notification-fallback-${index}`;
+
+            if (notificationId === null) {
+              console.warn(
+                `[NotificationTray] Notification ID is undefined or null. Using fallback key: ${key}. Notification object:`, 
+                JSON.stringify(notification)
+              );
+            }
+
+            return (
             <TouchableOpacity
-              key={notification.id}
+              key={key}
               style={[
                 styles.notificationItem,
                 !notification.read && styles.unreadNotification,
@@ -407,7 +423,7 @@ const NotificationTray = ({ visible, onClose, notifications = [], loading = fals
               </View>
               {!notification.read && <View style={styles.unreadIndicator} />}
             </TouchableOpacity>
-          ))}
+          );})}
         </ScrollView>
       )}
 

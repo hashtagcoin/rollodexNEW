@@ -131,7 +131,12 @@ const FavouritesScreen = () => {
 
       const favoritesWithEnrichedData = await Promise.all(
         data.map(async (favorite) => {
-          let enriched = { ...favorite }; // Contains favorite.id, favorite.item_id, etc.
+          const favTableId = favorite.favorite_id; // Corrected to use 'favorite_id' as per schema
+          if (favTableId === undefined) {
+            // This warning should ideally not appear if favorite_id is the PK and always present
+            console.warn(`[FavouritesScreen] fetchFavorites: favorite.favorite_id is undefined. Full favorite object:`, JSON.stringify(favorite));
+          }
+          let enriched = { ...favorite, favorite_table_id: favTableId }; // Preserve PK from 'favorites' table
           try {
             switch (favorite.item_type) {
               case 'service_provider': {
@@ -257,9 +262,19 @@ const FavouritesScreen = () => {
 
       console.log('[FavouritesScreen] favoritesWithEnrichedData after enrichment:', JSON.stringify(favoritesWithEnrichedData.length, null, 2));
       setFavorites(prev => {
-        const newFavorites = isRefreshing || pageNum === 0 ? favoritesWithEnrichedData : [...prev, ...favoritesWithEnrichedData];
-        console.log('[FavouritesScreen] setFavorites called. New favorites count:', newFavorites.length);
-        return newFavorites;
+        let newItemsToAdd = favoritesWithEnrichedData;
+        // When appending (not a refresh or initial load), filter out items already present based on favorite_table_id
+        if (!isRefreshing && pageNum > 0) {
+          const existingIds = new Set(prev.map(p => p.favorite_table_id));
+          newItemsToAdd = favoritesWithEnrichedData.filter(item => !existingIds.has(item.favorite_table_id));
+        }
+
+        const updatedFavorites = isRefreshing || pageNum === 0 
+          ? newItemsToAdd // For refresh or initial load, directly use (potentially filtered if pageNum > 0 but isRefreshing is true, though typically pageNum would be 0 for refresh)
+          : [...prev, ...newItemsToAdd]; // For append, add the filtered new items
+        
+        console.log('[FavouritesScreen] setFavorites called. Prev count:', prev.length, 'New items received:', favoritesWithEnrichedData.length, 'New items to add:', newItemsToAdd.length, 'Updated favorites count:', updatedFavorites.length);
+        return updatedFavorites;
       });
       setHasMore(data.length === PAGE_SIZE);
       setPage(pageNum);
@@ -370,7 +385,7 @@ const FavouritesScreen = () => {
         const entityId = item.item_id; // This should be the ID of the service, housing, group etc.
         switch (item.item_type) {
           case 'service_provider':
-            navigation.navigate('ServiceProviderDetail', { providerId: entityId, service_provider_name: item.item_title || item.name });
+            navigation.navigate('ServiceDetail', { providerId: entityId, service_provider_name: item.item_title || item.name });
             break;
           case 'housing_listing':
             navigation.navigate('HousingDetail', { listingId: entityId });
@@ -382,7 +397,7 @@ const FavouritesScreen = () => {
             navigation.navigate('HousingGroupDetailScreen', { housingGroupId: entityId });
             break;
           case 'group_event': // Assuming 'event' favorites are stored as 'group_event' type
-             navigation.navigate('GroupEventDetailScreen', { eventId: entityId, groupId: item.group_id });
+             navigation.navigate('EventDetail', { eventId: entityId, groupId: item.group_id });
             break;
           default:
             console.warn(`[FavouritesScreen] No specific navigation path for item_type: ${item.item_type} in commonCardProps.onPress`);
@@ -422,7 +437,7 @@ const FavouritesScreen = () => {
             item={groupEventCardItem}
             displayAs={commonCardProps.displayAs}
             onSharePress={commonCardProps.onSharePress}
-            onPress={() => navigation.navigate('GroupEventDetailScreen', { eventId: groupEventCardItem.id, groupId: groupEventCardItem.group_id })}
+            onPress={() => navigation.navigate('EventDetail', { eventId: groupEventCardItem.id, groupId: groupEventCardItem.group_id })}
             onRemoveFavorite={commonCardProps.onToggleFavorite}
             testID={`group-event-card-${groupEventCardItem.id}`}
           />
@@ -734,7 +749,16 @@ const FavouritesScreen = () => {
           ref={flatListRef}
           data={favorites}
           renderItem={renderItem}
-          keyExtractor={(item, index) => `${item.item_type}-${item.item_id}-${index}`} // Ensure item_id is unique per type
+          keyExtractor={(item, index) => {
+            if (item.favorite_table_id !== undefined && item.favorite_table_id !== null) {
+              return item.favorite_table_id.toString();
+            }
+            // Fallback if favorite_table_id (from favorite.id) is not available
+            const type = item.item_type || 'unknown_type';
+            const entityId = item.item_id || 'unknown_item_id'; // item_id of the actual entity (service, group etc)
+            console.warn(`[FavouritesScreen] keyExtractor: favorite_table_id is undefined for item_type: ${type}, item_id: ${entityId}. Using fallback key with index ${index}.`);
+            return `${type}-${entityId}-${index}`;
+          }} // Ensure item_id is unique per type
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} tintColor={COLORS.primary}/>}
           onEndReached={loadMore}
           onEndReachedThreshold={0.5}
