@@ -8,15 +8,46 @@ const MOCK_NOTIFICATIONS = [
   {
     id: '1',
     user_id: 'current-user-id', // Will be replaced with actual user ID
+    type: 'BADGE',
+    title: 'Badge Earned!',
+    content: 'You earned the "Community Champion" badge',
+    body: JSON.stringify({ 
+      badgeId: 'badge-123',
+      badgeName: 'Community Champion',
+      badgeDescription: 'Awarded for active participation in the community',
+      badgeIcon: 'https://example.com/badges/community-champion.png',
+      badgeCategory: 'Social',
+      badgePoints: 100,
+      awardedAt: new Date().toISOString()
+    }),
+    seen: false,
+    created_at: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+    user_badges: [{
+      badge_id: 'badge-123',
+      awarded_at: new Date().toISOString(),
+      is_claimed: false,
+      badges: {
+        id: 'badge-123',
+        name: 'Community Champion',
+        description: 'Awarded for active participation in the community',
+        icon_url: 'https://example.com/badges/community-champion.png',
+        category: 'Social',
+        points: 100
+      }
+    }]
+  },
+  {
+    id: '2',
+    user_id: 'current-user-id',
     type: 'CHAT',
     title: 'New message from Sarah',
     content: 'Hey, are you still interested in the apartment?',
     body: JSON.stringify({ chatId: '123', sender_name: 'Sarah', sender_id: 'user-456' }),
     seen: false,
-    created_at: new Date(Date.now() - 10 * 60 * 1000).toISOString()
+    created_at: new Date(Date.now() - 25 * 60 * 1000).toISOString()
   },
   {
-    id: '2',
+    id: '3',
     user_id: 'current-user-id',
     type: 'GROUP',
     title: 'Roommate Group',
@@ -119,12 +150,29 @@ export const NotificationProvider = ({ children }) => {
     try {
       let notificationData;
       
-      // Try to get data from Supabase first
-      const { data, error } = await supabase
+      // Try to get data from Supabase first with a join to the badges table
+      let query = supabase
         .from('notifications')
-        .select('*')
+        .select(`
+          *,
+          user_badges!inner(
+            badge_id,
+            awarded_at,
+            is_claimed,
+            badges!inner(
+              id,
+              name,
+              description,
+              icon_url,
+              category,
+              points
+            )
+          )
+        `)
         .eq('user_id', profile?.id)
         .order('created_at', { ascending: false });
+      
+      const { data, error } = await query;
       
       // If we have a Supabase error or no data, fall back to mock data
       if (error || !data || data.length === 0) {
@@ -140,15 +188,28 @@ export const NotificationProvider = ({ children }) => {
         let bodyData = {};
         try {
           if (notification.body) {
-            bodyData = JSON.parse(notification.body);
+            if (typeof notification.body === 'string') {
+              // Try to parse as JSON, fall back to using as plain text if it's not valid JSON
+              try {
+                bodyData = JSON.parse(notification.body);
+              } catch (e) {
+                // If it's not valid JSON, treat it as a plain text message
+                bodyData = { message: notification.body };
+              }
+            } else if (typeof notification.body === 'object') {
+              // If body is already an object, use it directly
+              bodyData = notification.body;
+            }
           }
         } catch (e) {
-          console.error('Error parsing notification body:', e);
+          console.error('Error processing notification body:', e, 'Body:', notification.body);
+          // Fallback to using the raw body as a message
+          bodyData = { message: notification.body || 'New notification' };
         }
         
         // Extract IDs based on notification type
         // Some types store IDs directly in the content field
-        const notificationData = {};
+        let notificationData = {};
         
         // Process based on notification type
         switch(notification.type.toUpperCase()) {
@@ -173,8 +234,28 @@ export const NotificationProvider = ({ children }) => {
             notificationData.chatId = bodyData.chatId || notification.content;
             break;
           case 'BADGE':
-            // Badge notifications don't need an ID, just navigate to rewards
-            notificationData.screen = 'RewardsScreen';
+            // For badge notifications, include the badge details
+            if (notification.user_badges && notification.user_badges.length > 0) {
+              const badge = notification.user_badges[0].badges;
+              // Create a new object with all the badge data
+              const badgeData = {
+                ...notificationData, // Spread existing data first
+                badgeId: badge.id,
+                badgeName: badge.name,
+                badgeDescription: badge.description,
+                badgeIcon: badge.icon_url,
+                badgeCategory: badge.category,
+                badgePoints: badge.points,
+                awardedAt: notification.user_badges[0].awarded_at,
+                isClaimed: notification.user_badges[0].is_claimed,
+                screen: 'RewardsScreen'
+              };
+              // Assign the new object back to notificationData
+              notificationData = badgeData;
+            } else {
+              // Fallback to basic data if badge details aren't available
+              notificationData.screen = 'RewardsScreen';
+            }
             break;
           case 'SYSTEM':
             // System notifications might specify a screen to navigate to

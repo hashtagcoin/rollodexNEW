@@ -373,9 +373,9 @@ const FavouritesScreen = () => {
             navigation.navigate('ServiceProviderDetail', { providerId: entityId, service_provider_name: item.item_title || item.name });
             break;
           case 'housing_listing':
-            navigation.navigate('HousingDetailScreen', { listingId: entityId });
+            navigation.navigate('HousingDetail', { listingId: entityId });
             break;
-          case 'housing_group':
+          case 'group': // Changed from 'housing_group'
             navigation.navigate('GroupDetail', { groupId: entityId });
             break;
           case 'housing_group':
