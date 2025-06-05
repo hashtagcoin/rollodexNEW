@@ -51,6 +51,8 @@ const FavouritesScreen = () => {
 
   const mapCategoryToItemType = (category) => {
     switch (category) {
+      case 'All':
+        return null; // No filter, fetch all types
       case 'Services':
         return 'service_provider';
       case 'Events':
@@ -58,7 +60,7 @@ const FavouritesScreen = () => {
       case 'Housing':
         return 'housing_listing';
       case 'Groups':
-        return 'housing_group';
+        return 'group';
       case 'Housing Groups':
         return 'housing_group';
       default:
@@ -66,6 +68,7 @@ const FavouritesScreen = () => {
         return null;
     }
   };
+
 
   const fetchFavorites = useCallback(async (pageNum = 0, isRefreshing = false) => {
     console.log(`[FavouritesScreen] fetchFavorites called. Page: ${pageNum}, Refreshing: ${isRefreshing}, Loading: ${loading}, HasMore: ${hasMore}, Category: ${selectedCategory}, Search: ${searchTerm}`);
@@ -161,7 +164,7 @@ const FavouritesScreen = () => {
                 else if (eventErr) console.warn(`[Enrichment] Group Event ${favorite.item_id}:`, eventErr.message);
                 break;
               }
-              case 'housing_group': {
+              case 'group': {
                 const { data: groupData, error: groupError } = await supabase
                   .from('groups')
                   .select('id, name, description, avatar_url, imageurl, category, is_public, group_members ( count )')
@@ -444,6 +447,7 @@ const FavouritesScreen = () => {
         };
         return <HousingCardComponent item={housingListingItem} {...commonCardProps} />;
 
+      case 'group':
       case 'housing_group':
         console.log('[FavouritesScreen] Rendering Group:', item.item_id, 'ViewMode:', viewMode);
         const groupImageUrl = getValidImageUrl(item.image || item.avatar_url, 'groupavatars');
