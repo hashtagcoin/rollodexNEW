@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { standardizeServiceImageUrls } from '../../utils/imageHelper';
 import {
   View,
   Text,
@@ -205,18 +206,31 @@ const CreateServiceListingScreen = ({ navigation }) => {
         const storageFileName = `${randomString}.${fileExt}`;
         const filePath = `service-images/${storageFileName}`;
         
-        // Fetch the image as blob
-        const response = await fetch(imageAsset.uri);
-        const blob = await response.blob();
-        
-        // Check for 0-byte blob exactly as in housing listing
-        if (blob.size === 0) {
-          console.warn(`Skipping 0-byte blob for image: ${imageAsset.uri}`);
-          Alert.alert('Upload Warning', `An image (${imageAsset.fileName || 'selected image'}) appears to be empty and was not uploaded.`);
+        // Fetch and create blob from image URI
+        let response;
+        let blob;
+        try {
+          response = await fetch(imageAsset.uri);
+          blob = await response.blob();
+          
+          // CRITICAL: Check for 0-byte blob which causes the blank image issue
+          if (blob.size === 0) {
+            console.warn(`[IMAGE_DEBUG][CreateServiceListingScreen] Skipping 0-byte blob for image: ${imageAsset.uri}`);
+            Alert.alert('Upload Warning', `An image (${imageAsset.fileName || 'selected image'}) appears to be empty and was not uploaded.`);
+            continue; // Skip this image
+          }
+          
+          // Log successful blob creation for tracking
+          console.log(`[IMAGE_DEBUG][CreateServiceListingScreen] Successfully created blob with size: ${blob.size} bytes for ${imageAsset.uri}`);
+        } catch (blobError) {
+          console.error('[IMAGE_DEBUG][CreateServiceListingScreen] Error creating blob from image:', blobError);
+          Alert.alert('Image Error', 'Could not process an image. Please try a different one.');
           continue; // Skip this image
         }
         
-        // Upload to Supabase Storage
+        // Log pre-upload information
+        console.log(`[IMAGE_DEBUG][CreateServiceListingScreen] Attempting upload to path: ${filePath}, blob size: ${blob.size} bytes`);
+        
         const { data, error } = await supabase.storage
           .from('providerimages')
           .upload(filePath, blob, {
@@ -225,14 +239,38 @@ const CreateServiceListingScreen = ({ navigation }) => {
           });
         
         if (error) {
-          console.error('Supabase upload error for:', imageAsset.uri, error);
-          throw error; // Throw error exactly as in housing listing
+          console.error('[IMAGE_DEBUG][CreateServiceListingScreen] Supabase upload error:', {
+            error: error.message,
+            filePath,
+            imageUri: imageAsset.uri,
+            blobSize: blob.size
+          });
+          Alert.alert('Upload Error', 'There was a problem uploading your image. Please try again.');
+          throw error;
         }
         
-        // Get the public URL exactly as in housing listing
+        console.log('[IMAGE_DEBUG][CreateServiceListingScreen] Upload successful to path:', filePath);
+        
+        // Get the public URL for the uploaded image
         const { data: { publicUrl } } = supabase.storage
           .from('providerimages')
           .getPublicUrl(filePath);
+        
+        // Comprehensive logging of the public URL that will be saved to database
+        console.log('[IMAGE_DEBUG][CreateServiceListingScreen][URL_CREATED]', {
+          publicUrl,
+          filePath,
+          storageFileName,
+          blobSize: blob.size,
+          timestamp: new Date().toISOString()
+        });
+        
+        // Make sure we have a valid URL before adding to our list
+        if (!publicUrl) {
+          console.error('[IMAGE_DEBUG][CreateServiceListingScreen] Missing public URL for uploaded file:', filePath);
+          Alert.alert('Warning', 'An image was uploaded but could not be properly referenced. Please check your images.');
+          continue;
+        }
         
         uploadedUrls.push(publicUrl);
       }
@@ -461,6 +499,14 @@ const CreateServiceListingScreen = ({ navigation }) => {
       // Show processing message with Instagram-style feedback
       Alert.alert('Creating Service', 'Your service is being created...');
       
+      // Standardize the URLs before saving to database
+      console.log('[IMAGE_DEBUG][CreateServiceListingScreen][SAVE] Original media URLs:', mediaUrls);
+      
+      // Process image URLs to ensure they have consistent format in the database
+      // This is critical to fix the blank images issue
+      const standardizedUrls = standardizeServiceImageUrls(mediaUrls, profile?.id, 'CreateServiceListingScreen-Save');
+      console.log('[IMAGE_DEBUG][CreateServiceListingScreen][SAVE] Standardized URLs for database:', standardizedUrls);
+      
       // Use the create_service RPC function to bypass RLS
       console.log('Using create_service RPC function to bypass RLS');
       const price = parseFloat(formData.price) || 0;
@@ -472,7 +518,7 @@ const CreateServiceListingScreen = ({ navigation }) => {
         p_category: formData.category,
         p_format: formData.format,
         p_price: price,
-        p_media_urls: mediaUrls,
+        p_media_urls: standardizedUrls, // Use standardized URLs
         p_address_number: formData.addressNumber || '',
         p_address_street: formData.addressStreet || '',
         p_address_suburb: formData.addressSuburb || '',

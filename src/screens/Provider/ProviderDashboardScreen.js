@@ -10,6 +10,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, FONTS } from '../../constants/theme';
 import { useUser } from '../../context/UserContext';
 import { supabase } from '../../lib/supabaseClient';
+import DynamicLogo from '../../components/common/DynamicLogo';
 import { formatDistanceToNow, format, parseISO, isValid } from 'date-fns';
 import { useNotifications, NotificationBadge } from '../../components/notifications';
 
@@ -278,9 +279,10 @@ const ProviderDashboardContent = () => {
       {/* Top Bar with Logo Icon, Title and Notification */}
       <View style={styles.topBar}>
         <View style={styles.titleContainer}>
-          <Image
-            source={require('../../assets/images/rollodex-title.png')}
-            style={styles.titleLogo}
+          <DynamicLogo
+            isLight={true} // Provider dashboard has a light background by default
+            style={styles.titleContainer}
+            imageStyle={styles.titleLogo}
             resizeMode="contain"
           />
         </View>

@@ -8,19 +8,19 @@ import {
   Image, 
   ActivityIndicator, 
   Alert,
-  Share,
   Modal,
   TextInput,
   Platform,
-  KeyboardAvoidingView
+  KeyboardAvoidingView,
+  Share // <-- FIX 1: Added missing Share import
 } from 'react-native';
+import AppHeader from '../../components/layout/AppHeader';
 import { useRoute } from '@react-navigation/native';
-import { format, parseISO, formatDistance, addDays, addWeeks, addMonths, isValid } from 'date-fns';
-// Using custom date/time pickers instead of DateTimePicker
-import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons, Feather, MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { format, parseISO, formatDistance, addDays } from 'date-fns';
+// import { LinearGradient } from 'expo-linear-gradient'; // <-- FIX 2: Removed unused import
+import { Ionicons, MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabaseClient';
-import { COLORS, FONTS } from '../../constants/theme';
+import { COLORS } from '../../constants/theme';
 import { useUser } from '../../context/UserContext';
 
 const BookingDetailScreen = ({ navigation }) => {
@@ -134,10 +134,10 @@ const BookingDetailScreen = ({ navigation }) => {
     if (isPM && hour !== 12) hour += 12;
     if (!isPM && hour === 12) hour = 0;
     
-    const minute = parseInt(minuteStr);
+    const minute = parseInt(minuteStr.split(' ')[0]);
     
     const updatedDate = new Date(newDate);
-    updatedDate.setHours(hour, minute);
+    updatedDate.setHours(hour, minute, 0, 0);
     setNewDate(updatedDate);
   };
   
@@ -313,13 +313,14 @@ const BookingDetailScreen = ({ navigation }) => {
       case 'completed':
         return '#8E8E93'; // Gray
       case 'cancelled':
+      case 'rescheduled':
         return '#FF3B30'; // Red
       default:
         return '#8E8E93'; // Gray
     }
   };
 
-  // Calculate if booking can be cancelled (only future and non-cancelled bookings)
+  // Calculate if booking can be cancelled (only future and non-cancelled/completed bookings)
   const canCancel = booking && 
     booking.booking_status?.toLowerCase() !== 'cancelled' && 
     booking.booking_status?.toLowerCase() !== 'completed' &&
@@ -335,25 +336,31 @@ const BookingDetailScreen = ({ navigation }) => {
   const statusColor = booking ? getStatusColor(booking.booking_status) : '#8E8E93';
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-      {loading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
-          <Text style={styles.loadingText}>Loading booking details...</Text>
-        </View>
-      ) : error ? (
-        <View style={styles.errorContainer}>
-          <Ionicons name="alert-circle-outline" size={60} color="#FF3B30" />
-          <Text style={styles.errorTitle}>Error</Text>
-          <Text style={styles.errorMessage}>{error}</Text>
-          <TouchableOpacity 
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-          >
-            <Text style={styles.backButtonText}>Go Back</Text>
-          </TouchableOpacity>
-        </View>
-      ) : booking ? (
+    <View style={styles.container}>
+      <AppHeader 
+        title="Booking Details" 
+        navigation={navigation}
+        canGoBack={true}
+      />
+      <ScrollView contentContainerStyle={styles.contentContainer}>
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={COLORS.primary} />
+            <Text style={styles.loadingText}>Loading booking details...</Text>
+          </View>
+        ) : error ? (
+          <View style={styles.errorContainer}>
+            <Ionicons name="alert-circle-outline" size={60} color="#FF3B30" />
+            <Text style={styles.errorTitle}>Error</Text>
+            <Text style={styles.errorMessage}>{error}</Text>
+            <TouchableOpacity 
+              style={styles.backButton}
+              onPress={() => navigation.goBack()}
+            >
+              <Text style={styles.backButtonText}>Go Back</Text>
+            </TouchableOpacity>
+          </View>
+        ) : booking ? (
         <>
           {/* Booking Header with Status */}
           <View style={styles.headerContainer}>
@@ -459,34 +466,28 @@ const BookingDetailScreen = ({ navigation }) => {
           </View>
           
           {/* Action Buttons */}
-          <View style={styles.actionButtons}>
-            <TouchableOpacity 
-              style={[styles.actionButton, styles.shareButton]}
-              onPress={handleShare}
-            >
-              <Ionicons name="share-social-outline" size={20} color="#fff" />
-              <Text numberOfLines={1} style={styles.actionButtonText}>Share</Text>
-            </TouchableOpacity>
-            
-            {canReschedule && (
-              <TouchableOpacity 
-                style={[styles.actionButton, styles.rescheduleButton]}
-                onPress={showRescheduleModal}
-              >
-                <MaterialCommunityIcons name="calendar-clock" size={20} color="#fff" />
-                <Text numberOfLines={1} style={styles.actionButtonText}>Reschedule</Text>
-              </TouchableOpacity>
-            )}
-            
-            {canCancel && (
-              <TouchableOpacity 
-                style={[styles.actionButton, styles.cancelButton]}
-                onPress={showCancelModal}
-              >
-                <Ionicons name="close-circle-outline" size={20} color="#fff" />
-                <Text numberOfLines={1} style={styles.actionButtonText}>Cancel</Text>
-              </TouchableOpacity>
-            )}
+          <View style={styles.actionButtonsContainer}>
+            <View style={styles.actionButtons}>
+              {canReschedule && (
+                <TouchableOpacity 
+                  style={[styles.actionButton, styles.rescheduleButton]}
+                  onPress={showRescheduleModal}
+                >
+                  <MaterialCommunityIcons name="calendar-clock" size={20} color="#fff" />
+                  <Text numberOfLines={1} style={styles.actionButtonText}>Reschedule</Text>
+                </TouchableOpacity>
+              )}
+              
+              {canCancel && (
+                <TouchableOpacity 
+                  style={[styles.actionButton, styles.cancelButton]}
+                  onPress={showCancelModal}
+                >
+                  <Ionicons name="close-circle-outline" size={20} color="#fff" />
+                  <Text numberOfLines={1} style={styles.actionButtonText}>Cancel</Text>
+                </TouchableOpacity>
+              )}
+            </View>
             
             <TouchableOpacity 
               style={[styles.actionButton, styles.historyButton]}
@@ -523,7 +524,7 @@ const BookingDetailScreen = ({ navigation }) => {
           
           {bookingHistory.length > 0 ? (
             <ScrollView style={styles.historyList}>
-              {bookingHistory.map((item, index) => (
+              {bookingHistory.map((item) => (
                 <View key={item.id} style={styles.historyItem}>
                   <View style={styles.historyItemHeader}>
                     <Text style={styles.historyItemAction}>
@@ -570,6 +571,9 @@ const BookingDetailScreen = ({ navigation }) => {
           )}
         </View>
       )}
+      </ScrollView>
+
+      {/* --- Modals are placed outside the ScrollView but inside the main View --- */}
       
       {/* Reschedule Modal */}
       <Modal
@@ -662,7 +666,7 @@ const BookingDetailScreen = ({ navigation }) => {
       <Modal
         visible={isDateModalVisible}
         transparent={true}
-        animationType="slide"
+        animationType="fade"
         onRequestClose={() => setDateModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
@@ -672,16 +676,16 @@ const BookingDetailScreen = ({ navigation }) => {
               <Text style={styles.modalOptionText}>{formatDate(new Date())}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.modalOption} onPress={() => handleSelectDate(1)}>
-              <Text style={styles.modalOptionText}>{formatDate(new Date(new Date().setDate(new Date().getDate() + 1)))}</Text>
+              <Text style={styles.modalOptionText}>{formatDate(addDays(new Date(), 1))}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.modalOption} onPress={() => handleSelectDate(2)}>
-              <Text style={styles.modalOptionText}>{formatDate(new Date(new Date().setDate(new Date().getDate() + 2)))}</Text>
+              <Text style={styles.modalOptionText}>{formatDate(addDays(new Date(), 2))}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.modalOption} onPress={() => handleSelectDate(3)}>
-              <Text style={styles.modalOptionText}>{formatDate(new Date(new Date().setDate(new Date().getDate() + 3)))}</Text>
+              <Text style={styles.modalOptionText}>{formatDate(addDays(new Date(), 3))}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.modalOption} onPress={() => handleSelectDate(7)}>
-              <Text style={styles.modalOptionText}>{formatDate(new Date(new Date().setDate(new Date().getDate() + 7)))}</Text>
+              <Text style={styles.modalOptionText}>{formatDate(addDays(new Date(), 7))}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.modalCancelButton} onPress={() => setDateModalVisible(false)}>
               <Text style={styles.modalCancelText}>Cancel</Text>
@@ -694,7 +698,7 @@ const BookingDetailScreen = ({ navigation }) => {
       <Modal
         visible={isTimeModalVisible}
         transparent={true}
-        animationType="slide"
+        animationType="fade"
         onRequestClose={() => setTimeModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
@@ -783,7 +787,7 @@ const BookingDetailScreen = ({ navigation }) => {
           </View>
         </KeyboardAvoidingView>
       </Modal>
-    </ScrollView>
+    </View> // <-- FIX 3: Changed closing tag from </ScrollView> to </View>
   );
 };
 
@@ -943,30 +947,32 @@ const styles = StyleSheet.create({
     color: '#555',
     lineHeight: 20,
   },
+  actionButtonsContainer: {
+    paddingHorizontal: 16,
+    marginTop: 24,
+    marginBottom: 32,
+    alignItems: 'center', // Center the history button
+  },
   actionButtons: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    marginTop: 16,
-    marginBottom: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
   },
   actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 14,
-    paddingHorizontal: 18,
+    paddingHorizontal: 24,
     borderRadius: 12,
-    marginHorizontal: 5,
-    minWidth: 110,
+    marginHorizontal: 8,
+    minWidth: 140,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 3,
     elevation: 3,
-  },
-  shareButton: {
-    backgroundColor: '#3A76F0',
   },
   rescheduleButton: {
     backgroundColor: '#FF9500',
@@ -983,7 +989,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginLeft: 8,
     flexShrink: 1,
-    flexWrap: 'nowrap',
   },
   cardStatusCompleted: {
     color: '#10B981',
@@ -1040,18 +1045,21 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 20,
     padding: 20,
     paddingBottom: Platform.OS === 'ios' ? 40 : 20,
-    maxHeight: '80%',
   },
   modalOverlay: {
     flex: 1,
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
+    alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.5)',
+    padding: 20,
   },
   modalOption: {
     paddingVertical: 15,
     paddingHorizontal: 20,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
+    width: '100%',
+    alignItems: 'center',
   },
   modalOptionText: {
     fontSize: 16,
@@ -1063,6 +1071,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#f8f8f8',
     borderRadius: 10,
+    width: '100%',
   },
   modalCancelText: {
     fontSize: 16,
@@ -1092,6 +1101,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 15,
   },
+  dateLabel: {
+    fontSize: 16,
+    color: '#555',
+    marginBottom: 8,
+  },
   datePickerButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1113,6 +1127,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     minHeight: 80,
     textAlignVertical: 'top',
+    fontSize: 16,
   },
   modalActions: {
     flexDirection: 'row',
@@ -1120,7 +1135,7 @@ const styles = StyleSheet.create({
   },
   modalButton: {
     flex: 1,
-    paddingVertical: 12,
+    paddingVertical: 14,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1142,12 +1157,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 16,
   },
-  pickerContainer: {
-    backgroundColor: 'white',
-    marginTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
-  },
   // History styles
   historyContainer: {
     backgroundColor: '#fff',
@@ -1160,7 +1169,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
-    maxHeight: 300,
   },
   historyHeader: {
     flexDirection: 'row',
@@ -1220,49 +1228,7 @@ const styles = StyleSheet.create({
     color: '#999',
     marginTop: 10,
   },
-  cardStatusCompleted: {
-    color: '#10B981',
-    fontWeight: '700',
-    fontSize: 13,
-    marginLeft: 8,
-  },
-  cardStatusCancelled: {
-    color: '#F87171',
-    fontWeight: '700',
-    fontSize: 13,
-    marginLeft: 8,
-  },
-  cardActionsRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 10,
-  },
-  rescheduleBtn: {
-    backgroundColor: '#F0F6FF',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 14,
-  },
-  rescheduleBtnText: {
-    color: '#3B82F6',
-    fontWeight: '600',
-  },
-  cancelBtn: {
-    backgroundColor: '#FEE2E2',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 14,
-  },
-  cancelBtnText: {
-    color: '#F87171',
-    fontWeight: '600',
-  },
-  emptyText: {
-    color: '#888',
-    fontStyle: 'italic',
-    textAlign: 'center',
-    marginVertical: 12,
-  },
+  // <-- FIX 4: Removed duplicate styles that were here
 });
 
 export default BookingDetailScreen;

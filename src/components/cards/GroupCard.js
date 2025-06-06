@@ -88,7 +88,7 @@ const GroupCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', isFavorit
             </TouchableOpacity>
             {onSharePress && (
               <TouchableOpacity 
-                style={[CardStyles.iconContainer, { top: 48 }]}
+                style={[CardStyles.iconContainer, { top: 40 }]}
                 onPress={() => onSharePress(item)}
               >
                 <View style={CardStyles.iconCircle}> 
@@ -159,7 +159,7 @@ const GroupCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', isFavorit
               </TouchableOpacity>
               {onSharePress && (
                 <TouchableOpacity 
-                  style={[CardStyles.iconContainer, { top: 48 }]}
+                  style={[CardStyles.iconContainer, { top: 40 }]}
                   onPress={() => onSharePress(item)}
                 >
                   <View style={CardStyles.iconCircle}> 

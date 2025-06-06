@@ -47,11 +47,18 @@ const BookingsScreen = ({ navigation, route }) => {
 
   // Fetch bookings data from Supabase
   const fetchBookings = useCallback(async () => {
-    if (!profile?.id) return;
+    console.log('[BookingsScreen] Fetching bookings, profile:', profile ? `ID: ${profile.id}` : 'No profile');
+    
+    if (!profile?.id) {
+      console.warn('[BookingsScreen] No profile ID available, cannot fetch bookings');
+      return;
+    }
 
     setLoading(true);
     try {
       const today = new Date().toISOString();
+      console.log(`[BookingsScreen] Using today's date: ${today}`);
+      console.log(`[BookingsScreen] Active tab: ${activeTab}`);
 
       // Query based on active tab
       const queryBuilder = supabase
@@ -70,7 +77,24 @@ const BookingsScreen = ({ navigation, route }) => {
         .order('scheduled_at', { ascending: activeTab === 'upcoming' })
         .limit(50);
 
-      if (error) throw error;
+      console.log(`[BookingsScreen] Query completed - Found ${data?.length || 0} bookings`);
+      
+      if (error) {
+        console.error('[BookingsScreen] Database error:', error);
+        throw error;
+      }
+      
+      if (data && data.length > 0) {
+        console.log('[BookingsScreen] First booking:', { 
+          id: data[0].booking_id,
+          service: data[0].service_title,
+          scheduled: data[0].scheduled_at,
+          status: data[0].booking_status
+        });
+      } else {
+        console.log('[BookingsScreen] No bookings found for this user and filter');
+      }
+      
       setBookings(data || []);
     } catch (err) {
       console.error('Error fetching bookings:', err);
@@ -81,18 +105,28 @@ const BookingsScreen = ({ navigation, route }) => {
     }
   }, [profile, activeTab]);
 
-  // Refresh on screen focus and handle booking flow if needed
+  // Ensure profile is loaded and refresh on screen focus
   useFocusEffect(
     useCallback(() => {
-      fetchBookings();
+      console.log('[BookingsScreen] Screen focused, checking profile:', profile ? 'Profile exists' : 'No profile');
+      
+      // Check if profile is available, otherwise wait for UserContext to load it
+      if (!profile) {
+        console.log('[BookingsScreen] Waiting for profile to load...');
+        // We'll fetch bookings once the profile loads via the useEffect below
+      } else {
+        fetchBookings();
+      }
 
       // If we're in booking flow, show time slot modal
       if (isBookingFlow && incomingServiceId && incomingServiceData) {
+        console.log('[BookingsScreen] Handling booking flow for service:', incomingServiceId);
         setSelectedService(incomingServiceData);
         const today = new Date().toISOString().split('T')[0];
         setSelectedDate(today);
         fetchAvailableTimeSlots(incomingServiceId, today)
           .then((slots) => {
+            console.log(`[BookingsScreen] Fetched ${slots?.length || 0} time slots for booking flow`);
             if (slots && slots.length > 0) {
               setIsTimeSlotModalVisible(true);
             } else if (slots) { // slots might be an empty array
@@ -107,8 +141,17 @@ const BookingsScreen = ({ navigation, route }) => {
     }, [fetchBookings, isBookingFlow, incomingServiceId, incomingServiceData]) // Added missing dependencies to inner useCallback
   );
 
+  // Monitor profile changes and fetch bookings when profile is available
+  useEffect(() => {
+    if (profile?.id) {
+      console.log(`[BookingsScreen] Profile loaded/changed - ID: ${profile.id}`);
+      fetchBookings();
+    }
+  }, [profile, fetchBookings]);
+
   // Handle pull-to-refresh
   const onRefresh = useCallback(() => {
+    console.log('[BookingsScreen] Manual refresh triggered');
     setRefreshing(true);
     fetchBookings();
   }, [fetchBookings]);
@@ -147,25 +190,29 @@ const BookingsScreen = ({ navigation, route }) => {
   };
 
   // Render empty state
-  const renderEmptyState = () => (
-    <View style={styles.emptyContainer}>
-      <Ionicons name="calendar-outline" size={60} color="#DADADA" />
-      <Text style={styles.emptyTitle}>No bookings found</Text>
-      <Text style={styles.emptySubtitle}>
-        {activeTab === 'upcoming'
-          ? 'You don\'t have any upcoming bookings'
-          : 'You don\'t have any past bookings'}
-      </Text>
-      {activeTab === 'upcoming' && (
-        <TouchableOpacity
-          style={styles.emptyButton}
-          onPress={() => navigation.navigate('Explore', { screen: 'ProviderDiscovery' })}
-        >
-          <Text style={styles.emptyButtonText}>Book a Service</Text>
-        </TouchableOpacity>
-      )}
-    </View>
-  );
+  const renderEmptyState = () => {
+    console.log(`[BookingsScreen] Rendering empty state for ${activeTab} tab`);
+    return (
+      <View style={styles.emptyContainer}>
+        <Text style={styles.emptyTitle}>
+          {activeTab === 'upcoming' ? 'No upcoming bookings' : 'No past bookings'}
+        </Text>
+        <Text style={styles.emptySubtitle}>
+          {activeTab === 'upcoming'
+            ? 'Book a service to see your upcoming appointments here'
+            : 'Your booking history will appear here'}
+        </Text>
+        {activeTab === 'upcoming' && (
+          <TouchableOpacity 
+            style={styles.exploreButton}
+            onPress={() => navigation.navigate('ExploreScreen')}
+          >
+            <Text style={styles.exploreButtonText}>Explore Services</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  };
 
   // Change date for time slot selection
   const handleDateChange = async (newDate) => {
@@ -304,35 +351,36 @@ const BookingsScreen = ({ navigation, route }) => {
 
   // Define renderBookingItem for the FlatList
   const renderBookingItem = ({ item }) => {
+    console.log('[BookingsScreen] Rendering booking item:', item.booking_id);
     const formattedDate = formatDate(item.scheduled_at);
-    const statusColor = getStatusColor(item.status);
+    const statusColor = getStatusColor(item.booking_status); // Changed from item.status to item.booking_status
 
     return (
       <TouchableOpacity
         style={styles.bookingCard}
         onPress={() => {
           console.log("Booking item pressed:", item.booking_id);
-          setSelectedBooking(item); // Example action: set for detail view or rebooking
-          // navigation.navigate('BookingDetail', { bookingId: item.booking_id }); // Example navigation
+          setSelectedBooking(item);
+          navigation.navigate('BookingDetailScreen', { bookingId: item.booking_id });
         }}
       >
         <View style={styles.dateColumn}>
           <Text style={styles.dateDay}>{formattedDate.dayMonth}</Text>
           <Text style={styles.dateTime}>{formattedDate.time}</Text>
-          {item.status && (
+          {item.booking_status && (
             <View style={[styles.statusChip, { backgroundColor: statusColor }]}>
-              <Text style={[styles.statusText, { color: '#fff' }]}>{item.status.toUpperCase()}</Text>
+              <Text style={[styles.statusText, { color: '#fff' }]}>{item.booking_status.toUpperCase()}</Text>
             </View>
           )}
         </View>
         <View style={styles.contentColumn}>
-          <Text style={styles.bookingTitle} numberOfLines={1}>{item.service_name || 'Service Name Missing'}</Text>
+          <Text style={styles.bookingTitle} numberOfLines={1}>{item.service_title || 'Service Name Missing'}</Text>
           <Text style={styles.bookingProvider} numberOfLines={1}>
-            {item.provider_name || 'Provider Name Missing'}
+            {item.provider_name || 'Provider'}
           </Text>
-          {/* Add more details like location, notes if available in item */}
-          {item.notes && (
-            <Text style={styles.bookingNotes} numberOfLines={2}>Notes: {item.notes}</Text>
+          {/* Add more details like location, notes if available */}
+          {item.booking_notes && (
+            <Text style={styles.bookingNotes} numberOfLines={2}>Notes: {item.booking_notes}</Text>
           )}
         </View>
         <Ionicons name="chevron-forward-outline" size={20} color="#C7C7CC" style={styles.chevron} />

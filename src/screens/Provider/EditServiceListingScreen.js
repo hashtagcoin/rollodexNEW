@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { standardizeServiceImageUrls } from '../../utils/imageHelper';
 import {
   View,
   Text,
@@ -53,7 +54,20 @@ const SERVICE_FORMATS = [
   'Hybrid',
 ];
 
+// Debug log moved here from imports section
+console.log('[DEBUG] EditServiceListingScreen - React hooks imported');
+
 const EditServiceListingScreen = ({ route, navigation }) => {
+  console.log(`[DEBUG][${new Date().toISOString()}] EditServiceListingScreen - Component function executing`);
+  
+  // Test useRef availability immediately
+  try {
+    console.log(`[DEBUG][${new Date().toISOString()}] EditServiceListingScreen - Testing useRef`);
+    const testRef = useRef(null);
+    console.log(`[DEBUG][${new Date().toISOString()}] EditServiceListingScreen - useRef is available`);
+  } catch (error) {
+    console.error(`[DEBUG][${new Date().toISOString()}] EditServiceListingScreen - useRef ERROR:`, error);
+  }
   const { serviceId } = route.params;
   const { profile } = useUser();
   const [loading, setLoading] = useState(true);
@@ -78,22 +92,40 @@ const EditServiceListingScreen = ({ route, navigation }) => {
   });
 
   useEffect(() => {
+    console.log(`[DEBUG][${new Date().toISOString()}] EditServiceListingScreen - Initial useEffect executing`);
     fetchServiceDetails();
     // Profile is available via useUser() context
+
+    return () => {
+      console.log(`[DEBUG][${new Date().toISOString()}] EditServiceListingScreen - Initial useEffect cleanup`);
+    };
   }, []); // serviceId is not needed here as it's constant for the screen's lifetime once loaded
 
   useEffect(() => {
+    console.log(`[DEBUG][${new Date().toISOString()}] EditServiceListingScreen - Navigation focus useEffect executing`);
     const unsubscribe = navigation.addListener('focus', () => {
+      console.log(`[DEBUG][${new Date().toISOString()}] EditServiceListingScreen - Navigation FOCUS event fired`);
       if (serviceId) {
         setImages([]); // Clear any unsaved new images
         // setRemovedImageUrls([]); // Optionally clear this too, or let user confirm removals on save
         fetchServiceDetails(); // Re-fetch to ensure data is fresh
       }
     });
-    return unsubscribe;
+    
+    // Also track blur events
+    const blurSubscription = navigation.addListener('blur', () => {
+      console.log(`[DEBUG][${new Date().toISOString()}] EditServiceListingScreen - Navigation BLUR event fired`);
+    });
+    
+    return () => {
+      console.log(`[DEBUG][${new Date().toISOString()}] EditServiceListingScreen - Navigation useEffect cleanup`);
+      unsubscribe();
+      blurSubscription();
+    };
   }, [navigation, serviceId]);
 
   const fetchServiceDetails = async () => {
+    console.log(`[DEBUG][${new Date().toISOString()}] EditServiceListingScreen - fetchServiceDetails starting`);
     try {
       setLoading(true);
       const { data, error } = await supabase
@@ -245,16 +277,26 @@ const EditServiceListingScreen = ({ route, navigation }) => {
         let baseFileName = `${timestamp}_${randomStr}`;
         let fileName = `service-images/${profileId}/${baseFileName}.${fileExt}`;
         
-        let fileData;
-        if (image.base64) {
-          fileData = decode(image.base64);
-        } else if (image.uri) {
-          const base64 = await FileSystem.readAsStringAsync(image.uri, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
-          fileData = decode(base64);
-        } else {
-          continue; // Skip if no image data
+        // Use fetch and blob method instead of base64 - more reliable and allows size checking
+        let blob;
+        try {
+          const response = await fetch(image.uri);
+          blob = await response.blob();
+          
+          // CRITICAL: Check for 0-byte blob which causes the blank image issue
+          if (blob.size === 0) {
+            console.warn(`[IMAGE_DEBUG] Skipping 0-byte blob for image: ${image.uri}`);
+            Alert.alert('Upload Warning', 'An image appears to be empty and was not uploaded. Please try a different image.');
+            continue; // Skip this image
+          }
+          
+          // Log successful blob size for debugging
+          console.log(`[IMAGE_DEBUG] Successfully created blob with size: ${blob.size} bytes for ${image.uri}`);
+          
+        } catch (blobError) {
+          console.error('Error creating blob from image:', blobError);
+          Alert.alert('Image Error', 'Could not process this image. Please try a different one.');
+          continue; // Skip this image
         }
 
         let attempts = 0;
@@ -265,11 +307,14 @@ const EditServiceListingScreen = ({ route, navigation }) => {
           attempts++;
           const { data: uploadData, error: uploadError } = await supabase.storage
             .from('providerimages')
-            .upload(fileName, fileData, {
+            .upload(fileName, blob, {
               contentType,
               cacheControl: '3600',
               upsert: false, // Important: set to false to detect name collisions
             });
+            
+          // Log upload attempt details
+          console.log(`[IMAGE_DEBUG] Upload attempt ${attempts} for file: ${fileName}, blob size: ${blob.size} bytes`);
 
           if (uploadError) {
             if (uploadError.message && (uploadError.message.includes('Duplicate') || uploadError.message.includes('already exists'))) {
@@ -287,8 +332,10 @@ const EditServiceListingScreen = ({ route, navigation }) => {
           // Successful upload
           const { data: publicUrlData } = supabase.storage.from('providerimages').getPublicUrl(fileName);
           if (publicUrlData && publicUrlData.publicUrl) {
-            // [LOG] URL saved to Supabase on upload
-            console.log('[EditServiceListingScreen] Image uploaded to Supabase:', publicUrlData.publicUrl);
+            // [LOG] URL saved to Supabase on upload - critical for debugging
+            console.log('[IMAGE_DEBUG][EditServiceListingScreen][UPLOAD] Supabase URL:', publicUrlData.publicUrl);
+            console.log('[IMAGE_DEBUG][EditServiceListingScreen][UPLOAD] Original fileName:', fileName);
+            console.log('[IMAGE_DEBUG][EditServiceListingScreen][UPLOAD] Profile ID used:', profileId);
             uploadedUrls.push(publicUrlData.publicUrl);
             uploadSuccessful = true;
           } else {
@@ -366,7 +413,18 @@ const EditServiceListingScreen = ({ route, navigation }) => {
       
       // Current existing URLs are already filtered by `handleRemoveExistingImage`
       // So `existingImageUrls` state already reflects URLs that should be kept
-      const finalMediaUrls = Array.from(new Set([...existingImageUrls, ...newUploadedMediaUrls]));
+      
+      // Process URLs for consistent format before saving to database
+      const rawMediaUrls = Array.from(new Set([...existingImageUrls, ...newUploadedMediaUrls]));
+      
+      // Log raw URLs for debugging
+      console.log('[IMAGE_DEBUG][EditServiceListingScreen][SAVE] Raw media URLs:', rawMediaUrls);
+      
+      // Standardize URLs for database storage
+      const finalMediaUrls = standardizeServiceImageUrls(rawMediaUrls, profileId, 'EditServiceListingScreen-Save');
+      
+      // Log final URLs that will be saved
+      console.log('[IMAGE_DEBUG][EditServiceListingScreen][SAVE] Final standardized URLs:', finalMediaUrls);
 
       const serviceUpdateData = {
         title: formData.title,

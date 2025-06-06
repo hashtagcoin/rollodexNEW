@@ -1165,7 +1165,7 @@ const ProfileScreen = () => {
           <TouchableOpacity style={styles.rewardsButton} onPress={() => navigation.navigate('RewardsScreen')}>
             <Text style={styles.rewardsButtonText}>Rewards</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.secondaryProfileButton} onPress={() => navigation.navigate('BookingDetailScreen')}>
+          <TouchableOpacity style={styles.secondaryProfileButton} onPress={() => navigation.navigate('BookingsScreen')}>
             <Text style={styles.secondaryProfileButtonText}>Bookings</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.secondaryProfileButton} onPress={() => navigation.navigate('NDISScreen')}>

@@ -927,8 +927,8 @@ const EditHousingListingScreen = ({ route, navigation }) => {
                         <MaterialIcons name="add-photo-alternate" size={24} color="#007AFF" />
                         <Text style={styles.addImageText}>Add Image</Text>
                         <Text style={styles.imageCountText}>
-                          {images.length + existingImageUrls.length - imagesToDelete.length}/10
-                        </Text>
+  {`${images.length + existingImageUrls.length - imagesToDelete.length}/10`}
+</Text>
                       </>
                     )}
                   </TouchableOpacity>

@@ -463,7 +463,6 @@ const FavouritesScreen = () => {
         return <HousingCardComponent item={housingListingItem} {...commonCardProps} />;
 
       case 'group':
-      case 'housing_group':
         console.log('[FavouritesScreen] Rendering Group:', item.item_id, 'ViewMode:', viewMode);
         const groupImageUrl = getValidImageUrl(item.image || item.avatar_url, 'groupavatars');
         const groupName = item.name || item.item_title || 'Unnamed Group';
@@ -497,7 +496,7 @@ const FavouritesScreen = () => {
                     </TouchableOpacity>
                     {commonCardProps.onSharePress && (
                         <TouchableOpacity
-                            style={[CardStyles.iconContainer, { top: 48 }]}
+                            style={[CardStyles.iconContainer, { top: 40 }]}
                             onPress={commonCardProps.onSharePress}
                         >
                             <View style={CardStyles.iconCircle}>
@@ -556,14 +555,25 @@ const FavouritesScreen = () => {
 
       case 'housing_group':
         console.log('[FavouritesScreen] Rendering Housing Group:', item.item_id, 'ViewMode:', viewMode);
-        const hgData = item.housing_group_data; // This is the object { name: ..., housing_listing_data: ... }
-        const listingData = hgData?.housing_listing_data; // This is the actual listing object or null
+        // Extract housing group data - first check if it's nested or directly on the item
+        const hgData = item.housing_group_data || item; 
+        const listingData = hgData?.housing_listing_data || hgData?.housing_listings; // Check both possible paths
+        
+        // Log data structure to help debug
+        console.log(`[FavouritesScreen] Housing Group Data Structure for ${item.item_id}:`, 
+          { hasHGData: !!item.housing_group_data, hasDirectProps: !!item.name, hasListingData: !!listingData });
+          
+        // Get image URL - try multiple paths
         let hgImageUrl = null;
         if (listingData?.media_urls?.length > 0) {
           hgImageUrl = getValidImageUrl(listingData.media_urls[0], 'housingimages');
         } else if (hgData?.avatar_url) {
           hgImageUrl = getValidImageUrl(hgData.avatar_url, 'housinggroupavatar');
+        } else if (listingData?.avatar_url) {
+          hgImageUrl = getValidImageUrl(listingData.avatar_url, 'housinggroupavatar');
         }
+        
+        // Get housing group information, looking in multiple possible locations
         const hgTitle = hgData?.name || item.item_title || 'Unnamed Housing Group';
         const hgMembers = (hgData?.current_members != null && hgData?.max_members != null)
                           ? `${hgData.current_members}/${hgData.max_members} members`
@@ -611,7 +621,7 @@ const FavouritesScreen = () => {
                     </TouchableOpacity>
                     {commonCardProps.onSharePress && (
                         <TouchableOpacity
-                            style={[CardStyles.iconContainer, { top: 48 }]}
+                            style={[CardStyles.iconContainer, { top: 40 }]}
                             onPress={commonCardProps.onSharePress}
                         >
                             <View style={CardStyles.iconCircle}>

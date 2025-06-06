@@ -1,10 +1,23 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { View, TouchableOpacity, Image, StyleSheet, ActivityIndicator, Text } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { COLORS } from '../constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 
+// Debug log moved here from imports section
+console.log('[DEBUG] ModernImagePicker - React hooks imported');
+
 export default function ModernImagePicker({ onPick, images, setImages, maxImages = 10, avatar, style: customStyle, loading, containerStyle }) {
+  console.log(`[DEBUG][${new Date().toISOString()}] ModernImagePicker - Component function executing`); 
+
+  // Test useRef availability immediately
+  try {
+    console.log(`[DEBUG][${new Date().toISOString()}] ModernImagePicker - Testing useRef`);
+    const testRef = useRef({test: 'testing useRef'});
+    console.log(`[DEBUG][${new Date().toISOString()}] ModernImagePicker - useRef is available:`, testRef.current);
+  } catch (error) {
+    console.error(`[DEBUG][${new Date().toISOString()}] ModernImagePicker - useRef ERROR:`, error);
+  }
   const [pickingImage, setPickingImage] = useState(false);
   
   const pickImage = async () => {

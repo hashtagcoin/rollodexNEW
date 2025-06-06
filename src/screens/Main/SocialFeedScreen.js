@@ -330,8 +330,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: 6,
-    paddingHorizontal: 10,
-    marginHorizontal: 4,
+    paddingHorizontal: 8,
+    marginHorizontal: 2,
   },
   stickerBtnText: {
     marginLeft: 4,

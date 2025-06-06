@@ -91,7 +91,7 @@ const HousingGroupCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', is
             </TouchableOpacity>
             {onSharePress && (
               <TouchableOpacity 
-                style={[CardStyles.iconContainer, { top: 48 }]}
+                style={[CardStyles.iconContainer, { top: 40 }]}
                 onPress={() => onSharePress(item)}
               >
                 <View style={CardStyles.iconCircle}> 
@@ -164,7 +164,7 @@ const HousingGroupCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', is
               </TouchableOpacity>
               {onSharePress && (
                 <TouchableOpacity 
-                  style={[CardStyles.iconContainer, { top: 48 }]} 
+                  style={[CardStyles.iconContainer, { top: 40 }]} 
                   onPress={() => onSharePress(item)}
                 >
                   <View style={CardStyles.iconCircle}> 

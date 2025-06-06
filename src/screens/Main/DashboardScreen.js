@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, FlatList, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, FlatList, ActivityIndicator, ImageBackground } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import Feather from 'react-native-vector-icons/Feather'; 
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons'; 
@@ -7,6 +7,7 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import { AntDesign } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, FONTS } from '../../constants/theme';
+import DynamicLogo from '../../components/common/DynamicLogo';
 import { useUser } from '../../context/UserContext';
 import { supabase } from '../../lib/supabaseClient';
 import { formatDistanceToNow, format, parseISO } from 'date-fns';
@@ -195,17 +196,23 @@ const DashboardScreen = () => {
     }
   };
   return (
-    <ScrollView 
-      ref={scrollViewRef}
-      style={styles.screenContainer} 
-      showsVerticalScrollIndicator={false}>
-      <View style={styles.contentContainer}>
+    <ImageBackground
+      source={require('../../assets/images/MegaTron.jpg')}
+      style={styles.wallpaper}
+      resizeMode="cover"
+    >
+      <ScrollView 
+        ref={scrollViewRef}
+        style={styles.screenContainer} 
+        showsVerticalScrollIndicator={false}>
+        <View style={styles.contentContainer}>
         {/* Top Bar with Logo Icon, Title and Notification */}
         <View style={styles.topBar}>
           <View style={styles.titleContainer}>
-            <Image
-              source={require('../../assets/images/rollodex-title.png')}
-              style={styles.titleLogo}
+            <DynamicLogo
+              isDark={true} // MegaTron.jpg has a darker background
+              style={styles.titleContainer}
+              imageStyle={styles.titleLogo}
               resizeMode="contain"
             />
           </View>
@@ -348,34 +355,24 @@ const DashboardScreen = () => {
             keyExtractor={item => item.booking_id}
             contentContainerStyle={styles.carouselList}
             renderItem={({ item }) => {
-              const formattedDate = formatBookingDate(item.scheduled_at);
+              // Format date and time from item.scheduled_at
+              const dateObj = new Date(item.scheduled_at);
+              const dateStr = dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+              const timeStr = dateObj.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
               return (
                 <TouchableOpacity 
                   style={styles.appointmentCard}
                   onPress={() => navigation.navigate('Wallet', { screen: 'BookingDetailScreen', params: { bookingId: item.booking_id } })}
+                  activeOpacity={0.85}
                 >
-                  <View style={styles.appointmentHeader}>
-                    <View style={styles.appointmentColorTag} />
-                    <View style={styles.appointmentStatus}>
-                      <Text style={styles.appointmentStatusText}>Confirmed</Text>
+                  <View style={styles.appointmentCardContent}>
+                    <View style={styles.appointmentCardLeft}>
+                      <Text style={styles.appointmentCardDate}>{dateStr}</Text>
+                      <Text style={styles.appointmentCardTime}>{timeStr}</Text>
                     </View>
-                  </View>
-                  
-                  {/* Prominent Date Display */}
-                  <View style={styles.prominentDateContainer}>
-                    <Text style={styles.prominentDateText}>{formattedDate.date}</Text>
-                  </View>
-
-                  <Text style={styles.appointmentService}>{item.service_title}</Text>
-                  
-                  <View style={styles.appointmentDetails}>
-                    <View style={styles.appointmentDetailRow}>
-                      <Ionicons name="time-outline" size={16} color="#fff" style={styles.appointmentIcon} />
-                      <Text style={styles.appointmentDetailText}>{formattedDate.time}</Text>
-                    </View>
-                    <View style={styles.appointmentDetailRow}>
-                      <Ionicons name="person-outline" size={16} color="#fff" style={styles.appointmentIcon} />
-                      <Text style={styles.appointmentDetailText}>{item.service_provider || 'Provider'}</Text>
+                    <View style={styles.appointmentCardRight}>
+                      <Text style={styles.appointmentCardService} numberOfLines={1}>{item.service_title}</Text>
+                      <Text style={styles.appointmentCardProvider} numberOfLines={1}>{item.user_full_name || item.service_provider || 'Provider'}</Text>
                     </View>
                   </View>
                 </TouchableOpacity>
@@ -491,10 +488,16 @@ const DashboardScreen = () => {
         </TouchableOpacity>
       </View>
     </ScrollView>
+  </ImageBackground>
   );
 };
 
 const styles = StyleSheet.create({
+  wallpaper: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+  },
   switchButton: {
     backgroundColor: COLORS.primary,
     borderRadius: 30,
@@ -584,86 +587,73 @@ const styles = StyleSheet.create({
     paddingLeft: 4,
   },
   appointmentCard: {
-    backgroundColor: '#2c3e50', // Dark background
-    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderRadius: 16,
     padding: 0,
     marginLeft: 12,
     marginRight: 8,
     width: 240,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 3,
+    shadowColor: '#151515',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 4,
     overflow: 'hidden',
     borderWidth: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  appointmentHeader: {
+  appointmentCardContent: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingRight: 12,
-    height: 32,
+    paddingVertical: 28,
+    paddingHorizontal: 18,
+    width: '100%',
   },
-  appointmentColorTag: {
-    width: 4,
-    height: '100%',
-    backgroundColor: '#3498db', // Different accent color for dark theme
+  appointmentCardLeft: {
+    alignItems: 'flex-start',
+    marginRight: 14,
+    minWidth: 70,
   },
-  appointmentStatus: {
-    backgroundColor: 'rgba(52, 152, 219, 0.2)', // Semi-transparent blue
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  appointmentStatusText: {
-    color: '#3498db', // Blue text
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  prominentDateContainer: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-  },
-  prominentDateText: {
-    fontSize: 28, // Extra large date
-    fontWeight: 'bold',
-    color: '#ffffff', // White text on dark background
-    letterSpacing: 0.5,
-  },
-  appointmentService: {
-    fontSize: 16,
+  appointmentCardDate: {
+    fontSize: 22,
     fontWeight: '700',
-    color: '#ffffff', // White text on dark background
-    marginTop: 4,
-    marginBottom: 8,
-    paddingHorizontal: 16,
+    color: '#3B4A6B',
+    marginBottom: 2,
+    letterSpacing: 0.2,
   },
-  appointmentDetails: {
-    backgroundColor: 'rgba(0, 0, 0, 0.15)', // Semi-transparent overlay
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+  appointmentCardTime: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#7B8BB2',
   },
-  appointmentDetailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
+  appointmentCardRight: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+    paddingLeft: 6,
   },
-  appointmentIcon: {
-    marginRight: 8,
+  appointmentCardService: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#28324B',
+    marginBottom: 3,
   },
-  appointmentDetailText: {
+  appointmentCardProvider: {
     fontSize: 13,
-    color: '#e0e0e0', // Light gray text for contrast on dark background
+    color: '#9CA6B8',
+    fontWeight: '400',
   },
+  // Removed old noisy appointment card styles for a cleaner look
+
   screenContainer: {
     flex: 1,
-    backgroundColor: '#FFFFFF', // Changed to white background
+    backgroundColor: 'transparent',
     paddingHorizontal: 0,
     paddingTop: 56,
   },
   contentContainer: {
+    flex: 1,
     paddingHorizontal: 18,
     paddingTop: 18,
     paddingBottom: 24,
@@ -726,7 +716,7 @@ const styles = StyleSheet.create({
   },
 
   financialGroup: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: 'rgba(255,255,255,0.85)', // Slightly translucent for readability
     borderRadius: 16,
     marginBottom: 16,
     overflow: 'hidden',

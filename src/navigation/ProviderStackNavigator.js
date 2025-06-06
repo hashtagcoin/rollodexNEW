@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useRef } from 'react';
+import { useGlobalHooks } from '../hooks/GlobalHooksProvider';
 import { View, Text } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
 
@@ -12,15 +13,32 @@ import AppointmentDetailScreen from '../screens/Provider/AppointmentDetailScreen
 import CreateServiceListingScreen from '../screens/Provider/CreateServiceListingScreen';
 import CreateHousingListingScreen from '../screens/Provider/CreateHousingListingScreen';
 import EditServiceListingScreen from '../screens/Provider/EditServiceListingScreen';
+
 import EditHousingListingScreen from '../screens/Provider/EditHousingListingScreen';
 import ServiceAgreementDetailScreen from '../screens/Provider/ServiceAgreementDetailScreen';
 import CreateServiceAgreementScreen from '../screens/Provider/CreateServiceAgreementScreen';
 
 // All screens have now been implemented!
 
+// Ensure useRef is available globally for React Navigation components
+// Moved after all imports to prevent React rendering issues
+if (!global.ReactHooks || !global.ReactHooks.useRef) {
+  console.log('[DEBUG] Setting up global useRef in ProviderStackNavigator');
+  global.useRef = useRef;
+}
+
 const Stack = createStackNavigator();
 
 const ProviderStackNavigator = () => {
+  console.log(`[DEBUG][${new Date().toISOString()}] ProviderStackNavigator - Component rendering`);
+  
+  // Test useRef is available
+  try {
+    const testRef = useRef(null);
+    console.log(`[DEBUG][${new Date().toISOString()}] ProviderStackNavigator - useRef is available`);
+  } catch (error) {
+    console.error(`[DEBUG][${new Date().toISOString()}] ProviderStackNavigator - useRef ERROR:`, error);
+  }
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="ProviderDashboard" component={ProviderDashboardScreen} />

@@ -79,7 +79,7 @@ const EventFavoriteCard = ({
             </TouchableOpacity>
             {onSharePress && (
               <TouchableOpacity 
-                style={[CardStyles.iconContainer, { top: 48 }]}
+                style={[CardStyles.iconContainer, { top: 40 }]}
                 onPress={() => onSharePress(item)}
               >
                 <View style={CardStyles.iconCircle}>

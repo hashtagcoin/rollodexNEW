@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { AppStateProvider } from '../context/AppStateContext';
@@ -20,6 +20,8 @@ import CreateHousingGroupScreen from '../screens/Groups/CreateHousingGroupScreen
 
 import { supabase } from '../lib/supabaseClient'; // Import Supabase client
 
+console.log(`[DEBUG][${new Date().toISOString()}] AppNavigator - Starting NavigationContainer setup`);
+
 const RootStack = createStackNavigator();
 const AuthFlowStack = createStackNavigator();
 
@@ -28,6 +30,18 @@ const useAuth = () => {
   const [isLoading, setIsLoading] = React.useState(true);
   const [isAuthenticated, setIsAuthenticated] = React.useState(false);
   const [userRole, setUserRole] = React.useState('participant');
+
+  // Helper: check if session is expired
+  const isSessionValid = (session) => {
+    if (!session) return false;
+    // expires_at is a UNIX timestamp in seconds
+    if (session.expires_at) {
+      const now = Math.floor(Date.now() / 1000);
+      return session.expires_at > now;
+    }
+    // If expires_at is not present, fallback to true (legacy behavior)
+    return true;
+  };
 
   // Function to check user profile and determine role
   const checkUserRole = async (userId) => {
@@ -67,13 +81,16 @@ const useAuth = () => {
     const initializeAuth = async () => {
       try {
         const { data } = await supabase.auth.getSession();
-        // If there's a session, use it to determine authentication state
-        if (data?.session?.user?.id) {
+        const session = data?.session;
+        // Check if session exists and is valid (not expired)
+        if (session && session.user?.id && isSessionValid(session)) {
           setIsAuthenticated(true);
-          await checkUserRole(data.session.user.id);
+          await checkUserRole(session.user.id);
         } else {
+          // If session is missing or expired, treat as not authenticated
           setIsAuthenticated(false);
           setUserRole('participant');
+          // Optionally clear any stale session here if needed
         }
       } catch (error) {
         // Silent error handling
@@ -83,19 +100,19 @@ const useAuth = () => {
         setIsLoading(false);
       }
     };
+
     
     initializeAuth();
 
     // Listen for auth state changes
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
       // Silent authentication - no console logs
-      
-      if (event === 'SIGNED_IN' && session) {
+      if (event === 'SIGNED_IN' && session && isSessionValid(session)) {
         setIsAuthenticated(true);
         if (session.user) {
           await checkUserRole(session.user.id);
         }
-      } else if (event === 'SIGNED_OUT') {
+      } else if (event === 'SIGNED_OUT' || !isSessionValid(session)) {
         setIsAuthenticated(false);
         setUserRole('participant');
       }
@@ -112,6 +129,16 @@ const useAuth = () => {
 };
 
 function AppNavigator() {
+  console.log(`[DEBUG][${new Date().toISOString()}] AppNavigator - AppNavigator function executing`);
+  
+  // Test useRef availability
+  try {
+    console.log(`[DEBUG][${new Date().toISOString()}] AppNavigator - Testing useRef`);
+    const testRef = useRef(null);
+    console.log(`[DEBUG][${new Date().toISOString()}] AppNavigator - useRef is available`);
+  } catch (error) {
+    console.error(`[DEBUG][${new Date().toISOString()}] AppNavigator - useRef ERROR:`, error);
+  }
   const { isAuthenticated, isLoading, userRole } = useAuth();
 
   if (isLoading) {
@@ -131,9 +158,15 @@ function AppNavigator() {
     }
   };
 
+  console.log(`[DEBUG][${new Date().toISOString()}] AppNavigator - About to return NavigationContainer`);
+  
   return (
     <AppStateProvider>
-      <NavigationContainer>
+      <NavigationContainer
+          onStateChange={(state) => console.log(`[DEBUG][${new Date().toISOString()}] NavigationContainer - Navigation state changed:`, 
+            state ? `Current route: ${state.routes[state.index]?.name}` : 'No state')}
+          onReady={() => console.log(`[DEBUG][${new Date().toISOString()}] NavigationContainer - Navigation container is ready`)}
+        >
         <NotificationProvider>
         {isAuthenticated ? (
           <RootStack.Navigator 

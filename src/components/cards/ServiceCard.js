@@ -8,6 +8,14 @@ import { COLORS, SIZES } from '../../constants/theme'; // For specific colors if
 // Main component
 const ServiceCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', isFavorited, onToggleFavorite, onSharePress }) => { 
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [imageError, setImageError] = useState(false);
+
+  // Handle image errors to prevent app crashes
+  const handleImageError = () => {
+    console.log('[IMAGE_DEBUG][ServiceCard] Failed to load image:', imageUrl);
+    setImageError(true);
+    setImageLoaded(true); // Mark as loaded even though it failed
+  };
 
   const renderModernRating = () => {
     const rating = item.rating || 0;
@@ -63,13 +71,13 @@ const ServiceCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', isFavor
               </View>
             )}
             <Image 
-              source={imageSource}
+              source={imageError ? require('../../assets/images/default-service.png') : imageSource}
               style={CardStyles.listImage} 
               onLoad={() => {
                 setImageLoaded(true);
-                if (typeof onImageLoaded === 'function' && imageUrl) onImageLoaded(imageUrl);
+                if (typeof onImageLoaded === 'function' && imageUrl && !imageError) onImageLoaded(imageUrl);
               }}
-              onError={(e) => console.log('Service Card List Image Error:', e.nativeEvent.error)}
+              onError={handleImageError}
             />
             <TouchableOpacity 
               style={CardStyles.iconContainer} 
@@ -82,7 +90,7 @@ const ServiceCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', isFavor
             {/* Share button for List View - Placed near favorite icon for consistency */}
             {onSharePress && (
               <TouchableOpacity 
-                style={[CardStyles.iconContainer, { top: 48 }]} // Adjust position as needed
+                style={[CardStyles.iconContainer, { top: 40 }]} // Adjust position as needed
                 onPress={() => onSharePress(item)}
               >
                 <View style={CardStyles.iconCircle}> 
@@ -138,13 +146,13 @@ const ServiceCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', isFavor
                 </View>
               )}
               <Image 
-                source={imageSource}
+                source={imageError ? require('../../assets/images/default-service.png') : imageSource}
                 style={CardStyles.gridImage} 
                 onLoad={() => {
                   setImageLoaded(true);
-                  if (typeof onImageLoaded === 'function' && imageUrl) onImageLoaded(imageUrl);
+                  if (typeof onImageLoaded === 'function' && imageUrl && !imageError) onImageLoaded(imageUrl);
                 }}
-                onError={(e) => console.log('Service Card Image Error:', e.nativeEvent.error)}
+                onError={handleImageError}
               />
               <TouchableOpacity 
                 style={CardStyles.iconContainer} 
@@ -157,7 +165,7 @@ const ServiceCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', isFavor
               {/* Share button for Grid View - Placed near favorite icon */}
               {onSharePress && (
                 <TouchableOpacity 
-                  style={[CardStyles.iconContainer, { top: 48 }]} // Adjust position as needed
+                  style={[CardStyles.iconContainer, { top: 40 }]} // Adjust position as needed
                   onPress={() => onSharePress(item)}
                 >
                   <View style={CardStyles.iconCircle}> 

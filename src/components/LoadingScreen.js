@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { View, Image, StyleSheet, ActivityIndicator, Text } from 'react-native';
 import { COLORS } from '../constants/theme';
 

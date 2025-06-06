@@ -60,7 +60,7 @@ const HousingCard = ({ item, onPress, displayAs = 'grid', onImageLoaded, isFavor
           {/* Share Icon for Swipe View */}
           {onSharePress && (
             <TouchableOpacity 
-              style={[CardStyles.iconContainer, { top: SIZES.padding + 40, right: SIZES.padding }]} // Position below favorite
+              style={[CardStyles.iconContainer, { top: SIZES.padding + 36, right: SIZES.padding }]} // Position below favorite
               onPress={() => onSharePress(item)}
             >
               <View style={CardStyles.iconCircle}> 
@@ -127,8 +127,8 @@ const HousingCard = ({ item, onPress, displayAs = 'grid', onImageLoaded, isFavor
               </TouchableOpacity>
             )}
             {hasGroupMatch && (
-              <View style={[CardStyles.badgeContainer, localStyles.listGroupIconContainer]}>
-                <Ionicons name="people-outline" size={16} color={COLORS.white} />
+              <View style={[CardStyles.badgeContainer || {}, localStyles.listGroupIconContainer, localStyles.groupIconBackground]}>
+                <Ionicons name="people-outline" size={16} color={COLORS.DARK_GREEN} />
               </View>
             )}
           </View>
@@ -195,8 +195,8 @@ const HousingCard = ({ item, onPress, displayAs = 'grid', onImageLoaded, isFavor
               </TouchableOpacity>
             )}
             {hasGroupMatch && (
-              <View style={[CardStyles.badgeContainer, localStyles.gridGroupIconContainer]}>
-                <Ionicons name="people-outline" size={18} color={COLORS.white} />
+              <View style={[CardStyles.badgeContainer || {}, localStyles.gridGroupIconContainer, localStyles.groupIconBackground]}>
+                <Ionicons name="people-outline" size={18} color={COLORS.DARK_GREEN} />
               </View>
             )}
           </View>
@@ -301,6 +301,14 @@ const localStyles = {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: SIZES.base / 2,
+  },
+  groupIconBackground: {
+    backgroundColor: 'rgba(144, 238, 144, 0.7)', // Semi-transparent bright green
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 };
 

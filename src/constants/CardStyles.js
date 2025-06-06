@@ -202,28 +202,27 @@ export const CardStyles = {
   // ===== ICON CONTAINERS =====
   iconContainer: {
     position: 'absolute',
-    top: 8,
-    right: 8,
+    top: 4,
+    right: 4,
     zIndex: 2,
   },
   
   iconCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: 'rgba(0,0,0,0.3)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   
   iconCircleActive: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: COLORS.white,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'transparent',
     justifyContent: 'center',
     alignItems: 'center',
-    ...SHADOWS.small,
   },
   
   favoriteIcon: {

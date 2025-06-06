@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { Feather, Entypo, AntDesign, Octicons } from '@expo/vector-icons';
@@ -17,7 +17,9 @@ import GroupDetailScreen from '../screens/Main/GroupDetailScreen';
 import CreateGroupPostScreen from '../screens/Main/CreateGroupPostScreen';
 import BookingConfirmationScreen from '../screens/Main/BookingConfirmationScreen';
 import BookingsScreen from '../screens/Main/BookingsScreen';
+import BookingDetailScreen from '../screens/Main/BookingDetailScreen';
 import ServiceAgreementScreen from '../screens/Agreements/ServiceAgreementScreen';
+import ServiceDetailScreen from '../screens/Details/ServiceDetailScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -145,6 +147,11 @@ const MainTabs = () => (
     <Stack.Screen 
       name="BookingsScreen" 
       component={BookingsScreen} 
+      options={{ headerShown: false }}
+    />
+    <Stack.Screen 
+      name="BookingDetailScreen" 
+      component={BookingDetailScreen} 
       options={{ headerShown: false }}
     />
     <Stack.Screen 
