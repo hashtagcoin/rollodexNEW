@@ -10,10 +10,10 @@ import {
   Dimensions,
   Animated,
 } from 'react-native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 
 // Create an animated version of FlatList
 const AnimatedFlatList = Animated.createAnimatedComponent(FlatList);
-import { useFocusEffect } from '@react-navigation/native';
 import AppHeader from '../../components/layout/AppHeader';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabaseClient';
@@ -21,6 +21,7 @@ import { COLORS, DARK_GREEN, SIZES } from '../../constants/theme';
 import { CardStyles } from '../../constants/CardStyles';
 import SearchComponent from '../../components/common/SearchComponent';
 import HousingGroupCard from '../../components/cards/HousingGroupCard';
+import { useScrollContext } from '../../context/ScrollContext';
 
 const { width } = Dimensions.get('window');
 
@@ -38,6 +39,7 @@ const HOUSING_FILTERS = [
 ];
 
 const HousingGroupsScreen = ({ navigation }) => {
+  const { reportScroll } = useScrollContext();
   // State management
   const [housingGroups, setHousingGroups] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -572,6 +574,8 @@ const HousingGroupsScreen = ({ navigation }) => {
                 colors={[COLORS.primary]}
               />
             }
+            onScroll={reportScroll}
+            scrollEventThrottle={16}
           />
         ) : (
           <FlatList
@@ -589,6 +593,8 @@ const HousingGroupsScreen = ({ navigation }) => {
                 colors={[COLORS.primary]}
               />
             }
+            onScroll={reportScroll}
+            scrollEventThrottle={16}
           />
         )}
       </View>

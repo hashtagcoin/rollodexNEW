@@ -11,6 +11,7 @@ import {
   Dimensions,
   Alert
 } from 'react-native';
+import { useScrollContext } from '../../context/ScrollContext';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabaseClient';
@@ -32,6 +33,7 @@ const CARD_MARGIN = 10;
 const PAGE_SIZE = 10; // Moved PAGE_SIZE to be a top-level constant
 
 const FavouritesScreen = () => {
+  const { reportScroll } = useScrollContext();
   const navigation = useNavigation();
   const flatListRef = useRef(null);
   const [favorites, setFavorites] = useState([]);

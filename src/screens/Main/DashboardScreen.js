@@ -12,8 +12,10 @@ import { useUser } from '../../context/UserContext';
 import { supabase } from '../../lib/supabaseClient';
 import { formatDistanceToNow, format, parseISO } from 'date-fns';
 import { useNotifications, NotificationBadge } from '../../components/notifications';
+import { useScrollContext } from '../../context/ScrollContext';
 
 const DashboardScreen = () => {
+  const { reportScroll } = useScrollContext();
   const { profile, isProviderMode, toggleProviderMode } = useUser();
   const navigation = useNavigation();
   const scrollViewRef = useRef(null);
@@ -201,10 +203,13 @@ const DashboardScreen = () => {
       style={styles.wallpaper}
       resizeMode="cover"
     >
-      <ScrollView 
+      <ScrollView
         ref={scrollViewRef}
-        style={styles.screenContainer} 
-        showsVerticalScrollIndicator={false}>
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        onScroll={reportScroll}
+        scrollEventThrottle={16}
+      >
         <View style={styles.contentContainer}>
         {/* Top Bar with Logo Icon, Title and Notification */}
         <View style={styles.topBar}>

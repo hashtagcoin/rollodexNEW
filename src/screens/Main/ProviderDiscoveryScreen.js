@@ -16,6 +16,7 @@ import ServiceCard from '../../components/cards/ServiceCard';
 import HousingCard from '../../components/cards/HousingCard';
 import AppHeader from '../../components/layout/AppHeader';
 import CachedImage from '../../components/common/CachedImage';
+import { useScrollContext } from '../../context/ScrollContext';
 import SearchComponent from '../../components/common/SearchComponent';
 import SwipeCardDeck from '../../components/common/SwipeCardDeck.js';
 import SwipeCard from '../../components/common/SwipeCard';
@@ -47,6 +48,7 @@ const CARD_MARGIN = 10;
  * Provider Discovery Screen - Main screen for exploring services and housing
  */
 const ProviderDiscoveryScreen = ({ route }) => {  
+  const { reportScroll } = useScrollContext();
   // Extract route params
   const initialParams = route?.params || {};
   const navigation = useNavigation();
@@ -524,6 +526,8 @@ const ProviderDiscoveryScreen = ({ route }) => {
               colors={[DARK_GREEN]}
             />
           }
+          onScroll={reportScroll}
+          scrollEventThrottle={16}
         />
       );
     } 

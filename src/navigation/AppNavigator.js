@@ -5,6 +5,7 @@ import { AppStateProvider } from '../context/AppStateContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import LoadingScreen from '../components/LoadingScreen';
 import { NotificationProvider } from '../components/notifications';
+import ChatButtonOverlay from '../components/chat/ChatButtonOverlay';
 
 import MainTabs from './MainTabs';
 import ProviderStackNavigator from './ProviderStackNavigator';
@@ -162,12 +163,13 @@ function AppNavigator() {
   
   return (
     <AppStateProvider>
-      <NavigationContainer
-          onStateChange={(state) => console.log(`[DEBUG][${new Date().toISOString()}] NavigationContainer - Navigation state changed:`, 
-            state ? `Current route: ${state.routes[state.index]?.name}` : 'No state')}
-          onReady={() => console.log(`[DEBUG][${new Date().toISOString()}] NavigationContainer - Navigation container is ready`)}
-        >
-        <NotificationProvider>
+      <ChatButtonOverlay>
+        <NavigationContainer
+            onStateChange={(state) => console.log(`[DEBUG][${new Date().toISOString()}] NavigationContainer - Navigation state changed:`, 
+              state ? `Current route: ${state.routes[state.index]?.name}` : 'No state')}
+            onReady={() => console.log(`[DEBUG][${new Date().toISOString()}] NavigationContainer - Navigation container is ready`)}
+          >
+          <NotificationProvider>
         {isAuthenticated ? (
           <RootStack.Navigator 
             initialRouteName={getInitialRoute()}
@@ -188,8 +190,9 @@ function AppNavigator() {
             <AuthFlowStack.Screen name="Auth" component={AuthStack} />
           </AuthFlowStack.Navigator>
         )}
-        </NotificationProvider>
-      </NavigationContainer>
+          </NotificationProvider>
+        </NavigationContainer>
+      </ChatButtonOverlay>
     </AppStateProvider>
   );
 }
