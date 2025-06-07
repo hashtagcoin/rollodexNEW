@@ -500,6 +500,7 @@ const EditHousingListingScreen = ({ route, navigation }) => {
         title="Edit Housing Listing"
         navigation={navigation}
         showBackButton={true}
+        onBackPressOverride={() => navigation.navigate('ManageListings')}
       />
       
       {loading ? (

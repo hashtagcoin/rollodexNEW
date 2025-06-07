@@ -150,7 +150,13 @@ const AppHeader = ({
           style={styles.iconButton} 
           onPress={() => {
             if (navigation && typeof navigation.navigate === 'function') {
-              navigation.navigate('Profile');
+              // Navigate to Profile screen using the root navigator
+              navigation.navigate('MainApp', {
+                screen: 'Profile',
+                params: {
+                  screen: 'ProfileScreen'
+                }
+              });
             }
           }}
         >

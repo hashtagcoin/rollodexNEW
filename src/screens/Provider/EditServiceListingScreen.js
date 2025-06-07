@@ -467,6 +467,7 @@ const EditServiceListingScreen = ({ route, navigation }) => {
         title="Edit Service Listing"
         showBackButton={true}
         navigation={navigation}
+        onBackPressOverride={() => navigation.navigate('ManageListings')}
       />
 
       <ScrollView style={styles.scrollContainer} contentContainerStyle={styles.scrollContentContainer} keyboardShouldPersistTaps="handled">

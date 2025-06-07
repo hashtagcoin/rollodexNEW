@@ -302,6 +302,7 @@ const ManageListingsScreen = ({ navigation }) => {
         title="Manage Listings"
         navigation={navigation}
         showBackButton={true}
+        onBackPressOverride={() => navigation.navigate('ProviderDashboard')}
       />
       
       {/* Tab buttons */}
