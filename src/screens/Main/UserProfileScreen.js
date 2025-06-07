@@ -15,6 +15,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import { COLORS, FONTS } from '../../constants/theme';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import UserAvatar from '../../components/common/UserAvatar';
 import AppHeader from '../../components/layout/AppHeader';
 import ChatModal from '../../components/chat/ChatModal';
 import { useUser } from '../../context/UserContext'; // To get the currently logged-in user
@@ -238,19 +239,12 @@ const UserProfileScreen = () => {
     <>
       <View style={styles.profileHeaderContainer}>
         <View style={styles.profileTopSection}>
-          <TouchableOpacity
-            onPress={() => {
-              if (loggedInUser && viewedUserProfile && viewedUserProfile.id === loggedInUser.id) {
-                navigation.navigate('ProfileScreen');
-              }
-            }}
-            activeOpacity={0.8}
-          >
-            <Image 
-              source={{ uri: viewedUserProfile?.avatar_url || 'https://via.placeholder.com/150' }} 
-              style={styles.avatar}
-            />
-          </TouchableOpacity>
+          <UserAvatar
+            userId={viewedUserProfile?.id}
+            avatarUrl={viewedUserProfile?.avatar_url}
+            size={96}
+            style={styles.avatar}
+          />
           <View style={styles.profileInfo}>
             <Text style={styles.profileName}>{viewedUserProfile?.full_name || 'User'}</Text>
             <Text style={styles.username}>@{viewedUserProfile?.username || 'username'}</Text>
@@ -297,7 +291,12 @@ const UserProfileScreen = () => {
       )
     : ({ item }) => (
         <TouchableOpacity style={styles.friendItemContainer} onPress={() => navigation.push('UserProfileScreen', { userId: item.userId })}>
-          <Image source={{ uri: item.avatar }} style={styles.friendAvatar_small} />
+          <UserAvatar
+            userId={item.userId}
+            avatarUrl={item.avatar}
+            size={56}
+            style={styles.friendAvatar_small}
+          />
           <Text style={styles.friendName_small} numberOfLines={1}>{item.name}</Text>
         </TouchableOpacity>
       );

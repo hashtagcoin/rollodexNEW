@@ -18,6 +18,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { COLORS, FONTS } from '../../constants/theme';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
+import UserAvatar from '../../components/common/UserAvatar';
 
 // Custom date formatting function
 const formatDate = (dateString) => {
@@ -280,11 +281,20 @@ const PostCard = ({ post, onPress, showActions = true }) => {
           // Navigate to user profile
         }}
       >
-        <TouchableOpacity onPress={() => user && user.id && navigation.navigate('UserProfileScreen', { userId: user.id })} style={styles.avatarContainer}>
-          <Image source={{ uri: user?.avatar_url || 'https://via.placeholder.com/40' }} style={styles.avatar} />
-        </TouchableOpacity>
+        <UserAvatar
+          userId={user?.id}
+          avatarUrl={user?.avatar_url}
+          size={40}
+          style={styles.avatarContainer}
+        />
         <View style={styles.headerText}>
           <TouchableOpacity onPress={() => user && user.id && navigation.navigate('UserProfileScreen', { userId: user.id })}>
+            <UserAvatar
+              userId={user?.id}
+              avatarUrl={user?.avatar_url}
+              size={40}
+              style={styles.avatarContainer}
+            />
             <Text style={styles.username}>{user?.username || 'User'}</Text>
           </TouchableOpacity>
           <Text style={styles.postTime}>

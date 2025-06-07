@@ -12,6 +12,7 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import AppHeader from '../../components/layout/AppHeader';
 import { useUser } from '../../context/UserContext';
+import UserAvatar from '../../components/common/UserAvatar';
 
 const TABS = ['Posts', 'Groups', 'Bookings', 'Friends'];
 const windowWidth = Dimensions.get('window').width;
@@ -900,9 +901,11 @@ const ProfileScreen = () => {
   navigation.navigate('UserProfileScreen', { userId: friend.userId });
 }}
                   >
-                    <Image 
-                      source={{ uri: friend.avatar }} 
-                      style={styles.friendGridAvatar} 
+                    <UserAvatar
+                      userId={friend.userId}
+                      avatarUrl={friend.avatar}
+                      size={64}
+                      style={styles.friendAvatar}
                     />
                     <Text style={styles.friendGridName} numberOfLines={1}>{friend.name}</Text>
                   </TouchableOpacity>

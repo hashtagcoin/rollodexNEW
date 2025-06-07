@@ -210,6 +210,7 @@ const DashboardScreen = () => {
         onScroll={reportScroll}
         scrollEventThrottle={16}
       >
+        <View style={{ height: 40 }} />
         <View style={styles.contentContainer}>
         {/* Top Bar with Logo Icon, Title and Notification */}
         <View style={styles.topBar}>
