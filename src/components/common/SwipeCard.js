@@ -41,9 +41,7 @@ const SwipeCard = memo(({
   const getImageUrl = useCallback(() => {
     if (!item) return null;
     
-    // Debug log to see what we're getting
-    console.log('SwipeCard item:', item);
-    console.log('SwipeCard item properties:', Object.keys(item));
+
     
     // Try multiple possible image URL fields
     const url = item.media_urls?.[0] || 
@@ -56,7 +54,7 @@ const SwipeCard = memo(({
              ? 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=800&h=1200&fit=crop'
              : 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=800&h=1200&fit=crop');
     
-    console.log('Using image URL:', url);
+
     return url;
   }, [item, isHousing]);
 

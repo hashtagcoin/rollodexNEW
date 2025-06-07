@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { 
   View, 
   Text, 
@@ -17,7 +17,7 @@ import HousingCard from '../../components/cards/HousingCard';
 import AppHeader from '../../components/layout/AppHeader';
 import CachedImage from '../../components/common/CachedImage';
 import SearchComponent from '../../components/common/SearchComponent';
-import SwipeCardDeck from '../../components/common/SwipeCardDeck';
+import SwipeCardDeck from '../../components/common/SwipeCardDeck.js';
 import SwipeCard from '../../components/common/SwipeCard';
 import { 
   COLORS, 
@@ -53,6 +53,8 @@ const ProviderDiscoveryScreen = ({ route }) => {
   
   // State variables
   const [selectedCategory, setSelectedCategory] = useState(CATEGORIES[0]);
+  // Track swiped items to prevent them from reappearing
+  const [swipedItemIds, setSwipedItemIds] = useState(new Set());
   const listViewRef = useRef(null);
   
   // Handle initial category from params
@@ -89,6 +91,7 @@ const ProviderDiscoveryScreen = ({ route }) => {
       // Try to get any favorited items for the current items shown
       try {
         // First, clear the current user favorites if switching categories
+        const prevFavorites = new Set(userFavorites);
         setUserFavorites(new Set());
         
         // Fetch latest favorites status for these items
@@ -132,11 +135,15 @@ const ProviderDiscoveryScreen = ({ route }) => {
       console.log('[ProviderDiscovery] Screen focused - refreshing favorites data');
       refreshUserFavorites();
       
+      // Force a fetchData call to ensure we have the most recent data
+      // This helps ensure consistency across the app
+      fetchData(true);
+      
       return () => {
         // Code to run when screen loses focus (optional)
         console.log('[ProviderDiscovery] Screen unfocused');
       };
-    }, [refreshUserFavorites]) // Only depend on refreshUserFavorites to ensure it runs on every focus
+    }, [refreshUserFavorites, fetchData]) // Include fetchData in dependencies
   );
   const [viewMode, setViewMode] = useState(VIEW_MODES[0]);
   const [items, setItems] = useState([]);
@@ -163,15 +170,70 @@ const ProviderDiscoveryScreen = ({ route }) => {
   
   // Reset items and scroll position when category changes (primarily for non-swipe views)
   useEffect(() => {
-    if (isMounted.current && viewMode !== 'Swipe') {
-      console.log('[ProviderDiscovery] Category changed, resetting items for non-swipe view.');
-      setItems([]); 
-      if (listViewRef.current) {
+    if (isMounted.current) {
+      console.log('[ProviderDiscovery] Category changed, resetting items');
+      setItems([]);
+      // Clear swiped items when category changes
+      if (viewMode === 'Swipe') {
+        console.log('[ProviderDiscovery] Resetting swiped items with category change');
+        setSwipedItemIds(new Set());
+      } 
+      if (listViewRef.current && viewMode !== 'Swipe') {
         listViewRef.current.scrollToOffset({ offset: 0, animated: false });
       }
     }
   }, [selectedCategory, viewMode]);
   
+  // useMemo to filter out swiped items for the swipe deck
+  const filteredItems = useMemo(() => {
+    if (viewMode !== 'Swipe' || !items) return items;
+    
+    // Filter out any items that have already been swiped
+    // Also ensure each item has a unique ID to prevent React key issues
+    const filtered = items
+      .filter(item => item && item.id && !swipedItemIds.has(item.id));
+      
+    console.log(`[ProviderDiscovery] Filtered items: ${filtered.length} (total: ${items.length}, swiped: ${swipedItemIds.size})`);
+    return filtered;
+  }, [items, swipedItemIds, viewMode]);
+
+  // Handle card swipe events - keeps track of which items have been swiped
+  // and optionally adds to favorites for right swipes
+  const handleCardSwipe = useCallback((direction, item) => {
+    if (!item || !item.id) {
+      console.log('[ProviderDiscovery] Swipe handler received invalid item:', item);
+      return;
+    }
+    
+    // Skip if this item has already been processed
+    if (swipedItemIds.has(item.id)) {
+      console.log(`[ProviderDiscovery] Item ${item.id} already swiped, skipping duplicate event`);
+      return;
+    }
+    
+    console.log(`[ProviderDiscovery] Card swiped ${direction}:`, item.id, item.title || item.name);
+    
+    // Add swiped item ID to the set of swiped items
+    setSwipedItemIds(prevIds => {
+      const newIds = new Set(prevIds);
+      newIds.add(item.id);
+      console.log('[ProviderDiscovery] Updated swiped items set, now contains', newIds.size, 'items');
+      return newIds;
+    });
+    
+    // If swiped right, add to favorites
+    if (direction === 'right') {
+      console.log('[ProviderDiscovery] User liked item, adding to favorites');
+      // Determine the correct item type based on the category
+      const itemType = selectedCategory === 'Housing' ? 'housing_listing' : 'service_provider';
+      // Use a small timeout to ensure the swipe animation completes before updating favorites
+      // This helps prevent UI jank during the swipe and favorite operations
+      setTimeout(() => {
+        toggleFavorite(item, itemType);
+      }, 300);
+    }
+  }, [toggleFavorite, swipedItemIds]);
+
   // Main data fetching logic as a useCallback
   const fetchData = useCallback(async (isRefreshing = false) => {
     if (!isMounted.current) return;
@@ -315,17 +377,17 @@ const ProviderDiscoveryScreen = ({ route }) => {
         });
       }
     } else {
-      // Favorite - use upsert to handle potential conflicts
+      // Favorite with created_at field in ISO format
       const { error } = await supabase
         .from('favorites')
-        .upsert({ 
-          user_id: user.id, 
-          item_id: itemId, 
+        .upsert({
+          user_id: user.id,
+          item_id: itemId,
           item_type: itemType,
           created_at: new Date().toISOString()
-        }, {
+        }, { 
           onConflict: 'user_id,item_id,item_type',
-          ignoreDuplicates: true
+          ignoreDuplicates: false 
         });
 
       if (error) {
@@ -365,24 +427,23 @@ const ProviderDiscoveryScreen = ({ route }) => {
   
   // Swipe card handlers
   const handleSwipeCard = useCallback(async (cardData, direction) => {
+    // This method is called by the SwipeCardDeck component and is separate from handleCardSwipe
+    // It's mainly for analytics or other side effects, not for UI state management
     const isHousing = selectedCategory === 'Housing'; // Determine if current category is Housing
     const itemTypeForFavorites = isHousing ? 'housing_listing' : 'service_provider';
     
     try {
-      console.log(`[ProviderDiscovery] Swiped ${direction} on:`, cardData.title || cardData.name, 'ID:', cardData.id);
+      // No need to handle favorites here - that's done in handleCardSwipe
+      console.log(`[ProviderDiscovery] SwipeCardDeck processed swipe ${direction}:`, cardData?.title || cardData?.name || 'Unknown card');
       
       if (direction === 'right') { // Liked
-        console.log('[ProviderDiscovery] Liked (swiped right):', cardData.title || cardData.name);
-        await toggleFavorite(cardData, itemTypeForFavorites);
+        console.log('[ProviderDiscovery] Processed like event');
+        // No need to toggle favorite here - handled in handleCardSwipe
       } else if (direction === 'up') { // Super liked
-        console.log('[ProviderDiscovery] Super liked:', cardData.title || cardData.name);
-        // Potentially a different action or also favorite
-        await toggleFavorite(cardData, itemTypeForFavorites); // Example: super like also favorites
+        console.log('[ProviderDiscovery] Processed super like event');
+        // Special handling for up swipe if needed
       } else if (direction === 'left') { // Disliked
-        console.log('[ProviderDiscovery] Disliked (swiped left):', cardData.title || cardData.name);
-        // If it was favorited, a left swipe could unfavorite it, or do nothing
-        // For simplicity, let's say left swipe does not change favorite status here
-        // but you could add: if (userFavorites.has(cardData.id)) { await toggleFavorite(cardData, itemTypeForFavorites); }
+        console.log('[ProviderDiscovery] Processed dislike event');
       }
       
       // Could implement saving to user's favorites/likes here
@@ -416,8 +477,12 @@ const ProviderDiscoveryScreen = ({ route }) => {
     console.log('All cards viewed in this category');
   }, []);
   
-  // Main content renderer based on view mode
-  const renderContent = useCallback(() => {
+  // Render main content 
+  const renderContent = () => {
+    // Add console logging to help debug rendering issues
+    console.log(`[ProviderDiscovery] Rendering content in ${viewMode} mode`);
+    console.log(`[ProviderDiscovery] Total items: ${items.length}, Filtered items: ${filteredItems.length}, Swiped items: ${swipedItemIds.size}`);
+    
     // Loading state
     if (loading && items.length === 0) {
       return <ActivityIndicator size="large" color={DARK_GREEN} style={styles.loadingIndicator} />;
@@ -501,62 +566,93 @@ const ProviderDiscoveryScreen = ({ route }) => {
     
     // Swipe view
     else if (viewMode === 'Swipe') {
-      const isHousing = selectedCategory === 'Housing';
+      // Use filtered items for swipe view to avoid showing already swiped cards
+      if (loading) {
+        return <ActivityIndicator style={styles.loader} size="large" color={COLORS.DARK_GREEN} />;
+      }
       
-      // Transform data to ensure it has all required properties for SwipeCard
-      const transformedItems = items.map(item => ({
-        id: item.id,
-        title: item.title || item.name || 'Untitled',
-        name: item.title || item.name || 'Untitled',
-        description: item.description || item.desc || 'No description available',
-        category: item.category || selectedCategory,
-        location: item.location || 'Location not specified',
-        price: item.price || item.cost || item.rent,
-        image_url: item.image_url || item.cover_image_url || item.avatar_url || `https://source.unsplash.com/featured/?${isHousing ? 'apartment' : selectedCategory.toLowerCase()}`,
-        tags: item.tags || [],
-        // Copy all other properties
-        ...item
-      }));
+      if (!filteredItems || filteredItems.length === 0) {
+        // Check if we have items but all have been swiped
+        if (items.length > 0 && swipedItemIds.size === items.length) {
+          return (
+            <View style={styles.noResultsContainer}>
+              <Text style={styles.noResultsText}>You've viewed all {selectedCategory} items</Text>
+              <TouchableOpacity 
+                style={styles.resetButton} 
+                onPress={() => {
+                  console.log('[ProviderDiscovery] Resetting swiped items');
+                  setSwipedItemIds(new Set());
+                }}
+              >
+                <Text style={styles.resetButtonText}>View Again</Text>
+              </TouchableOpacity>
+            </View>
+          );
+        }
+        return <Text style={styles.noResultsText}>No {selectedCategory} matches found</Text>;
+      }
       
-      console.log('Transformed items for SwipeCard:', transformedItems[0]);
+      console.log(`[ProviderDiscovery] Rendering SwipeCardDeck with ${filteredItems.length} items`);
       
       return (
-        <SwipeCardDeck
-          data={transformedItems}
-          renderCard={(cardData) => (
-            <SwipeCard
-              item={cardData}
-              isHousing={isHousing}
-              onPress={() => handleSwipeCardPress(cardData)} // Navigate to detail on tap
-              onImageLoaded={handleImageLoaded}
-              isFavorited={userFavorites.has(cardData.id)} // Pass favorite status
-              // onToggleFavorite is not directly applicable to SwipeCard like this
-              // Favorite action is handled by onSwipe (handleSwipeCard)
-            />
-          )}
-          onSwipe={handleSwipeCard}
-          onCardDisappear={handleAllCardsViewed}
-          backgroundColor="#F8F7F3"
-          cardStyle={styles.swipeCardStyle}
-          overlayLabels={{
-            left: {
-              title: 'NOPE',
-              color: '#E74C3C',
-              fontSize: 32
-            },
-            right: {
-              title: 'LIKE',
-              color: '#27AE60',
-              fontSize: 32
-            }
-          }}
-          containerStyle={styles.swipeContainer}
-        />
+        <View style={styles.swipeContainer}>
+          <SwipeCardDeck
+            data={filteredItems}
+            renderCard={(item) => (
+              <SwipeCard 
+                item={item} 
+                isHousing={selectedCategory === 'Housing'} 
+                onPress={() => handleSwipeCardPress(item)}
+              />
+            )}
+            onSwipeLeft={(item) => handleCardSwipe('left', item)}
+            onSwipeRight={(item) => handleCardSwipe('right', item)}
+            onSwipeBottom={(item) => handleCardSwipe('bottom', item)}
+            onCardDisappear={(item, index) => {
+              // Just log the disappear event but don't update state here to avoid duplicates
+              // State updates are handled by the onSwipe* callbacks
+              if (item) {
+                console.log(`[ProviderDiscovery] Card disappeared: ${item.id || 'unknown'} at index ${index}`);
+              }
+            }}
+            onAllCardsViewed={() => {
+              console.log('[ProviderDiscovery] All cards have been viewed');
+              // Optional: Show a message to the user that they've viewed all cards
+            }}
+            stackSize={3}
+            stackSeparation={15}
+            stackScale={0.08}
+            infinite={false}
+            backgroundColor="transparent"
+            disableTopSwipe={true}
+            disableBottomSwipe={false}
+            animationDuration={300}
+            cardStyle={styles.swipeCard}
+            overlayLabels={{
+              left: {
+                title: 'SKIP',
+                color: '#E74C3C',
+                fontSize: 32
+              },
+              right: {
+                title: 'LIKE',
+                color: '#27AE60',
+                fontSize: 32
+              },
+              bottom: {
+                title: 'DISMISS',
+                color: '#7F8C8D',
+                fontSize: 24
+              }
+            }}
+          />
+        </View>
       );
     }
     
     return null;
-  }, [items, viewMode, selectedCategory, loading, handleHousingPress, handleServicePress, handleImageLoaded, handleSwipeCard, handleSwipeCardPress, handleAllCardsViewed, userFavorites, toggleFavorite, onRefresh, refreshing]);
+  };
+  
 
   // Back button handler with view mode cycling
   const handleBackPressProviderDiscovery = useCallback(() => {
@@ -726,6 +822,30 @@ const styles = StyleSheet.create({
   listItemContainer: {
     marginBottom: 10,
   },
+  noResultsText: {
+    textAlign: 'center',
+    fontSize: 18,
+    marginTop: 40,
+    color: ICON_COLOR_DARK,
+  },
+  noResultsContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingBottom: 40,
+  },
+  resetButton: {
+    backgroundColor: COLORS.DARK_GREEN,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginTop: 20,
+    elevation: 2,
+  },
+  resetButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '500',
+  },
 });
-
 export default ProviderDiscoveryScreen;

@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  ScrollView, 
-  TouchableOpacity, 
-  Image, 
-  ActivityIndicator, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Image,
+  ActivityIndicator,
   Alert,
   Modal,
   TextInput,
@@ -17,7 +17,6 @@ import {
 import AppHeader from '../../components/layout/AppHeader';
 import { useRoute } from '@react-navigation/native';
 import { format, parseISO, formatDistance, addDays } from 'date-fns';
-// import { LinearGradient } from 'expo-linear-gradient'; // <-- FIX 2: Removed unused import
 import { Ionicons, MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabaseClient';
 import { COLORS } from '../../constants/theme';
@@ -27,11 +26,11 @@ const BookingDetailScreen = ({ navigation }) => {
   const route = useRoute();
   const { bookingId } = route.params || {};
   const { profile } = useUser();
-  
+
   const [booking, setBooking] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  
+
   // Rescheduling state
   const [rescheduleModalVisible, setRescheduleModalVisible] = useState(false);
   const [isDateModalVisible, setDateModalVisible] = useState(false);
@@ -40,12 +39,12 @@ const BookingDetailScreen = ({ navigation }) => {
   const [selectedTime, setSelectedTime] = useState('');
   const [rescheduleReason, setRescheduleReason] = useState('');
   const [rescheduleLoading, setRescheduleLoading] = useState(false);
-  
+
   // Cancellation state
   const [cancelModalVisible, setCancelModalVisible] = useState(false);
   const [cancellationReason, setCancellationReason] = useState('');
   const [cancelLoading, setCancelLoading] = useState(false);
-  
+
   // Booking history state
   const [bookingHistory, setBookingHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
@@ -58,7 +57,7 @@ const BookingDetailScreen = ({ navigation }) => {
         setLoading(false);
         return;
       }
-      
+
       try {
         // Fetch booking details
         const { data, error } = await supabase
@@ -66,19 +65,19 @@ const BookingDetailScreen = ({ navigation }) => {
           .select('*')
           .eq('booking_id', bookingId)
           .single();
-          
+
         if (error) throw error;
         if (!data) throw new Error('Booking not found');
-        
+
         setBooking(data);
-        
+
         // Fetch booking history
         const { data: historyData, error: historyError } = await supabase
           .from('booking_history')
           .select('*')
           .eq('booking_id', bookingId)
           .order('created_at', { ascending: false });
-          
+
         if (!historyError && historyData) {
           setBookingHistory(historyData);
         }
@@ -89,10 +88,10 @@ const BookingDetailScreen = ({ navigation }) => {
         setLoading(false);
       }
     };
-    
+
     fetchBookingDetails();
   }, [bookingId]);
-  
+
   // Show reschedule modal
   const showRescheduleModal = () => {
     // Set default new date to current booking date or now + 1 day if date is in the past
@@ -101,19 +100,19 @@ const BookingDetailScreen = ({ navigation }) => {
     setNewDate(defaultDate);
     setRescheduleModalVisible(true);
   };
-  
+
   // Format date for display
   const formatDate = (date) => {
     const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    
+
     const dayName = days[date.getDay()];
     const monthName = months[date.getMonth()];
     const day = date.getDate();
-    
+
     return `${dayName}, ${monthName} ${day}`;
   };
-  
+
   // Handle date selection with predefined options
   const handleSelectDate = (daysToAdd = 0) => {
     const date = new Date();
@@ -121,50 +120,50 @@ const BookingDetailScreen = ({ navigation }) => {
     setNewDate(date);
     setDateModalVisible(false);
   };
-  
+
   // Handle time selection with predefined options
   const handleSelectTime = (timeStr) => {
     setSelectedTime(timeStr);
     setTimeModalVisible(false);
-    
+
     // Update the newDate with the selected time
     const [hourStr, minuteStr] = timeStr.split(':');
     const isPM = timeStr.includes('PM');
     let hour = parseInt(hourStr);
     if (isPM && hour !== 12) hour += 12;
     if (!isPM && hour === 12) hour = 0;
-    
+
     const minute = parseInt(minuteStr.split(' ')[0]);
-    
+
     const updatedDate = new Date(newDate);
     updatedDate.setHours(hour, minute, 0, 0);
     setNewDate(updatedDate);
   };
-  
+
   // Submit reschedule request
   const submitReschedule = async () => {
     if (!booking || !profile?.id) return;
-    
+
     // Validate the new date is in the future
     if (new Date() > newDate) {
       Alert.alert('Invalid Date', 'Please select a future date and time.');
       return;
     }
-    
+
     setRescheduleLoading(true);
-    
+
     try {
       // 1. Update the booking record
       const { error: updateError } = await supabase
         .from('service_bookings')
-        .update({ 
+        .update({
           scheduled_at: newDate.toISOString(),
           status: 'rescheduled' // Adding a specific status for rescheduled bookings
         })
         .eq('id', booking.booking_id);
-      
+
       if (updateError) throw updateError;
-      
+
       // 2. Record the change in booking history
       const { error: historyError } = await supabase
         .from('booking_history')
@@ -179,25 +178,25 @@ const BookingDetailScreen = ({ navigation }) => {
           reason: rescheduleReason,
           notes: 'Rescheduled by user'
         });
-      
+
       if (historyError) console.error('Error recording booking history:', historyError);
-      
+
       // 3. Update local state
-      setBooking(prev => ({ 
-        ...prev, 
+      setBooking(prev => ({
+        ...prev,
         scheduled_at: newDate.toISOString(),
         booking_status: 'rescheduled'
       }));
-      
+
       // 4. Fetch updated history
       const { data: historyData } = await supabase
         .from('booking_history')
         .select('*')
         .eq('booking_id', booking.booking_id)
         .order('created_at', { ascending: false });
-        
+
       if (historyData) setBookingHistory(historyData);
-      
+
       // 5. Close modal and show success message
       setRescheduleModalVisible(false);
       setRescheduleReason('');
@@ -209,27 +208,27 @@ const BookingDetailScreen = ({ navigation }) => {
       setRescheduleLoading(false);
     }
   };
-  
+
   // Show cancel modal
   const showCancelModal = () => {
     setCancelModalVisible(true);
   };
-  
+
   // Submit cancellation
   const submitCancellation = async () => {
     if (!booking || !profile?.id) return;
-    
+
     setCancelLoading(true);
-    
+
     try {
       // 1. Update the booking record
       const { error: updateError } = await supabase
         .from('service_bookings')
         .update({ status: 'cancelled' })
         .eq('id', booking.booking_id);
-      
+
       if (updateError) throw updateError;
-      
+
       // 2. Record the cancellation in booking history
       const { error: historyError } = await supabase
         .from('booking_history')
@@ -244,21 +243,21 @@ const BookingDetailScreen = ({ navigation }) => {
           reason: cancellationReason,
           notes: 'Cancelled by user'
         });
-      
+
       if (historyError) console.error('Error recording cancellation history:', historyError);
-      
+
       // 3. Update local state
       setBooking(prev => ({ ...prev, booking_status: 'cancelled' }));
-      
+
       // 4. Fetch updated history
       const { data: historyData } = await supabase
         .from('booking_history')
         .select('*')
         .eq('booking_id', booking.booking_id)
         .order('created_at', { ascending: false });
-        
+
       if (historyData) setBookingHistory(historyData);
-      
+
       // 5. Close modal and show success message
       setCancelModalVisible(false);
       setCancellationReason('');
@@ -270,14 +269,15 @@ const BookingDetailScreen = ({ navigation }) => {
       setCancelLoading(false);
     }
   };
-  
+
   // Share booking details
   const handleShare = async () => {
     if (!booking) return;
-    
+
     const dateTime = formatBookingDateTime(booking.scheduled_at);
-    const shareMessage = `I have a booking for ${booking.service_title} with ${booking.provider_name || 'a provider'} on ${dateTime.date} at ${dateTime.time}. ${booking.booking_notes ? `Note: ${booking.booking_notes}` : ''}`;
-    
+    // <-- FIX 5: Changed booking.provider_name to booking.user_full_name for consistency
+    const shareMessage = `I have a booking for ${booking.service_title} with ${booking.user_full_name || 'a provider'} on ${dateTime.date} at ${dateTime.time}. ${booking.booking_notes ? `Note: ${booking.booking_notes}` : ''}`;
+
     try {
       await Share.share({
         message: shareMessage,
@@ -287,7 +287,7 @@ const BookingDetailScreen = ({ navigation }) => {
       Alert.alert('Error', 'Failed to share booking details');
     }
   };
-  
+
   // Format booking date and time
   const formatBookingDateTime = (dateString) => {
     try {
@@ -302,7 +302,7 @@ const BookingDetailScreen = ({ navigation }) => {
       return { date: 'Unknown', time: 'Unknown', fromNow: 'Unknown', calendar: 'Unknown' };
     }
   };
-  
+
   // Get status color
   const getStatusColor = (status) => {
     switch(status?.toLowerCase()) {
@@ -321,24 +321,24 @@ const BookingDetailScreen = ({ navigation }) => {
   };
 
   // Calculate if booking can be cancelled (only future and non-cancelled/completed bookings)
-  const canCancel = booking && 
-    booking.booking_status?.toLowerCase() !== 'cancelled' && 
+  const canCancel = booking &&
+    booking.booking_status?.toLowerCase() !== 'cancelled' &&
     booking.booking_status?.toLowerCase() !== 'completed' &&
     new Date(booking.scheduled_at) > new Date();
-  
+
   // Calculate if booking can be rescheduled (same conditions as cancel)
   const canReschedule = canCancel;
-  
+
   // Format the date if booking exists
   const formattedDateTime = booking ? formatBookingDateTime(booking.scheduled_at) : null;
-  
+
   // Get status color for the booking
   const statusColor = booking ? getStatusColor(booking.booking_status) : '#8E8E93';
 
   return (
     <View style={styles.container}>
-      <AppHeader 
-        title="Booking Details" 
+      <AppHeader
+        title="Booking Details"
         navigation={navigation}
         canGoBack={true}
       />
@@ -353,7 +353,7 @@ const BookingDetailScreen = ({ navigation }) => {
             <Ionicons name="alert-circle-outline" size={60} color="#FF3B30" />
             <Text style={styles.errorTitle}>Error</Text>
             <Text style={styles.errorMessage}>{error}</Text>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.backButton}
               onPress={() => navigation.goBack()}
             >
@@ -371,7 +371,7 @@ const BookingDetailScreen = ({ navigation }) => {
               </Text>
             </View>
             <Text style={styles.bookingTitle}>{booking.service_title}</Text>
-            
+
             <View style={styles.bookingMeta}>
               <View style={styles.metaItem}>
                 <Ionicons name="calendar" size={16} color="#666" style={styles.metaIcon} />
@@ -383,76 +383,76 @@ const BookingDetailScreen = ({ navigation }) => {
               </View>
             </View>
           </View>
-          
+
           {/* Service Image (if available) */}
           {booking.service_media_urls && booking.service_media_urls.length > 0 && (
-            <Image 
+            <Image
               source={{ uri: booking.service_media_urls[0] }}
               style={styles.serviceImage}
               resizeMode="cover"
             />
           )}
-          
+
           {/* Booking Information Cards */}
           <View style={styles.infoSection}>
             <Text style={styles.sectionTitle}>Booking Details</Text>
-            
+
             {/* Service Information */}
             <View style={styles.card}>
               <View style={styles.cardHeader}>
                 <MaterialIcons name="info-outline" size={22} color={COLORS.primary} />
                 <Text style={styles.cardTitle}>Service Information</Text>
               </View>
-              
+
               <View style={styles.cardRow}>
                 <Text style={styles.cardLabel}>Service Type:</Text>
                 <Text style={styles.cardValue}>{booking.service_category || 'Not specified'}</Text>
               </View>
-              
+
               <View style={styles.cardRow}>
                 <Text style={styles.cardLabel}>Format:</Text>
                 <Text style={styles.cardValue}>{booking.service_format || 'In Person'}</Text>
               </View>
-              
+
               <View style={styles.cardRow}>
                 <Text style={styles.cardLabel}>Provider:</Text>
                 <Text style={styles.cardValue}>{booking.user_full_name || 'Independent Provider'}</Text>
               </View>
-              
+
               <View style={styles.cardRow}>
                 <Text style={styles.cardLabel}>Duration:</Text>
                 <Text style={styles.cardValue}>1 hour (estimated)</Text>
               </View>
             </View>
-            
+
             {/* Payment Information */}
             <View style={styles.card}>
               <View style={styles.cardHeader}>
                 <MaterialIcons name="payment" size={22} color={COLORS.primary} />
                 <Text style={styles.cardTitle}>Payment Details</Text>
               </View>
-              
+
               <View style={styles.cardRow}>
                 <Text style={styles.cardLabel}>Total Price:</Text>
                 <Text style={styles.cardValue}>${parseFloat(booking.total_price).toFixed(2)}</Text>
               </View>
-              
+
               <View style={styles.cardRow}>
                 <Text style={styles.cardLabel}>NDIS Covered:</Text>
                 <Text style={styles.cardValue}>${parseFloat(booking.ndis_covered_amount).toFixed(2)}</Text>
               </View>
-              
+
               <View style={styles.cardRow}>
                 <Text style={styles.cardLabel}>Gap Payment:</Text>
                 <Text style={styles.cardValue}>${parseFloat(booking.gap_payment).toFixed(2)}</Text>
               </View>
-              
+
               <View style={styles.cardRow}>
                 <Text style={styles.cardLabel}>Payment Status:</Text>
                 <Text style={styles.cardValue}>Pending</Text>
               </View>
             </View>
-            
+
             {/* Notes */}
             {booking.booking_notes && (
               <View style={styles.card}>
@@ -464,12 +464,12 @@ const BookingDetailScreen = ({ navigation }) => {
               </View>
             )}
           </View>
-          
+
           {/* Action Buttons */}
           <View style={styles.actionButtonsContainer}>
             <View style={styles.actionButtons}>
               {canReschedule && (
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={[styles.actionButton, styles.rescheduleButton]}
                   onPress={showRescheduleModal}
                 >
@@ -477,9 +477,9 @@ const BookingDetailScreen = ({ navigation }) => {
                   <Text numberOfLines={1} style={styles.actionButtonText}>Reschedule</Text>
                 </TouchableOpacity>
               )}
-              
+
               {canCancel && (
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={[styles.actionButton, styles.cancelButton]}
                   onPress={showCancelModal}
                 >
@@ -488,8 +488,8 @@ const BookingDetailScreen = ({ navigation }) => {
                 </TouchableOpacity>
               )}
             </View>
-            
-            <TouchableOpacity 
+
+            <TouchableOpacity
               style={[styles.actionButton, styles.historyButton]}
               onPress={() => setShowHistory(!showHistory)}
             >
@@ -503,7 +503,7 @@ const BookingDetailScreen = ({ navigation }) => {
           <Ionicons name="alert-circle-outline" size={60} color="#FF9500" />
           <Text style={styles.errorTitle}>Booking Not Found</Text>
           <Text style={styles.errorMessage}>We couldn't find this booking in our records.</Text>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.backButton}
             onPress={() => navigation.goBack()}
           >
@@ -511,7 +511,7 @@ const BookingDetailScreen = ({ navigation }) => {
           </TouchableOpacity>
         </View>
       )}
-      
+
       {/* Booking History Section (conditionally shown) */}
       {showHistory && booking && (
         <View style={styles.historyContainer}>
@@ -521,7 +521,7 @@ const BookingDetailScreen = ({ navigation }) => {
               <Ionicons name="close" size={24} color="#666" />
             </TouchableOpacity>
           </View>
-          
+
           {bookingHistory.length > 0 ? (
             <ScrollView style={styles.historyList}>
               {bookingHistory.map((item) => (
@@ -534,7 +534,7 @@ const BookingDetailScreen = ({ navigation }) => {
                       {format(parseISO(item.created_at), 'PPp')}
                     </Text>
                   </View>
-                  
+
                   {item.action_type === 'rescheduled' && (
                     <View style={styles.historyItemDetails}>
                       <Text style={styles.historyItemLabel}>Original Date:</Text>
@@ -553,7 +553,7 @@ const BookingDetailScreen = ({ navigation }) => {
                       )}
                     </View>
                   )}
-                  
+
                   {item.action_type === 'cancelled' && item.reason && (
                     <View style={styles.historyItemDetails}>
                       <Text style={styles.historyItemLabel}>Reason:</Text>
@@ -574,7 +574,7 @@ const BookingDetailScreen = ({ navigation }) => {
       </ScrollView>
 
       {/* --- Modals are placed outside the ScrollView but inside the main View --- */}
-      
+
       {/* Reschedule Modal */}
       <Modal
         visible={rescheduleModalVisible}
@@ -582,7 +582,7 @@ const BookingDetailScreen = ({ navigation }) => {
         animationType="slide"
         onRequestClose={() => setRescheduleModalVisible(false)}
       >
-        <KeyboardAvoidingView 
+        <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           style={styles.modalContainer}
         >
@@ -593,15 +593,15 @@ const BookingDetailScreen = ({ navigation }) => {
                 <Ionicons name="close" size={24} color="#666" />
               </TouchableOpacity>
             </View>
-            
+
             <Text style={styles.modalSubtitle}>
               Please select a new date and time for your booking
             </Text>
-            
+
             {/* Date Selection */}
             <View style={styles.dateSelectionRow}>
               <Text style={styles.dateLabel}>New Date:</Text>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.datePickerButton}
                 onPress={() => setDateModalVisible(true)}
               >
@@ -611,11 +611,11 @@ const BookingDetailScreen = ({ navigation }) => {
                 <Ionicons name="calendar-outline" size={20} color={COLORS.primary} />
               </TouchableOpacity>
             </View>
-            
+
             {/* Time Selection */}
             <View style={styles.dateSelectionRow}>
               <Text style={styles.dateLabel}>New Time:</Text>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.datePickerButton}
                 onPress={() => setTimeModalVisible(true)}
               >
@@ -625,7 +625,7 @@ const BookingDetailScreen = ({ navigation }) => {
                 <Ionicons name="time-outline" size={20} color={COLORS.primary} />
               </TouchableOpacity>
             </View>
-            
+
             {/* Reason Input */}
             <Text style={styles.dateLabel}>Reason for rescheduling (optional):</Text>
             <TextInput
@@ -636,17 +636,17 @@ const BookingDetailScreen = ({ navigation }) => {
               multiline={true}
               numberOfLines={3}
             />
-            
+
             {/* Action Buttons */}
             <View style={styles.modalActions}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={[styles.modalButton, styles.modalCancelButton]}
                 onPress={() => setRescheduleModalVisible(false)}
               >
                 <Text style={styles.modalCancelButtonText}>Cancel</Text>
               </TouchableOpacity>
-              
-              <TouchableOpacity 
+
+              <TouchableOpacity
                 style={[styles.modalButton, styles.modalSubmitButton]}
                 onPress={submitReschedule}
                 disabled={rescheduleLoading}
@@ -661,7 +661,7 @@ const BookingDetailScreen = ({ navigation }) => {
           </View>
         </KeyboardAvoidingView>
       </Modal>
-      
+
       {/* Date Selection Modal */}
       <Modal
         visible={isDateModalVisible}
@@ -687,13 +687,13 @@ const BookingDetailScreen = ({ navigation }) => {
             <TouchableOpacity style={styles.modalOption} onPress={() => handleSelectDate(7)}>
               <Text style={styles.modalOptionText}>{formatDate(addDays(new Date(), 7))}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.modalCancelButton} onPress={() => setDateModalVisible(false)}>
-              <Text style={styles.modalCancelText}>Cancel</Text>
+            <TouchableOpacity style={styles.modalButton} onPress={() => setDateModalVisible(false)}>
+                <Text style={styles.modalCancelButtonText}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
-      
+
       {/* Time Selection Modal */}
       <Modal
         visible={isTimeModalVisible}
@@ -722,13 +722,13 @@ const BookingDetailScreen = ({ navigation }) => {
             <TouchableOpacity style={styles.modalOption} onPress={() => handleSelectTime('3:00 PM')}>
               <Text style={styles.modalOptionText}>3:00 PM</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.modalCancelButton} onPress={() => setTimeModalVisible(false)}>
-              <Text style={styles.modalCancelText}>Cancel</Text>
+            <TouchableOpacity style={styles.modalButton} onPress={() => setTimeModalVisible(false)}>
+                <Text style={styles.modalCancelButtonText}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
-      
+
       {/* Cancellation Modal */}
       <Modal
         visible={cancelModalVisible}
@@ -736,7 +736,7 @@ const BookingDetailScreen = ({ navigation }) => {
         animationType="slide"
         onRequestClose={() => setCancelModalVisible(false)}
       >
-        <KeyboardAvoidingView 
+        <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           style={styles.modalContainer}
         >
@@ -747,11 +747,11 @@ const BookingDetailScreen = ({ navigation }) => {
                 <Ionicons name="close" size={24} color="#666" />
               </TouchableOpacity>
             </View>
-            
+
             <Text style={styles.modalSubtitle}>
               Are you sure you want to cancel this booking? This action cannot be undone.
             </Text>
-            
+
             {/* Reason Input */}
             <Text style={styles.dateLabel}>Reason for cancellation (optional):</Text>
             <TextInput
@@ -762,17 +762,17 @@ const BookingDetailScreen = ({ navigation }) => {
               multiline={true}
               numberOfLines={3}
             />
-            
+
             {/* Action Buttons */}
             <View style={styles.modalActions}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={[styles.modalButton, styles.modalCancelButton]}
                 onPress={() => setCancelModalVisible(false)}
               >
                 <Text style={styles.modalCancelButtonText}>Keep Booking</Text>
               </TouchableOpacity>
-              
-              <TouchableOpacity 
+
+              <TouchableOpacity
                 style={[styles.modalButton, styles.modalSubmitButton, { backgroundColor: '#FF3B30' }]}
                 onPress={submitCancellation}
                 disabled={cancelLoading}
@@ -990,49 +990,6 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     flexShrink: 1,
   },
-  cardStatusCompleted: {
-    color: '#10B981',
-    fontWeight: '700',
-    fontSize: 13,
-    marginLeft: 8,
-  },
-  cardStatusCancelled: {
-    color: '#F87171',
-    fontWeight: '700',
-    fontSize: 13,
-    marginLeft: 8,
-  },
-  cardActionsRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 10,
-  },
-  rescheduleBtn: {
-    backgroundColor: '#F0F6FF',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 14,
-  },
-  rescheduleBtnText: {
-    color: '#3B82F6',
-    fontWeight: '600',
-  },
-  cancelBtn: {
-    backgroundColor: '#FEE2E2',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 14,
-  },
-  cancelBtnText: {
-    color: '#F87171',
-    fontWeight: '600',
-  },
-  emptyText: {
-    color: '#888',
-    fontStyle: 'italic',
-    textAlign: 'center',
-    marginVertical: 12,
-  },
   // Modal styles
   modalContainer: {
     flex: 1,
@@ -1064,19 +1021,6 @@ const styles = StyleSheet.create({
   modalOptionText: {
     fontSize: 16,
     color: '#333',
-  },
-  modalCancelButton: {
-    marginTop: 10,
-    padding: 15,
-    alignItems: 'center',
-    backgroundColor: '#f8f8f8',
-    borderRadius: 10,
-    width: '100%',
-  },
-  modalCancelText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: COLORS.primary,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -1228,7 +1172,7 @@ const styles = StyleSheet.create({
     color: '#999',
     marginTop: 10,
   },
-  // <-- FIX 4: Removed duplicate styles that were here
+  // <-- FIX 4: Removed duplicate and unused styles from here
 });
 
 export default BookingDetailScreen;
