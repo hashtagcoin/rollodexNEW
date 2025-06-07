@@ -10,7 +10,8 @@ import { Animated,
   Platform,
   Modal,
   Picker,
-  Switch
+  Switch,
+  Alert
 } from 'react-native';
 import { Feather, MaterialIcons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabaseClient';

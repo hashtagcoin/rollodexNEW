@@ -646,6 +646,17 @@ const ProviderDashboardScreen = () => {
       <Tab.Screen 
         name="Favourites" 
         component={FavouritesScreen}
+        listeners={({ navigation }) => ({
+          tabPress: (e) => {
+            // Prevent default behavior
+            e.preventDefault();
+            // Navigate to Favourites screen
+            navigation.navigate('Favourites');
+          },
+        })}
+      />
+      <Tab.Screen 
+        name="Profile" 
         component={ProfileStackNavigator}
         listeners={({ navigation }) => ({
           tabPress: (e) => {
