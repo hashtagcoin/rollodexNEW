@@ -10,7 +10,8 @@ import {
   SafeAreaView,
   Platform,
   Keyboard,
-  StatusBar
+  StatusBar,
+  ActivityIndicator
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
@@ -18,16 +19,21 @@ import { COLORS, FONTS } from '../../constants/theme';
 import ChatList from './ChatList';
 import ChatDetail from './ChatDetail';
 import NewConversation from './NewConversation';
+import useChat from '../../hooks/useChat';
 
 const { height } = Dimensions.get('window');
 
-const ChatModal = ({ visible, onClose }) => {
+const ChatModal = ({ visible, onClose, initialUser = null }) => {
   const insets = useSafeAreaInsets();
   const slideAnim = useRef(new Animated.Value(height)).current;
   const [isKeyboardVisible, setKeyboardVisible] = useState(false);
   const [activeView, setActiveView] = useState('list'); // 'list', 'detail', 'new'
   const [selectedConversation, setSelectedConversation] = useState(null);
   const [newConversationUsers, setNewConversationUsers] = useState([]);
+  const [isCreatingConversation, setIsCreatingConversation] = useState(false);
+  
+  // Get chat functions from the hook
+  const { createConversation, fetchConversations, conversations } = useChat();
 
   useEffect(() => {
     if (visible) {
@@ -39,6 +45,11 @@ const ChatModal = ({ visible, onClose }) => {
         friction: 8,
         useNativeDriver: true,
       }).start();
+      
+      // If initialUser is provided, directly start a conversation with them
+      if (initialUser) {
+        handleInitialUserConversation();
+      }
     } else {
       // When modal closes, animate down
       Animated.timing(slideAnim, {
@@ -68,6 +79,48 @@ const ChatModal = ({ visible, onClose }) => {
       keyboardDidShowListener.remove();
     };
   }, []);
+
+  // Handle creating a conversation with the initial user
+  const handleInitialUserConversation = async () => {
+    if (!initialUser || !initialUser.id) return;
+    
+    try {
+      setIsCreatingConversation(true);
+      
+      // Check if a conversation already exists with this user
+      const existingConversation = conversations.find(conv => {
+        // For non-group chats, check if there are exactly two participants and one is the initialUser
+        if (!conv.is_group_chat && conv.participants && conv.participants.length === 2) {
+          return conv.participants.some(p => p.id === initialUser.id);
+        }
+        return false;
+      });
+      
+      if (existingConversation) {
+        // Use the existing conversation
+        setSelectedConversation(existingConversation);
+        setActiveView('detail');
+      } else {
+        // Create a new conversation with this user
+        const conversationId = await createConversation([initialUser.id], false);
+        if (conversationId) {
+          // Fetch latest conversations to get the newly created one
+          await fetchConversations();
+          
+          // Find the newly created conversation
+          const newConversation = conversations.find(conv => conv.id === conversationId);
+          if (newConversation) {
+            setSelectedConversation(newConversation);
+            setActiveView('detail');
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error creating conversation with initial user:', error);
+    } finally {
+      setIsCreatingConversation(false);
+    }
+  };
 
   const handleClose = () => {
     // Animate out and then call the onClose callback
@@ -114,16 +167,13 @@ const ChatModal = ({ visible, onClose }) => {
         return (
           <View style={styles.header}>
             <View style={styles.headerTitle}>
-              <MaterialIcons name="chat" size={24} color={COLORS.primary} />
+              <MaterialIcons name="chat" size={22} color={COLORS.black} />
               <View style={styles.titleContainer}>
                 <Text style={styles.title}>Chats</Text>
               </View>
             </View>
-            <TouchableOpacity onPress={handleStartNewConversation} style={styles.headerButton}>
-              <Ionicons name="create-outline" size={24} color={COLORS.primary} />
-            </TouchableOpacity>
             <TouchableOpacity onPress={handleClose} style={styles.headerButton}>
-              <Ionicons name="close" size={24} color={COLORS.darkGray} />
+              <Ionicons name="close" size={22} color={COLORS.darkGray} />
             </TouchableOpacity>
           </View>
         );
@@ -159,6 +209,16 @@ const ChatModal = ({ visible, onClose }) => {
   };
 
   const renderContent = () => {
+    // Show loading indicator when creating a conversation
+    if (isCreatingConversation) {
+      return (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+          <Text style={styles.loadingText}>Creating conversation...</Text>
+        </View>
+      );
+    }
+    
     switch (activeView) {
       case 'list':
         return (
@@ -218,19 +278,32 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: COLORS.darkGray,
+  },
   modalContainer: {
     flex: 1,
     backgroundColor: 'white',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     overflow: 'hidden',
+    width: '100%', // Ensure it takes full width
+    alignSelf: 'center', // Center the modal
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 8, // Very minimal horizontal padding
+    paddingVertical: 4, // Very minimal vertical padding
     borderBottomWidth: 1,
     borderBottomColor: '#EEE',
     backgroundColor: 'white',
@@ -241,7 +314,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   titleContainer: {
-    marginLeft: 8,
+    marginLeft: 6, // Reduced margin
   },
   title: {
     fontSize: 18,
@@ -249,11 +322,11 @@ const styles = StyleSheet.create({
     color: COLORS.black,
   },
   headerBackButton: {
-    padding: 8,
-    marginRight: 8,
+    padding: 6, // Reduced padding
+    marginRight: 6, // Reduced margin
   },
   headerButton: {
-    padding: 8,
+    padding: 6, // Reduced padding
   },
 });
 

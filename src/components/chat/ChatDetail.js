@@ -28,25 +28,34 @@ const ChatDetail = ({ conversation, onBack }) => {
     fetchMessages, 
     sendMessage, 
     markConversationAsRead,
-    subscribeToConversation
+    subscribeToConversation,
+    fetchConversations
   } = useChat();
   
   const [messageText, setMessageText] = useState('');
   const [sending, setSending] = useState(false);
   const flatListRef = useRef(null);
+  const [localMessages, setLocalMessages] = useState([]);
   
-  // Get messages for this conversation from the messagesMap
-  const messages = messagesMap[conversation?.id] || [];
+  // Get messages for this conversation from the messagesMap or use local messages
+  const messages = messagesMap[conversation?.id]?.length ? messagesMap[conversation?.id] : localMessages;
   const loading = loadingMessagesMap[conversation?.id] || false;
   const error = messagesErrorMap[conversation?.id] || null;
 
   useEffect(() => {
     if (conversation?.id) {
-      // Fetch messages for this conversation
-      fetchMessages(conversation.id);
+      // Check if this is a temporary conversation (from initialUser in ChatModal)
+      const isTempConversation = conversation.id.toString().startsWith('temp-');
       
-      // Mark all messages in the conversation as read
-      markConversationAsRead(conversation.id);
+      if (!isTempConversation) {
+        // Only fetch messages and mark as read for real conversations
+        fetchMessages(conversation.id);
+        markConversationAsRead(conversation.id);
+      } else {
+        // For temporary conversations, we don't need to fetch messages
+        // as they don't exist in the database yet
+        console.log('Temporary conversation, skipping message fetch');
+      }
       
       // Subscribe to real-time updates for this conversation
       const subscription = subscribeToConversation(conversation.id);
@@ -69,6 +78,32 @@ const ChatDetail = ({ conversation, onBack }) => {
       const messageContent = messageText.trim();
       setMessageText(''); // Clear input immediately for better UX
       
+      // Create a temporary local message that will show immediately
+      const tempMessage = {
+        id: `temp-${Date.now()}`,
+        conversation_id: conversation.id,
+        sender_id: profile.id,
+        content: messageContent,
+        read: true,
+        created_at: new Date().toISOString(),
+        sender: {
+          id: profile.id,
+          full_name: profile.full_name || 'Me',
+          username: profile.username || 'me',
+          avatar_url: profile.avatar_url
+        }
+      };
+      
+      // Add the temporary message to local state immediately
+      setLocalMessages(prev => [...prev, tempMessage]);
+      
+      // Scroll to bottom after adding the local message
+      setTimeout(() => {
+        if (flatListRef.current) {
+          flatListRef.current.scrollToEnd({ animated: true });
+        }
+      }, 50);
+      
       // Use the sendMessage function from our hook
       const result = await sendMessage(conversation.id, messageContent);
 
@@ -76,16 +111,14 @@ const ChatDetail = ({ conversation, onBack }) => {
         throw new Error('Failed to send message');
       }
       
-      // Scroll to bottom after sending
-      setTimeout(() => {
-        if (flatListRef.current) {
-          flatListRef.current.scrollToEnd({ animated: true });
-        }
-      }, 100);
+      // Fetch updated messages after sending
+      fetchMessages(conversation.id);
+      // Also refresh conversations list to update latest message
+      fetchConversations();
       
     } catch (error) {
       console.error('Error sending message:', error);
-      setMessageText(messageText); // Restore message text if failed
+      setMessageText(messageContent); // Restore message text if failed
     } finally {
       setSending(false);
     }
@@ -184,6 +217,7 @@ const ChatDetail = ({ conversation, onBack }) => {
               isOwnMessage={item.sender_id === profile?.id}
             />
           )}
+          showsVerticalScrollIndicator={false}
           inverted={false} // Set to true if you want newest messages at the bottom
           ListHeaderComponent={renderParticipants}
           ListEmptyComponent={
@@ -232,9 +266,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F9F9F9',
   },
-  messagesContainer: {
-    paddingHorizontal: 15,
-    paddingBottom: 10,
+  messagesList: {
+    flex: 1,
+    paddingHorizontal: 8, // Added horizontal padding to prevent edge cropping
+  },
+  messagesContent: {
+    paddingVertical: 10,
+    paddingBottom: 15,
   },
   loadingContainer: {
     flex: 1,
@@ -347,7 +385,8 @@ const styles = StyleSheet.create({
   },
   inputContainer: {
     flexDirection: 'row',
-    padding: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     borderTopWidth: 1,
     borderTopColor: '#EEE',
     backgroundColor: '#FFF',

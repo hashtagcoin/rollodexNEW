@@ -8,6 +8,7 @@ import ServiceAgreementsScreen from '../screens/Main/ServiceAgreementsScreen';
 import EditProfileScreen from '../screens/Main/EditProfileScreen';
 import UserPostsFeedScreen from '../screens/Social/UserPostsFeedScreen';
 import PostDetailScreen from '../screens/Social/PostDetailScreen';
+import UserProfileScreen from '../screens/Main/UserProfileScreen';
 
 const Stack = createStackNavigator();
 
@@ -21,6 +22,7 @@ const ProfileStackNavigator = () => {
       <Stack.Screen name="ServiceAgreementsScreen" component={ServiceAgreementsScreen} />
       <Stack.Screen name="UserPostsFeedScreen" component={UserPostsFeedScreen} />
       <Stack.Screen name="PostDetailScreen" component={PostDetailScreen} />
+      <Stack.Screen name="UserProfileScreen" component={UserProfileScreen} />
     </Stack.Navigator>
   );
 };

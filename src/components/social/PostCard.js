@@ -17,6 +17,7 @@ import { TapGestureHandler, State } from 'react-native-gesture-handler';
 import { supabase } from '../../lib/supabaseClient';
 import { COLORS, FONTS } from '../../constants/theme';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import { useNavigation } from '@react-navigation/native';
 
 // Custom date formatting function
 const formatDate = (dateString) => {
@@ -35,6 +36,7 @@ import SharePostModal from './SharePostModal';
 const { width, height } = Dimensions.get('window');
 
 const PostCard = ({ post, onPress, showActions = true }) => {
+  const navigation = useNavigation();
   const [user, setUser] = useState(null);
   const [likesCount, setLikesCount] = useState(0);
   const [commentsCount, setCommentsCount] = useState(0);
@@ -278,12 +280,13 @@ const PostCard = ({ post, onPress, showActions = true }) => {
           // Navigate to user profile
         }}
       >
-        <Image 
-          source={{ uri: user?.avatar_url || 'https://via.placeholder.com/40' }} 
-          style={styles.avatar}
-        />
-        <View>
-          <Text style={styles.username}>{user?.username || 'User'}</Text>
+        <TouchableOpacity onPress={() => user && user.id && navigation.navigate('UserProfileScreen', { userId: user.id })} style={styles.avatarContainer}>
+          <Image source={{ uri: user?.avatar_url || 'https://via.placeholder.com/40' }} style={styles.avatar} />
+        </TouchableOpacity>
+        <View style={styles.headerText}>
+          <TouchableOpacity onPress={() => user && user.id && navigation.navigate('UserProfileScreen', { userId: user.id })}>
+            <Text style={styles.username}>{user?.username || 'User'}</Text>
+          </TouchableOpacity>
           <Text style={styles.postTime}>
             {formatDate(post.created_at)}
           </Text>
@@ -545,11 +548,20 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
   },
+  avatarContainer: {
+    // If you need specific styling for the avatar touchable area
+  },
   avatar: {
     width: 40,
     height: 40,
     borderRadius: 20,
     marginRight: 12,
+  },
+  headerText: {
+    fontSize: 13,
+    color: '#333',
+    marginLeft: 2,
+    fontWeight: '500',
   },
   username: {
     fontSize: 14,

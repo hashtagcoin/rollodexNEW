@@ -2,6 +2,7 @@ import React, { useState, useEffect, useContext, useRef } from 'react';
 import { Alert } from 'react-native';
 import { View, Text, StyleSheet, Image, TouchableOpacity, FlatList, ScrollView, Dimensions, TextInput, Modal, ActivityIndicator, Animated } from 'react-native';
 import ActionButton from '../../components/common/ActionButton';
+import ChatModal from '../../components/chat/ChatModal';
 import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../../lib/supabaseClient';
 import CreatePostModal from '../../components/social/CreatePostModal';
@@ -82,9 +83,11 @@ const ProfileScreen = () => {
   const [friendsList, setFriendsList] = useState([]);
   const [loadingFriends, setLoadingFriends] = useState(false);
   const [loadingRequests, setLoadingRequests] = useState(false);
-  const [selectedFriend, setSelectedFriend] = useState(null);
+  // const [selectedFriend, setSelectedFriend] = useState(null); // Modal no longer used for this interaction
   const [showAddFriendModal, setShowAddFriendModal] = useState(false);
   const [showGroupChatModal, setShowGroupChatModal] = useState(false);
+  const [showChatModal, setShowChatModal] = useState(false);
+  const [selectedChatUser, setSelectedChatUser] = useState(null);
   const [showUsersTray, setShowUsersTray] = useState(false);
   const [allUsers, setAllUsers] = useState([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
@@ -576,16 +579,29 @@ const ProfileScreen = () => {
   };
   
   // Handle opening the friend modal
+  /* // Modal no longer used for this interaction
   const handleOpenFriendModal = (friend) => {
     setSelectedFriend(friend);
   };
+  */
   
   // Start a chat with a user
   const startChat = async (userId) => {
-    // This would navigate to the chat screen or create a new chat
-    Alert.alert('Coming Soon', 'Chat functionality will be available soon!');
-    // Future implementation would navigate to a chat screen
-    // navigation.navigate('ChatScreen', { userId });
+    // Find the user details to pass to the chat
+    const user = allUsers.find(user => user.id === userId);
+    if (user) {
+      // Set the selected user and show the chat modal
+      setSelectedChatUser({
+        id: user.id,
+        name: user.full_name || 'User',
+        avatar: user.avatar_url || 'https://via.placeholder.com/50',
+        username: user.username || 'username'
+      });
+      setShowChatModal(true);
+      setShowUsersTray(false); // Close the user tray modal
+    } else {
+      Alert.alert('Error', 'Could not find user details');
+    }
   };
 
   const renderTabContent = () => {
@@ -879,7 +895,10 @@ const ProfileScreen = () => {
                   <TouchableOpacity 
                     key={friend.id}
                     style={styles.friendGridItem} 
-                    onPress={() => handleOpenFriendModal(friend)}
+                    onPress={() => {
+  console.log('Navigating to UserProfileScreen with:', friend.userId, friend);
+  navigation.navigate('UserProfileScreen', { userId: friend.userId });
+}}
                   >
                     <Image 
                       source={{ uri: friend.avatar }} 
@@ -896,7 +915,7 @@ const ProfileScreen = () => {
               </View>
             )}
             
-            {/* Friend Details Modal */}
+            {/* Friend Details Modal - Commented out as friend items now navigate directly to UserProfileScreen 
             <Modal
               visible={!!selectedFriend}
               transparent
@@ -915,15 +934,15 @@ const ProfileScreen = () => {
                       <View style={styles.modalActions}>
                         <TouchableOpacity style={styles.modalActionBtn} onPress={() => {
                           setSelectedFriend(null);
-                          // TODO: Navigate to chat screen with this friend
-                          navigation.navigate('ChatScreen', { friendId: selectedFriend.id });
+                          // This would now be handled on the UserProfileScreen
+                          // navigation.navigate('ChatScreen', { friendId: selectedFriend.id }); 
                         }}>
                           <Text style={styles.modalActionBtnText}>Chat</Text>
                         </TouchableOpacity>
                         
                         <TouchableOpacity style={styles.modalActionBtn} onPress={() => {
                           setSelectedFriend(null);
-                          setShowGroupChatModal(true);
+                          setShowGroupChatModal(true); // This could remain if group chat is initiated differently
                         }}>
                           <Text style={styles.modalActionBtnText}>Group Chat</Text>
                         </TouchableOpacity>
@@ -936,6 +955,7 @@ const ProfileScreen = () => {
                 </View>
               </View>
             </Modal>
+            */}
             
             {/* Group Chat Modal (placeholder) */}
             <Modal
@@ -1198,6 +1218,16 @@ const ProfileScreen = () => {
         visible={showCreatePostModal}
         onClose={() => setShowCreatePostModal(false)}
         onPostCreated={handlePostCreated}
+      />
+      
+      {/* Chat Modal */}
+      <ChatModal
+        visible={showChatModal}
+        onClose={() => {
+          setShowChatModal(false);
+          setSelectedChatUser(null);
+        }}
+        initialUser={selectedChatUser} // Pass selected user to initialize chat
       />
     </View>
   );

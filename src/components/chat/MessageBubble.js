@@ -83,14 +83,15 @@ const styles = StyleSheet.create({
     marginVertical: 4,
     flexDirection: 'row',
     alignItems: 'flex-end',
+    paddingHorizontal: 8, // Added horizontal padding to prevent edge cropping
   },
   ownMessageContainer: {
     justifyContent: 'flex-end',
-    marginLeft: 60,
+    marginLeft: 40, // Reduced margin to prevent cropping
   },
   otherMessageContainer: {
     justifyContent: 'flex-start',
-    marginRight: 60,
+    marginRight: 40, // Reduced margin to prevent cropping
   },
   avatarContainer: {
     marginRight: 8,
