@@ -15,6 +15,8 @@ import {
 } from 'react-native';
 import { Feather, MaterialIcons, AntDesign, Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
+import { decode } from 'base64-arraybuffer';
 import { supabase } from '../../lib/supabaseClient';
 import { useUser } from '../../context/UserContext';
 import AppHeader from '../../components/layout/AppHeader';
@@ -188,100 +190,133 @@ const CreateServiceListingScreen = ({ navigation }) => {
   };
 
   const uploadImages = async () => {
-    try {
-      setUploadingImages(true);
-      const uploadedUrls = [];
-      
-      for (const imageAsset of images) {
-        // Use exact same approach as the working housing listing implementation
-        const contentType = imageAsset.mimeType || 'application/octet-stream';
+    setUploadingImages(true);
+    const newImages = images; // These are from ModernImagePicker state
+    const profileId = profile?.id; // Ensure profile is loaded and has id
+    const uploadedUrls = [];
 
-        // Get file extension from filename or mimetype
-        const fileExt = imageAsset.fileName 
-          ? imageAsset.fileName.split('.').pop() 
-          : contentType.split('/')[1] || 'jpg';
+    console.log('[AUTH_DEBUG] Starting uploadImages with profileId:', profileId);
+    
+    // Double-check auth session before upload
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    console.log('[AUTH_DEBUG] Current auth session userId:', sessionData?.session?.user?.id);
+    console.log('[AUTH_DEBUG] Session matches profile?', sessionData?.session?.user?.id === profileId);
+
+    if (!profileId) {
+      Alert.alert('Upload Error', 'User profile not available. Cannot upload images.');
+      setUploadingImages(false);
+      return [];
+    }
+
+    for (const imageAsset of newImages) { // Renamed 'image' to 'imageAsset' for clarity
+      try {
+        console.log(`[IMAGE_DEBUG] Processing image for upload: ${imageAsset.uri}`);
+        const timestamp = new Date().getTime();
+        const randomStr = Math.random().toString(36).substring(2, 8);
         
-        // Generate a long random string exactly as in housing listing
-        const randomString = generateRandomString(32);
-        const storageFileName = `${randomString}.${fileExt}`;
-        const filePath = `service-images/${storageFileName}`;
+        let fileExt;
+        if (imageAsset.uri) {
+            const uriParts = imageAsset.uri.split('.');
+            fileExt = uriParts[uriParts.length - 1].toLowerCase();
+        }
+        if (!fileExt && imageAsset.mimeType) { 
+            fileExt = imageAsset.mimeType.split('/')[1];
+        }
+        fileExt = fileExt || 'jpg';
+
+        const fileName = `service-images/${profileId}/${timestamp}_${randomStr}.${fileExt}`;
+        console.log('[PATH_DEBUG] Constructed fileName path:', fileName);
         
-        // Fetch and create blob from image URI
-        let response;
-        let blob;
-        try {
-          response = await fetch(imageAsset.uri);
-          blob = await response.blob();
+        const contentType = imageAsset.mimeType || 
+                            (fileExt === 'png' ? 'image/png' : 
+                             fileExt === 'gif' ? 'image/gif' : 'image/jpeg');
+        
+        let base64Data;
+        if (imageAsset.base64) {
+          console.log(`[IMAGE_DEBUG] Using provided base64 data for ${imageAsset.uri}, length: ${imageAsset.base64.length}`);
+          base64Data = imageAsset.base64;
+        } else if (imageAsset.uri) {
+          console.log(`[IMAGE_DEBUG] Reading file as base64 from URI: ${imageAsset.uri}`);
+          try {
+            base64Data = await FileSystem.readAsStringAsync(imageAsset.uri, {
+              encoding: FileSystem.EncodingType.Base64,
+            });
+            console.log(`[IMAGE_DEBUG] Successfully read file as base64, length: ${base64Data.length}`);
+          } catch (fsError) {
+            console.error(`[IMAGE_DEBUG] Error reading file system for ${imageAsset.uri}:`, fsError);
+            Alert.alert('Upload Issue', `Could not read image file: ${imageAsset.uri}. Please try a different image.`);
+            continue; 
+          }
+        } else {
+          console.warn(`[IMAGE_DEBUG] No valid image data (base64 or URI) found for an image asset.`);
+          Alert.alert('Upload Warning', 'An image asset was missing data and could not be uploaded.');
+          continue; 
+        }
+
+        if (!base64Data || base64Data.length === 0) {
+            console.warn(`[IMAGE_DEBUG] Base64 data is empty for ${imageAsset.uri}. Skipping upload.`);
+            Alert.alert('Upload Warning', `Image data for ${imageAsset.uri} appears to be empty and was not uploaded.`);
+            continue;
+        }
+
+        const arrayBuffer = decode(base64Data);
+        console.log(`[IMAGE_DEBUG] Converted base64 to arrayBuffer for ${fileName}, size: ${arrayBuffer.byteLength}`);
+
+        if (arrayBuffer.byteLength === 0) {
+            console.warn(`[IMAGE_DEBUG] ArrayBuffer is 0 bytes for ${fileName}. Skipping upload.`);
+            Alert.alert('Upload Warning', `Processed image data for ${fileName} is empty. The image was not uploaded.`);
+            continue;
+        }
+
+        // Get storage bucket policies before upload for debugging
+        console.log('[RLS_DEBUG] Attempting to upload to path:', fileName);
+        console.log('[RLS_DEBUG] Content type:', contentType);
+        console.log('[RLS_DEBUG] ArrayBuffer size:', arrayBuffer.byteLength);
+        
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('providerimages') 
+          .upload(fileName, arrayBuffer, {
+            contentType,
+            cacheControl: '3600',
+            upsert: true, 
+          });
+
+        if (uploadError) {
+          console.error(`[IMAGE_DEBUG] Supabase storage upload error for ${fileName}:`, uploadError);
+          console.log('[RLS_DEBUG] Upload error details:', JSON.stringify(uploadError, null, 2));
           
-          // CRITICAL: Check for 0-byte blob which causes the blank image issue
-          if (blob.size === 0) {
-            console.warn(`[IMAGE_DEBUG][CreateServiceListingScreen] Skipping 0-byte blob for image: ${imageAsset.uri}`);
-            Alert.alert('Upload Warning', `An image (${imageAsset.fileName || 'selected image'}) appears to be empty and was not uploaded.`);
-            continue; // Skip this image
+          // Check if this is the RLS policy error
+          if (uploadError.message?.includes('row-level security policy')) {
+            console.log('[RLS_DEBUG] RLS policy violation detected');
+            console.log('[RLS_DEBUG] Path components:', {
+              bucket: 'providerimages',
+              folder1: 'service-images',
+              folder2: profileId,
+              filename: `${timestamp}_${randomStr}.${fileExt}`
+            });
           }
           
-          // Log successful blob creation for tracking
-          console.log(`[IMAGE_DEBUG][CreateServiceListingScreen] Successfully created blob with size: ${blob.size} bytes for ${imageAsset.uri}`);
-        } catch (blobError) {
-          console.error('[IMAGE_DEBUG][CreateServiceListingScreen] Error creating blob from image:', blobError);
-          Alert.alert('Image Error', 'Could not process an image. Please try a different one.');
-          continue; // Skip this image
+          Alert.alert('Upload Error', `Failed to upload ${fileName}: ${uploadError.message}`);
+          continue; 
         }
         
-        // Log pre-upload information
-        console.log(`[IMAGE_DEBUG][CreateServiceListingScreen] Attempting upload to path: ${filePath}, blob size: ${blob.size} bytes`);
-        
-        const { data, error } = await supabase.storage
-          .from('providerimages')
-          .upload(filePath, blob, {
-            contentType: contentType,
-            cacheControl: '3600',
-          });
-        
-        if (error) {
-          console.error('[IMAGE_DEBUG][CreateServiceListingScreen] Supabase upload error:', {
-            error: error.message,
-            filePath,
-            imageUri: imageAsset.uri,
-            blobSize: blob.size
-          });
-          Alert.alert('Upload Error', 'There was a problem uploading your image. Please try again.');
-          throw error;
+        console.log(`[IMAGE_DEBUG] Successfully uploaded ${fileName} to Supabase.`);
+        const { data: publicUrlData } = supabase.storage.from('providerimages').getPublicUrl(fileName);
+
+        if (publicUrlData && publicUrlData.publicUrl) {
+          console.log('[IMAGE_DEBUG][UPLOAD] Supabase URL:', publicUrlData.publicUrl);
+          uploadedUrls.push(publicUrlData.publicUrl);
+        } else {
+          console.error(`[IMAGE_DEBUG] Uploaded ${fileName} but failed to get public URL.`);
+          Alert.alert('Upload Issue', `Image ${fileName} uploaded but could not retrieve its URL.`);
         }
-        
-        console.log('[IMAGE_DEBUG][CreateServiceListingScreen] Upload successful to path:', filePath);
-        
-        // Get the public URL for the uploaded image
-        const { data: { publicUrl } } = supabase.storage
-          .from('providerimages')
-          .getPublicUrl(filePath);
-        
-        // Comprehensive logging of the public URL that will be saved to database
-        console.log('[IMAGE_DEBUG][CreateServiceListingScreen][URL_CREATED]', {
-          publicUrl,
-          filePath,
-          storageFileName,
-          blobSize: blob.size,
-          timestamp: new Date().toISOString()
-        });
-        
-        // Make sure we have a valid URL before adding to our list
-        if (!publicUrl) {
-          console.error('[IMAGE_DEBUG][CreateServiceListingScreen] Missing public URL for uploaded file:', filePath);
-          Alert.alert('Warning', 'An image was uploaded but could not be properly referenced. Please check your images.');
-          continue;
-        }
-        
-        uploadedUrls.push(publicUrl);
+      } catch (error) {
+        console.error(`[IMAGE_DEBUG] Error processing or uploading an image (${imageAsset.uri}):`, error);
+        Alert.alert('Image Processing Error', `An error occurred while preparing an image for upload: ${error.message}`);
       }
-      
-      return uploadedUrls;
-    } catch (error) {
-      console.error('Error uploading images:', error);
-      throw error; // Throw error exactly as in housing listing
-    } finally {
-      setUploadingImages(false);
     }
+    setUploadingImages(false);
+    return uploadedUrls;
   };
 
 

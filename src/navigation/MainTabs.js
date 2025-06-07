@@ -20,6 +20,7 @@ import BookingsScreen from '../screens/Main/BookingsScreen';
 import BookingDetailScreen from '../screens/Main/BookingDetailScreen';
 import ServiceAgreementScreen from '../screens/Agreements/ServiceAgreementScreen';
 import ServiceDetailScreen from '../screens/Details/ServiceDetailScreen';
+import TabManageListingsScreen from '../screens/Provider/TabManageListingsScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -157,6 +158,11 @@ const MainTabs = () => (
     <Stack.Screen 
       name="ServiceAgreementScreen" 
       component={ServiceAgreementScreen} 
+      options={{ headerShown: false }}
+    />
+    <Stack.Screen 
+      name="TabManageListings" 
+      component={TabManageListingsScreen} 
       options={{ headerShown: false }}
     />
   </Stack.Navigator>

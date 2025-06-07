@@ -43,24 +43,24 @@ import { HOUSING_TYPES, SDA_CATEGORIES, ACCESSIBILITY_FEATURES, PROPERTY_FEATURE
 // const SDA_CATEGORIES = [ /* Content moved to formOptions.js */ ]; // Moved to formOptions.js
 
 // Date dropdown options
-const DAYS = Array.from({ length: 31 }, (_, i) => ({ label: String(i + 1).padStart(2, '0'), value: String(i + 1).padStart(2, '0') }));
+const DAYS = Array.from({ length: 31 }, (_, i) => ({ label: <Text>{String(i + 1).padStart(2, '0')}</Text>, value: String(i + 1).padStart(2, '0') }));
 const MONTHS = [
-  { label: 'January', value: '01' },
-  { label: 'February', value: '02' },
-  { label: 'March', value: '03' },
-  { label: 'April', value: '04' },
-  { label: 'May', value: '05' },
-  { label: 'June', value: '06' },
-  { label: 'July', value: '07' },
-  { label: 'August', value: '08' },
-  { label: 'September', value: '09' },
-  { label: 'October', value: '10' },
-  { label: 'November', value: '11' },
-  { label: 'December', value: '12' },
+  { label: <Text>January</Text>, value: '01' },
+  { label: <Text>February</Text>, value: '02' },
+  { label: <Text>March</Text>, value: '03' },
+  { label: <Text>April</Text>, value: '04' },
+  { label: <Text>May</Text>, value: '05' },
+  { label: <Text>June</Text>, value: '06' },
+  { label: <Text>July</Text>, value: '07' },
+  { label: <Text>August</Text>, value: '08' },
+  { label: <Text>September</Text>, value: '09' },
+  { label: <Text>October</Text>, value: '10' },
+  { label: <Text>November</Text>, value: '11' },
+  { label: <Text>December</Text>, value: '12' },
 ];
 const YEARS = Array.from({ length: 6 }, (_, i) => {
   const year = new Date().getFullYear() + i;
-  return { label: String(year), value: String(year) };
+  return { label: <Text>{String(year)}</Text>, value: String(year) };
 });
 
 // const ACCESSIBILITY_FEATURES = [ /* Content moved to formOptions.js */ ]; // Moved to formOptions.js
@@ -426,11 +426,11 @@ const CreateHousingListingScreen = ({ navigation }) => {
                   style={[styles.dropdown, { zIndex: 3000 }]}
                   placeholderStyle={styles.placeholderStyle}
                   selectedTextStyle={styles.selectedTextStyle}
-                  data={HOUSING_TYPES.map(type => ({ label: type, value: type }))}
+                  data={HOUSING_TYPES}
                   maxHeight={300}
                   labelField="label"
                   valueField="value"
-                  placeholder="Select housing type"
+                  placeholder={<Text style={styles.placeholderStyle}>Select housing type</Text>}
                   value={formData.housingType}
                   onChange={item => handleChange('housingType', item.value)}
                 />
@@ -515,11 +515,11 @@ const CreateHousingListingScreen = ({ navigation }) => {
                     style={[styles.dropdown, { zIndex: 2000 }]}
                     placeholderStyle={styles.placeholderStyle}
                     selectedTextStyle={styles.selectedTextStyle}
-                    data={SDA_CATEGORIES}
+                    data={SDA_CATEGORIES.map(category => ({ label: category.label, value: category.value }))}
                     maxHeight={300}
                     labelField="label"
                     valueField="value"
-                    placeholder="Select SDA category"
+                    placeholder={<Text style={styles.placeholderStyle}>Select SDA category</Text>}
                     value={formData.sdaCategory}
                     onChange={item => handleChange('sdaCategory', item.value)}
                   />
@@ -603,20 +603,20 @@ const CreateHousingListingScreen = ({ navigation }) => {
               <View style={styles.featuresList}>
                 {ACCESSIBILITY_FEATURES.map((feature) => (
                   <TouchableOpacity 
-                    key={feature}
+                    key={feature.value}
                     style={[
                       styles.featureItem,
-                      formData.accessibilityFeatures.includes(feature) && styles.featureSelected
+                      formData.accessibilityFeatures.includes(feature.value) && styles.featureSelected
                     ]}
-                    onPress={() => toggleFeature(feature, 'accessibilityFeatures')}
+                    onPress={() => toggleFeature(feature.value, 'accessibilityFeatures')}
                   >
                     <Text 
                       style={[
                         styles.featureText,
-                        formData.accessibilityFeatures.includes(feature) && styles.featureTextSelected
+                        formData.accessibilityFeatures.includes(feature.value) && styles.featureTextSelected
                       ]}
                     >
-                      {feature}
+                      {feature.value}
                     </Text>
                   </TouchableOpacity>
                 ))}
@@ -628,20 +628,20 @@ const CreateHousingListingScreen = ({ navigation }) => {
               <View style={styles.featuresList}>
                 {PROPERTY_FEATURES.map((feature) => (
                   <TouchableOpacity 
-                    key={feature}
+                    key={feature.value}
                     style={[
                       styles.featureItem,
-                      formData.propertyFeatures.includes(feature) && styles.featureSelected
+                      formData.propertyFeatures.includes(feature.value) && styles.featureSelected
                     ]}
-                    onPress={() => toggleFeature(feature, 'propertyFeatures')}
+                    onPress={() => toggleFeature(feature.value, 'propertyFeatures')}
                   >
                     <Text 
                       style={[
                         styles.featureText,
-                        formData.propertyFeatures.includes(feature) && styles.featureTextSelected
+                        formData.propertyFeatures.includes(feature.value) && styles.featureTextSelected
                       ]}
                     >
-                      {feature}
+                      {feature.value}
                     </Text>
                   </TouchableOpacity>
                 ))}
@@ -726,7 +726,7 @@ const CreateHousingListingScreen = ({ navigation }) => {
                       maxHeight={250}
                       labelField="label"
                       valueField="value"
-                      placeholder="Day"
+                      placeholder={<Text style={styles.placeholderStyle}>Day</Text>}
                       value={formData.availableDay}
                       onChange={item => handleChange('availableDay', item.value)}
                     />
@@ -741,7 +741,7 @@ const CreateHousingListingScreen = ({ navigation }) => {
                       maxHeight={250}
                       labelField="label"
                       valueField="value"
-                      placeholder="Month"
+                      placeholder={<Text style={styles.placeholderStyle}>Month</Text>}
                       value={formData.availableMonth}
                       onChange={item => handleChange('availableMonth', item.value)}
                     />
@@ -756,7 +756,7 @@ const CreateHousingListingScreen = ({ navigation }) => {
                       maxHeight={200}
                       labelField="label"
                       valueField="value"
-                      placeholder="Year"
+                      placeholder={<Text style={styles.placeholderStyle}>Year</Text>}
                       value={formData.availableYear}
                       onChange={item => handleChange('availableYear', item.value)}
                     />
