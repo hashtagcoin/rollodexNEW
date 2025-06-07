@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
-import { useGlobalHooks } from '../hooks/GlobalHooksProvider';
-import { View, Text } from 'react-native';
+// import { useGlobalHooks } from '../hooks/GlobalHooksProvider'; // This was imported but not used
+import { View, Text } from 'react-native'; // View, Text imported but not used directly in this file's JSX
 import { createStackNavigator } from '@react-navigation/stack';
 
 // Import Provider Screens
@@ -20,25 +20,24 @@ import CreateServiceAgreementScreen from '../screens/Provider/CreateServiceAgree
 
 // All screens have now been implemented!
 
-// Ensure useRef is available globally for React Navigation components
-// Moved after all imports to prevent React rendering issues
-if (!global.ReactHooks || !global.ReactHooks.useRef) {
-  console.log('[DEBUG] Setting up global useRef in ProviderStackNavigator');
-  global.useRef = useRef;
-}
+// REMOVED: Misplaced console.log and global useRef assignment
+// if (!global.ReactHooks || !global.ReactHooks.useRef) {
+//   console.log('[DEBUG] Setting up global useRef in ProviderStackNavigator');
+//   global.useRef = useRef;
+// }
 
 const Stack = createStackNavigator();
 
 const ProviderStackNavigator = () => {
-  console.log(`[DEBUG][${new Date().toISOString()}] ProviderStackNavigator - Component rendering`);
+  // REMOVED: Debug console.logs
+  // console.log(`[DEBUG][${new Date().toISOString()}] ProviderStackNavigator - Component rendering`);
   
-  // Test useRef is available
-  try {
-    const testRef = useRef(null);
-    console.log(`[DEBUG][${new Date().toISOString()}] ProviderStackNavigator - useRef is available`);
-  } catch (error) {
-    console.error(`[DEBUG][${new Date().toISOString()}] ProviderStackNavigator - useRef ERROR:`, error);
-  }
+  // try {
+  //   const testRef = useRef(null);
+  //   console.log(`[DEBUG][${new Date().toISOString()}] ProviderStackNavigator - useRef is available`);
+  // } catch (error) {
+  //   console.error(`[DEBUG][${new Date().toISOString()}] ProviderStackNavigator - useRef ERROR:`, error);
+  // }
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="ProviderDashboard" component={ProviderDashboardScreen} />

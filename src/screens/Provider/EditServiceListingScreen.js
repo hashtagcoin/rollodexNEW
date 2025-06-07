@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { standardizeServiceImageUrls } from '../../utils/imageHelper';
 import {
   View,
   Text,
@@ -10,27 +9,15 @@ import {
   Alert,
   ActivityIndicator,
   Image,
-  Platform, // Platform is imported but not used
 } from 'react-native';
+import { Feather } from '@expo/vector-icons';
+import { Dropdown } from 'react-native-element-dropdown';
+import { supabase } from '../../lib/supabaseClient';
+import { useUser } from '../../context/UserContext';
+import { standardizeServiceImageUrls } from '../../utils/imageHelper';
+import ModernImagePicker from '../../components/ModernImagePicker';
 import * as FileSystem from 'expo-file-system';
 import { decode } from 'base64-arraybuffer';
-import ModernImagePicker from '../../components/ModernImagePicker';
-import { Feather } from '@expo/vector-icons'; // MaterialIcons was imported but not used
-import { Dropdown } from 'react-native-element-dropdown';
-import * as ImagePicker from 'expo-image-picker'; // ImagePicker is used in the (now removed) pickImage function, ModernImagePicker likely uses it internally
-import { v4 as uuidv4 } from 'uuid'; // Note: uuidv4 is imported but not used
-import { supabase } from '../../lib/supabaseClient';
-
-// Function to generate a random string for filenames (currently not used in this file)
-const generateRandomString = (length) => {
-  const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let result = '';
-  for (let i = 0; i < length; i++) {
-    result += characters.charAt(Math.floor(Math.random() * characters.length));
-  }
-  return result;
-};
-import { useUser } from '../../context/UserContext';
 import AppHeader from '../../components/layout/AppHeader';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
@@ -47,19 +34,13 @@ const SERVICE_CATEGORIES = [
   'Other',
 ];
 
-const SERVICE_FORMATS = [
-  'In-Person',
-  'Remote',
-  'Group',
-  'Hybrid',
-];
+const SERVICE_FORMATS = ['In-Person', 'Remote', 'Group', 'Hybrid'];
 
-// Debug log moved here from imports section
 console.log('[DEBUG] EditServiceListingScreen - React hooks imported');
 
 const EditServiceListingScreen = ({ route, navigation }) => {
   console.log(`[DEBUG][${new Date().toISOString()}] EditServiceListingScreen - Component function executing`);
-  
+
   // Test useRef availability immediately
   try {
     console.log(`[DEBUG][${new Date().toISOString()}] EditServiceListingScreen - Testing useRef`);
@@ -68,6 +49,7 @@ const EditServiceListingScreen = ({ route, navigation }) => {
   } catch (error) {
     console.error(`[DEBUG][${new Date().toISOString()}] EditServiceListingScreen - useRef ERROR:`, error);
   }
+
   const { serviceId } = route.params;
   const { profile } = useUser();
   const [loading, setLoading] = useState(true);
@@ -93,6 +75,21 @@ const EditServiceListingScreen = ({ route, navigation }) => {
 
   useEffect(() => {
     console.log(`[DEBUG][${new Date().toISOString()}] EditServiceListingScreen - Initial useEffect executing`);
+    console.log('[AUTH_DEBUG] User Profile ID:', profile?.id);
+    console.log('[AUTH_DEBUG] User Properties:', JSON.stringify(profile, null, 2));
+    
+    // Debug Supabase session to verify auth
+    const checkAuth = async () => {
+      const { data, error } = await supabase.auth.getSession();
+      if (error) {
+        console.log('[AUTH_DEBUG] Error getting auth session:', error.message);
+      } else {
+        console.log('[AUTH_DEBUG] Session user ID:', data?.session?.user?.id);
+        console.log('[AUTH_DEBUG] Session expires at:', data?.session?.expires_at);
+      }
+    };
+    checkAuth();
+    
     fetchServiceDetails();
     // Profile is available via useUser() context
 
@@ -107,16 +104,14 @@ const EditServiceListingScreen = ({ route, navigation }) => {
       console.log(`[DEBUG][${new Date().toISOString()}] EditServiceListingScreen - Navigation FOCUS event fired`);
       if (serviceId) {
         setImages([]); // Clear any unsaved new images
-        // setRemovedImageUrls([]); // Optionally clear this too, or let user confirm removals on save
         fetchServiceDetails(); // Re-fetch to ensure data is fresh
       }
     });
-    
-    // Also track blur events
+
     const blurSubscription = navigation.addListener('blur', () => {
       console.log(`[DEBUG][${new Date().toISOString()}] EditServiceListingScreen - Navigation BLUR event fired`);
     });
-    
+
     return () => {
       console.log(`[DEBUG][${new Date().toISOString()}] EditServiceListingScreen - Navigation useEffect cleanup`);
       unsubscribe();
@@ -136,9 +131,9 @@ const EditServiceListingScreen = ({ route, navigation }) => {
 
       if (error) throw error;
       if (!data) {
-          Alert.alert('Error', 'Service not found.');
-          navigation.goBack();
-          return;
+        Alert.alert('Error', 'Service not found.');
+        navigation.goBack();
+        return;
       }
 
       const { data: providerData, error: providerError } = await supabase
@@ -168,28 +163,7 @@ const EditServiceListingScreen = ({ route, navigation }) => {
       });
 
       if (data.media_urls && Array.isArray(data.media_urls)) {
-        const processedUrls = data.media_urls.filter(url => url && typeof url === 'string').map(url => {
-          if (url.startsWith('http')) {
-            // [LOG] URL displayed on screen when rendering (already a full URL)
-            // console.log('[EditServiceListingScreen] Displaying existing image (full URL):', url);
-            return url;
-          }
-          const profileId = profile?.id;
-          // Handle potential legacy paths or construct full URL if relative
-          const fileName = url.split('/').pop();
-          let fullUrl = `https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/providerimages/service-images/${profileId}/${fileName}`;
-
-          if (profileId && !url.includes(`service-images/${profileId}/`)) {
-            // Assuming it's a legacy path that should now be in the user's folder
-             // fullUrl is already constructed for this case
-          } else if (!url.includes(`service-images/`)) {
-            // If it's an even older path, relative to providerimages bucket root
-             fullUrl = `https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/providerimages/${url}`;
-          }
-          // [LOG] URL displayed on screen when rendering (constructed URL)
-          // console.log('[EditServiceListingScreen] Displaying existing image (constructed URL):', fullUrl);
-          return fullUrl;
-        });
+        const processedUrls = standardizeServiceImageUrls(data.media_urls, profile?.id, 'EditServiceListingScreen-Fetch');
         setExistingImageUrls(processedUrls);
       } else {
         setExistingImageUrls([]);
@@ -222,11 +196,7 @@ const EditServiceListingScreen = ({ route, navigation }) => {
       Alert.alert('Validation Error', 'A valid, non-negative price is required.');
       return false;
     }
-    if (formData.format === 'In-Person' &&
-        (!formData.addressStreet.trim() ||
-         !formData.addressSuburb.trim() ||
-         !formData.addressState.trim() ||
-         !formData.addressPostcode.trim())) {
+    if (formData.format === 'In-Person' && (!formData.addressStreet.trim() || !formData.addressSuburb.trim() || !formData.addressState.trim() || !formData.addressPostcode.trim())) {
       Alert.alert('Validation Error', 'A complete address is required for in-person services.');
       return false;
     }
@@ -237,121 +207,136 @@ const EditServiceListingScreen = ({ route, navigation }) => {
     const urlToRemove = existingImageUrls[indexToRemove];
     setRemovedImageUrls(prev => [...prev, urlToRemove]);
     setExistingImageUrls(prevUrls => prevUrls.filter((_, i) => i !== indexToRemove));
-    // Alert.alert('Image Marked for Removal', 'The image will be deleted from storage when you save changes.');
   };
 
-  const removeNewImage = (indexToRemove) => { // Renamed from removeImage for clarity
+  const removeNewImage = (indexToRemove) => {
     setImages(prevImages => prevImages.filter((_, i) => i !== indexToRemove));
-    // ModernImagePicker should handle its own visual removal, this syncs state
   };
 
   const uploadImages = async () => {
-    if (!profile?.id) {
-      Alert.alert('Upload Error', 'User session error. Cannot upload images.');
-      return [];
-    }
     setUploadingImages(true);
-    const profileId = profile.id;
+    const newImages = images; // These are from ModernImagePicker state
+    const profileId = profile?.id; // Ensure profile is loaded and has id
     const uploadedUrls = [];
 
-    // Ensure base folder exists (optional, Supabase creates paths on upload)
-    // but can be good for explicit creation if needed for specific policies
-    try {
-      await supabase.storage
-        .from('providerimages')
-        .upload(`service-images/${profileId}/.placeholder`, new ArrayBuffer(0), { // empty file
-          contentType: 'application/octet-stream',
-          upsert: true, // don't error if it exists
-        });
-    } catch (folderError) {
-        // Non-critical, upload will likely create path anyway
+    console.log('[AUTH_DEBUG] Starting uploadImages with profileId:', profileId);
+    
+    // Double-check auth session before upload
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    console.log('[AUTH_DEBUG] Current auth session userId:', sessionData?.session?.user?.id);
+    console.log('[AUTH_DEBUG] Session matches profile?', sessionData?.session?.user?.id === profileId);
+
+    if (!profileId) {
+      Alert.alert('Upload Error', 'User profile not available. Cannot upload images.');
+      setUploadingImages(false);
+      return [];
     }
 
-    for (const image of images) { // `images` are new images from ModernImagePicker
+    for (const imageAsset of newImages) { // Renamed 'image' to 'imageAsset' for clarity
       try {
+        console.log(`[IMAGE_DEBUG] Processing image for upload: ${imageAsset.uri}`);
         const timestamp = new Date().getTime();
         const randomStr = Math.random().toString(36).substring(2, 8);
-        const fileExt = image.uri.split('.').pop()?.toLowerCase() || 'jpg';
-        const contentType = image.type || `image/${fileExt === 'jpg' ? 'jpeg' : fileExt}`;
         
-        let baseFileName = `${timestamp}_${randomStr}`;
-        let fileName = `service-images/${profileId}/${baseFileName}.${fileExt}`;
+        let fileExt;
+        if (imageAsset.uri) {
+            const uriParts = imageAsset.uri.split('.');
+            fileExt = uriParts[uriParts.length - 1].toLowerCase();
+        }
+        if (!fileExt && imageAsset.mimeType) { 
+            fileExt = imageAsset.mimeType.split('/')[1];
+        }
+        fileExt = fileExt || 'jpg';
+
+        const fileName = `service-images/${profileId}/${timestamp}_${randomStr}.${fileExt}`;
+        console.log('[PATH_DEBUG] Constructed fileName path:', fileName);
         
-        // Use fetch and blob method instead of base64 - more reliable and allows size checking
-        let blob;
-        try {
-          const response = await fetch(image.uri);
-          blob = await response.blob();
-          
-          // CRITICAL: Check for 0-byte blob which causes the blank image issue
-          if (blob.size === 0) {
-            console.warn(`[IMAGE_DEBUG] Skipping 0-byte blob for image: ${image.uri}`);
-            Alert.alert('Upload Warning', 'An image appears to be empty and was not uploaded. Please try a different image.');
-            continue; // Skip this image
+        const contentType = imageAsset.mimeType || 
+                            (fileExt === 'png' ? 'image/png' : 
+                             fileExt === 'gif' ? 'image/gif' : 'image/jpeg');
+        
+        let base64Data;
+        if (imageAsset.base64) {
+          console.log(`[IMAGE_DEBUG] Using provided base64 data for ${imageAsset.uri}, length: ${imageAsset.base64.length}`);
+          base64Data = imageAsset.base64;
+        } else if (imageAsset.uri) {
+          console.log(`[IMAGE_DEBUG] Reading file as base64 from URI: ${imageAsset.uri}`);
+          try {
+            base64Data = await FileSystem.readAsStringAsync(imageAsset.uri, {
+              encoding: FileSystem.EncodingType.Base64,
+            });
+            console.log(`[IMAGE_DEBUG] Successfully read file as base64, length: ${base64Data.length}`);
+          } catch (fsError) {
+            console.error(`[IMAGE_DEBUG] Error reading file system for ${imageAsset.uri}:`, fsError);
+            Alert.alert('Upload Issue', `Could not read image file: ${imageAsset.uri}. Please try a different image.`);
+            continue; 
           }
-          
-          // Log successful blob size for debugging
-          console.log(`[IMAGE_DEBUG] Successfully created blob with size: ${blob.size} bytes for ${image.uri}`);
-          
-        } catch (blobError) {
-          console.error('Error creating blob from image:', blobError);
-          Alert.alert('Image Error', 'Could not process this image. Please try a different one.');
-          continue; // Skip this image
+        } else {
+          console.warn(`[IMAGE_DEBUG] No valid image data (base64 or URI) found for an image asset.`);
+          Alert.alert('Upload Warning', 'An image asset was missing data and could not be uploaded.');
+          continue; 
         }
 
-        let attempts = 0;
-        const maxAttempts = 3;
-        let uploadSuccessful = false;
+        if (!base64Data || base64Data.length === 0) {
+            console.warn(`[IMAGE_DEBUG] Base64 data is empty for ${imageAsset.uri}. Skipping upload.`);
+            Alert.alert('Upload Warning', `Image data for ${imageAsset.uri} appears to be empty and was not uploaded.`);
+            continue;
+        }
 
-        while(attempts < maxAttempts && !uploadSuccessful) {
-          attempts++;
-          const { data: uploadData, error: uploadError } = await supabase.storage
-            .from('providerimages')
-            .upload(fileName, blob, {
-              contentType,
-              cacheControl: '3600',
-              upsert: false, // Important: set to false to detect name collisions
+        const arrayBuffer = decode(base64Data);
+        console.log(`[IMAGE_DEBUG] Converted base64 to arrayBuffer for ${fileName}, size: ${arrayBuffer.byteLength}`);
+
+        if (arrayBuffer.byteLength === 0) {
+            console.warn(`[IMAGE_DEBUG] ArrayBuffer is 0 bytes for ${fileName}. Skipping upload.`);
+            Alert.alert('Upload Warning', `Processed image data for ${fileName} is empty. The image was not uploaded.`);
+            continue;
+        }
+
+        // Get storage bucket policies before upload for debugging
+        console.log('[RLS_DEBUG] Attempting to upload to path:', fileName);
+        console.log('[RLS_DEBUG] Content type:', contentType);
+        console.log('[RLS_DEBUG] ArrayBuffer size:', arrayBuffer.byteLength);
+        
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('providerimages') 
+          .upload(fileName, arrayBuffer, {
+            contentType,
+            cacheControl: '3600',
+            upsert: true, 
+          });
+
+        if (uploadError) {
+          console.error(`[IMAGE_DEBUG] Supabase storage upload error for ${fileName}:`, uploadError);
+          console.log('[RLS_DEBUG] Upload error details:', JSON.stringify(uploadError, null, 2));
+          
+          // Check if this is the RLS policy error
+          if (uploadError.message?.includes('row-level security policy')) {
+            console.log('[RLS_DEBUG] RLS policy violation detected');
+            console.log('[RLS_DEBUG] Path components:', {
+              bucket: 'providerimages',
+              folder1: 'service-images',
+              folder2: profileId,
+              filename: `${timestamp}_${randomStr}.${fileExt}`
             });
-            
-          // Log upload attempt details
-          console.log(`[IMAGE_DEBUG] Upload attempt ${attempts} for file: ${fileName}, blob size: ${blob.size} bytes`);
-
-          if (uploadError) {
-            if (uploadError.message && (uploadError.message.includes('Duplicate') || uploadError.message.includes('already exists'))) {
-              // console.warn(`Filename collision for ${fileName}, retrying with new name... Attempt: ${attempts}`);
-              const newRandomStr = Math.random().toString(36).substring(2, 10);
-              fileName = `service-images/${profileId}/${timestamp}_${newRandomStr}.${fileExt}`; // Regenerate filename
-              if (attempts >= maxAttempts) {
-                 // console.error(`Failed to upload ${image.uri} after ${maxAttempts} collision retries.`);
-              }
-              continue; // Retry with the new filename
-            }
-            throw uploadError; // Non-collision error
           }
           
-          // Successful upload
-          const { data: publicUrlData } = supabase.storage.from('providerimages').getPublicUrl(fileName);
-          if (publicUrlData && publicUrlData.publicUrl) {
-            // [LOG] URL saved to Supabase on upload - critical for debugging
-            console.log('[IMAGE_DEBUG][EditServiceListingScreen][UPLOAD] Supabase URL:', publicUrlData.publicUrl);
-            console.log('[IMAGE_DEBUG][EditServiceListingScreen][UPLOAD] Original fileName:', fileName);
-            console.log('[IMAGE_DEBUG][EditServiceListingScreen][UPLOAD] Profile ID used:', profileId);
-            uploadedUrls.push(publicUrlData.publicUrl);
-            uploadSuccessful = true;
-          } else {
-            // This case should ideally not happen if upload was successful and no error
-            // console.error('Uploaded successfully but failed to get public URL for:', fileName);
-            if (attempts >= maxAttempts) {
-                // console.error(`Failed to get public URL for ${fileName} after ${maxAttempts} attempts.`);
-            }
-          }
-        } // end while attempts
-        if (!uploadSuccessful) {
-            // console.warn(`Failed to upload image ${image.uri} after all attempts.`);
+          Alert.alert('Upload Error', `Failed to upload ${fileName}: ${uploadError.message}`);
+          continue; 
+        }
+        
+        console.log(`[IMAGE_DEBUG] Successfully uploaded ${fileName} to Supabase.`);
+        const { data: publicUrlData } = supabase.storage.from('providerimages').getPublicUrl(fileName);
+
+        if (publicUrlData && publicUrlData.publicUrl) {
+          console.log('[IMAGE_DEBUG][UPLOAD] Supabase URL:', publicUrlData.publicUrl);
+          uploadedUrls.push(publicUrlData.publicUrl);
+        } else {
+          console.error(`[IMAGE_DEBUG] Uploaded ${fileName} but failed to get public URL.`);
+          Alert.alert('Upload Issue', `Image ${fileName} uploaded but could not retrieve its URL.`);
         }
       } catch (error) {
-        // console.error('Error processing or uploading an image:', error.message, image.uri);
-        // Optionally, inform user about specific image failure
+        console.error(`[IMAGE_DEBUG] Error processing or uploading an image (${imageAsset.uri}):`, error);
+        Alert.alert('Image Processing Error', `An error occurred while preparing an image for upload: ${error.message}`);
       }
     }
     setUploadingImages(false);
@@ -362,37 +347,33 @@ const EditServiceListingScreen = ({ route, navigation }) => {
     if (!urlsToDelete || urlsToDelete.length === 0) return;
 
     const filesToRemove = urlsToDelete.map(fullUrl => {
-        // Extract path from full public URL: https://<project_ref>.supabase.co/storage/v1/object/public/<bucket_name>/<path_to_file>
         try {
             const url = new URL(fullUrl);
-            // Pathname will be /storage/v1/object/public/providerimages/service-images/userid/filename.jpg
-            // We need to remove the prefix up to the bucket name
             const bucketName = 'providerimages';
             const pathPrefix = `/storage/v1/object/public/${bucketName}/`;
             if (url.pathname.startsWith(pathPrefix)) {
                 return url.pathname.substring(pathPrefix.length);
             }
         } catch (e) {
-            // console.error("Invalid URL for deletion:", fullUrl, e);
+            console.error("Invalid URL for deletion:", fullUrl, e);
         }
         return null;
     }).filter(path => path !== null);
 
     if (filesToRemove.length > 0) {
-        // console.log("Attempting to delete files from Supabase storage:", filesToRemove);
+        console.log("Attempting to delete files from Supabase storage:", filesToRemove);
         const { data, error } = await supabase.storage
             .from('providerimages')
             .remove(filesToRemove);
 
         if (error) {
-            // console.error('Error deleting images from Supabase storage:', error);
-            // Alert.alert("Deletion Error", "Some images scheduled for removal could not be deleted from storage. Please check manually or try again.");
+            console.error('Error deleting images from Supabase storage:', error);
+            Alert.alert("Deletion Error", "Some images scheduled for removal could not be deleted from storage. Please check manually or try again.");
         } else {
-            // console.log('Images successfully deleted from Supabase storage:', data);
+            console.log('Images successfully deleted from Supabase storage:', data);
         }
     }
   };
-
 
   const updateService = async () => {
     if (!validateForm()) {
@@ -401,30 +382,27 @@ const EditServiceListingScreen = ({ route, navigation }) => {
     setSaving(true);
 
     try {
+      const profileId = profile?.id;
+      if (!profileId) {
+        Alert.alert('Save Error', 'User session error. Cannot save service.');
+        setSaving(false);
+        return;
+      }
+
       let newUploadedMediaUrls = [];
       if (images.length > 0) {
         newUploadedMediaUrls = await uploadImages();
       }
 
-      // Delete images marked for removal from Supabase Storage
       if (removedImageUrls.length > 0) {
-        await deleteStoredImages(removedImageUrls);
+        await deleteStoredImages(removedImageUrls, profile?.id);
       }
       
-      // Current existing URLs are already filtered by `handleRemoveExistingImage`
-      // So `existingImageUrls` state already reflects URLs that should be kept
-      
-      // Process URLs for consistent format before saving to database
       const rawMediaUrls = Array.from(new Set([...existingImageUrls, ...newUploadedMediaUrls]));
+      console.log('[IMAGE_DEBUG][SAVE] Raw media URLs:', rawMediaUrls);
       
-      // Log raw URLs for debugging
-      console.log('[IMAGE_DEBUG][EditServiceListingScreen][SAVE] Raw media URLs:', rawMediaUrls);
-      
-      // Standardize URLs for database storage
-      const finalMediaUrls = standardizeServiceImageUrls(rawMediaUrls, profileId, 'EditServiceListingScreen-Save');
-      
-      // Log final URLs that will be saved
-      console.log('[IMAGE_DEBUG][EditServiceListingScreen][SAVE] Final standardized URLs:', finalMediaUrls);
+      const finalMediaUrls = standardizeServiceImageUrls(rawMediaUrls, profile?.id, 'EditServiceListingScreen-Save');
+      console.log('[IMAGE_DEBUG][SAVE] Final standardized URLs:', finalMediaUrls);
 
       const serviceUpdateData = {
         title: formData.title,
@@ -455,37 +433,28 @@ const EditServiceListingScreen = ({ route, navigation }) => {
         { text: 'OK', onPress: () => navigation.navigate('ManageListings') },
       ]);
 
-      // Reset states post-successful update
       setImages([]);
       setRemovedImageUrls([]);
-      if (updatedService && updatedService.media_urls) {
-         // Update existingImageUrls to reflect the true state from DB
-         // This ensures any URLs that failed to upload or were malformed aren't shown
-        setExistingImageUrls(updatedService.media_urls.filter(url => url && typeof url === 'string').map(url => {
-            if (url.startsWith('http')) return url;
-            // Basic reconstruction if not full URL, assuming it's from providerimages root for safety
-            // Ideally, storage should always return full URLs or consistent relative paths.
-            return `https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/providerimages/${url}`;
-        }));
-
+      if (updatedService?.media_urls) {
+        const updatedUrls = standardizeServiceImageUrls(updatedService.media_urls, profileId, 'EditServiceListingScreen-UpdateSuccess');
+        setExistingImageUrls(updatedUrls);
       }
 
     } catch (error) {
       Alert.alert('Update Error', error.message || 'Failed to update service listing.');
     } finally {
       setSaving(false);
-      setUploadingImages(false); // Ensure this is reset
+      setUploadingImages(false);
     }
   };
-
 
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
         <AppHeader
           title="Edit Service Listing"
-          showBack
-          onBack={() => navigation.goBack()}
+          showBackButton={true}
+          navigation={navigation}
         />
         <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 20 }}/>
       </View>
@@ -496,36 +465,32 @@ const EditServiceListingScreen = ({ route, navigation }) => {
     <View style={styles.container}>
       <AppHeader
         title="Edit Service Listing"
-        navigation={navigation} // Pass navigation for back button functionality
-        showBackButton={true} // Assuming AppHeader uses this prop
-        // onBack={() => navigation.goBack()} // Or provide onBack directly if AppHeader supports it
+        showBackButton={true}
+        navigation={navigation}
       />
 
       <ScrollView style={styles.scrollContainer} contentContainerStyle={styles.scrollContentContainer} keyboardShouldPersistTaps="handled">
         <Card style={styles.formCard}>
           <Text style={styles.sectionTitle}>Service Images</Text>
           <ModernImagePicker
-            images={images} // Pass the local state for new images
-            setImages={setImages} // Pass the setter for ModernImagePicker to update
-            existingImages={existingImageUrls} // Pass existing images for display
-            onRemoveExisting={handleRemoveExistingImage} // Pass handler for removing existing images
-            onRemoveNew={removeNewImage} // Pass handler for removing new images (if ModernImagePicker allows/needs it)
+            images={images}
+            setImages={setImages}
+            existingImages={existingImageUrls}
+            onRemoveExisting={handleRemoveExistingImage}
+            onRemoveNew={removeNewImage}
             maxImages={10}
             loading={uploadingImages}
             containerStyle={{ marginBottom: 12 }}
           />
-          {/* Displaying existing images might be handled by ModernImagePicker itself if it supports `existingImages` prop
-              If not, the original mapping for existingImageUrls can be used here, but ensure ModernImagePicker accounts for them in maxImages.
-              For simplicity, assuming ModernImagePicker can show existing images and provide removal for them.
-              If ModernImagePicker only handles *new* images, then the explicit rendering of existingImageUrls is needed:
+          {/* 
+            This block is a fallback for displaying existing images if you find
+            that the ModernImagePicker component doesn't handle showing them.
+            It is currently disabled to avoid duplicating images.
           */}
-          {existingImageUrls.length > 0 && !ModernImagePicker.showsExisting && ( // Conditional render if ModernImagePicker doesn't show them
+          {false && existingImageUrls.length > 0 && (
             <View style={styles.existingImagesContainer}>
               <Text style={styles.subLabel}>Current Images:</Text>
-              {existingImageUrls.map((url, idx) => {
-                // [LOG] URL displayed on screen when rendering
-                // console.log(`[EditServiceListingScreen] Rendering existing image ${idx}: ${url}`);
-                return (
+              {existingImageUrls.map((url, idx) => (
                   <View key={`${url}-${idx}`} style={styles.existingImageWrapper}>
                     <Image source={{ uri: url }} style={styles.existingImage} onError={(e) => console.warn("Failed to load image:", url, e.nativeEvent.error)} />
                     <TouchableOpacity
@@ -535,8 +500,8 @@ const EditServiceListingScreen = ({ route, navigation }) => {
                       <Feather name="x-circle" size={22} color={COLORS.error} />
                     </TouchableOpacity>
                   </View>
-                );
-              })}
+                )
+              )}
             </View>
           )}
         </Card>
@@ -573,7 +538,7 @@ const EditServiceListingScreen = ({ route, navigation }) => {
             <View style={styles.formGroup}>
             <Text style={styles.label}>Category*</Text>
             <Dropdown
-                style={[styles.pickerContainerStyle, { minHeight: 48 }]} // Renamed from pickerContainer to avoid conflict if used elsewhere
+                style={styles.pickerContainerStyle}
                 placeholderStyle={styles.pickerPlaceholderStyle}
                 selectedTextStyle={styles.pickerSelectedTextStyle}
                 inputSearchStyle={styles.pickerInputSearchStyle}
@@ -593,7 +558,7 @@ const EditServiceListingScreen = ({ route, navigation }) => {
             <View style={styles.formGroup}>
             <Text style={styles.label}>Format*</Text>
             <Dropdown
-                style={[styles.pickerContainerStyle, { minHeight: 48 }]}
+                style={styles.pickerContainerStyle}
                 placeholderStyle={styles.pickerPlaceholderStyle}
                 selectedTextStyle={styles.pickerSelectedTextStyle}
                 inputSearchStyle={styles.pickerInputSearchStyle}
@@ -656,29 +621,29 @@ const EditServiceListingScreen = ({ route, navigation }) => {
                 </View>
                 
                 <View style={styles.formRow}>
-                <View style={[styles.formGroup, { flex: 1, marginRight: 8 }]}>
-                    <Text style={styles.label}>State*</Text>
-                    <TextInput // Consider a Picker/Dropdown for states for consistency
-                    style={styles.input}
-                    placeholder="e.g., NSW"
-                    value={formData.addressState}
-                    onChangeText={(text) => handleChange('addressState', text)}
-                    maxLength={3} // Or more if needed
-                    />
+                  <View style={[styles.formGroup, { flex: 1, marginRight: 8 }]}>
+                      <Text style={styles.label}>State*</Text>
+                      <TextInput
+                      style={styles.input}
+                      placeholder="e.g., NSW"
+                      value={formData.addressState}
+                      onChangeText={(text) => handleChange('addressState', text)}
+                      maxLength={3}
+                      />
+                  </View>
+                  
+                  <View style={[styles.formGroup, { flex: 1, marginLeft: 8 }]}>
+                      <Text style={styles.label}>Postcode*</Text>
+                      <TextInput
+                      style={styles.input}
+                      placeholder="e.g., 2000"
+                      value={formData.addressPostcode}
+                      onChangeText={(text) => handleChange('addressPostcode', text)}
+                      keyboardType="numeric"
+                      maxLength={4}
+                      />
+                  </View>
                 </View>
-                
-                <View style={[styles.formGroup, { flex: 1, marginLeft: 8 }]}>
-                    <Text style={styles.label}>Postcode*</Text>
-                    <TextInput
-                    style={styles.input}
-                    placeholder="e.g., 2000"
-                    value={formData.addressPostcode}
-                    onChangeText={(text) => handleChange('addressPostcode', text)}
-                    keyboardType="numeric"
-                    maxLength={4}
-                    />
-                </View>
-                </View> {/* Corrected closing tag for formRow */}
             </View>
             )}
 
@@ -686,35 +651,19 @@ const EditServiceListingScreen = ({ route, navigation }) => {
             <Text style={styles.label}>Availability</Text>
             <View style={styles.switchContainer}>
                 <TouchableOpacity
-                style={[
-                    styles.switchOption,
-                    formData.available ? styles.switchActive : null,
-                ]}
+                style={[styles.switchOption, formData.available && styles.switchActive]}
                 onPress={() => handleChange('available', true)}
                 >
-                <Text
-                    style={[
-                    styles.switchText,
-                    formData.available ? styles.switchTextActive : null,
-                    ]}
-                >
+                <Text style={[styles.switchText, formData.available && styles.switchTextActive]}>
                     Available
                 </Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                style={[
-                    styles.switchOption,
-                    !formData.available ? styles.switchActive : null,
-                ]}
+                style={[styles.switchOption, !formData.available && styles.switchActive]}
                 onPress={() => handleChange('available', false)}
                 >
-                <Text
-                    style={[
-                    styles.switchText,
-                    !formData.available ? styles.switchTextActive : null,
-                    ]}
-                >
+                <Text style={[styles.switchText, !formData.available && styles.switchTextActive]}>
                     Not Available
                 </Text>
                 </TouchableOpacity>
@@ -722,55 +671,54 @@ const EditServiceListingScreen = ({ route, navigation }) => {
             </View>
 
             <Button
-            title="Save Changes"
-            onPress={updateService}
-            loading={saving || uploadingImages}
-            style={styles.submitButton}
-            disabled={saving || uploadingImages}
+              title="Save Changes"
+              onPress={updateService}
+              loading={saving || uploadingImages}
+              style={styles.submitButton}
+              disabled={saving || uploadingImages}
             />
             
             <TouchableOpacity 
-            style={styles.deleteButton}
-            disabled={saving || uploadingImages}
-            onPress={() => {
-                Alert.alert(
-                "Delete Service",
-                "Are you sure you want to delete this service listing? This action cannot be undone and will remove all associated data and images.",
-                [
-                    { text: "Cancel", style: "cancel" },
-                    { 
-                    text: "Delete", 
-                    style: "destructive",
-                    onPress: async () => {
-                        try {
-                        setSaving(true); // Use saving state to disable buttons
-                        // First, delete associated images from storage if any
-                        if (existingImageUrls.length > 0) {
-                            await deleteStoredImages(existingImageUrls);
-                        }
+              style={styles.deleteButton}
+              disabled={saving || uploadingImages}
+              onPress={() => {
+                  Alert.alert(
+                  "Delete Service",
+                  "Are you sure you want to delete this service listing? This action cannot be undone and will remove all associated data and images.",
+                  [
+                      { text: "Cancel", style: "cancel" },
+                      { 
+                        text: "Delete", 
+                        style: "destructive",
+                        onPress: async () => {
+                            try {
+                              setSaving(true);
+                              if (existingImageUrls.length > 0) {
+                                  await deleteStoredImages(existingImageUrls);
+                              }
 
-                        const { error } = await supabase
-                            .from('services')
-                            .delete()
-                            .eq('id', serviceId);
-                        
-                        if (error) throw error;
-                        
-                        Alert.alert('Success', 'Service deleted successfully.');
-                        navigation.navigate('ManageListings'); // Or appropriate screen
-                        } catch (error) {
-                        Alert.alert('Deletion Error', `Failed to delete service: ${error.message}`);
-                        } finally {
-                        setSaving(false);
-                        }
-                    } 
-                    }
-                ],
-                { cancelable: true }
-                );
-            }}
+                              const { error } = await supabase
+                                  .from('services')
+                                  .delete()
+                                  .eq('id', serviceId);
+                              
+                              if (error) throw error;
+                              
+                              Alert.alert('Success', 'Service deleted successfully.');
+                              navigation.navigate('ManageListings');
+                            } catch (error) {
+                              Alert.alert('Deletion Error', `Failed to delete service: ${error.message}`);
+                            } finally {
+                              setSaving(false);
+                            }
+                        } 
+                      }
+                  ],
+                  { cancelable: true }
+                  );
+              }}
             >
-            <Text style={styles.deleteButtonText}>Delete Service</Text>
+              <Text style={styles.deleteButtonText}>Delete Service</Text>
             </TouchableOpacity>
         </Card>
       </ScrollView>
@@ -782,7 +730,7 @@ const EditServiceListingScreen = ({ route, navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background, // Use theme color
+    backgroundColor: COLORS.background,
   },
   loadingContainer: {
     flex: 1,
@@ -797,7 +745,7 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   formCard: {
-    backgroundColor: COLORS.cardBackground, // Use theme color
+    backgroundColor: COLORS.cardBackground,
     padding: 16,
     marginBottom: 20,
     borderRadius: 8,
@@ -813,11 +761,10 @@ const styles = StyleSheet.create({
   formRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 18, // Added margin to formRow as well
   },
   label: {
     fontSize: 16,
-    fontFamily: FONTS.medium, // Use theme font
+    fontFamily: FONTS.medium,
     marginBottom: 8,
     color: COLORS.text,
   },
@@ -825,23 +772,23 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: FONTS.regular,
     marginBottom: 8,
-    color: COLORS.textMuted, // Use theme color
+    color: COLORS.textMuted,
   },
   sectionTitle: {
-    fontSize: 20, // Slightly larger
-    fontFamily: FONTS.bold, // Use theme font
+    fontSize: 20,
+    fontFamily: FONTS.bold,
     marginBottom: 16,
-    color: COLORS.primary, // Use theme color
+    color: COLORS.primary,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.inputBorder, // Use theme color
+    borderBottomColor: COLORS.inputBorder,
     paddingBottom: 8,
   },
   input: {
     borderWidth: 1,
     borderColor: COLORS.inputBorder,
     borderRadius: 8,
-    paddingHorizontal: 14, // Increased padding
-    paddingVertical: 12,  // Increased padding
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     fontSize: 16,
     fontFamily: FONTS.regular,
     backgroundColor: COLORS.inputBackground,
@@ -858,9 +805,8 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontFamily: FONTS.regular,
   },
-  // Styles for react-native-element-dropdown
-  pickerContainerStyle: { // Renamed to avoid conflict
-    height: 50, // Standard height
+  pickerContainerStyle: {
+    height: 50,
     borderColor: COLORS.inputBorder,
     borderWidth: 1,
     borderRadius: 8,
@@ -869,7 +815,7 @@ const styles = StyleSheet.create({
   },
   pickerPlaceholderStyle: {
     fontSize: 16,
-    color: COLORS.placeholder, // Use theme color
+    color: COLORS.placeholder,
     fontFamily: FONTS.regular,
   },
   pickerSelectedTextStyle: {
@@ -888,12 +834,11 @@ const styles = StyleSheet.create({
     height: 20,
   },
   addressContainer: {
-    marginTop: 16, // Add some space before address section
+    marginTop: 16,
     paddingTop: 16,
     borderTopWidth: 1,
     borderTopColor: COLORS.inputBorder,
   },
-  // Existing Images Display (if ModernImagePicker doesn't handle them)
   existingImagesContainer: {
     marginTop: 10,
     flexDirection: 'row',
@@ -905,7 +850,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   existingImage: {
-    width: 80, // Smaller previews for existing
+    width: 80,
     height: 80,
     borderRadius: 8,
     borderWidth: 1,
@@ -919,7 +864,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 2,
   },
-  // Switch Toggle Styles
   switchContainer: {
     flexDirection: 'row',
     borderWidth: 1,
@@ -943,19 +887,19 @@ const styles = StyleSheet.create({
     color: COLORS.text,
   },
   switchTextActive: {
-    color: COLORS.white, // Use theme white
+    color: COLORS.white,
   },
   submitButton: {
-    marginTop: 24, // More space before button
-    backgroundColor: COLORS.primary, // Ensure button uses theme
+    marginTop: 24,
+    backgroundColor: COLORS.primary,
   },
   deleteButton: {
     marginTop: 16,
-    paddingVertical: 12, // Make it feel like a button
+    paddingVertical: 12,
     alignItems: 'center',
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: COLORS.error, // Use theme error color
+    borderColor: COLORS.error,
   },
   deleteButtonText: {
     color: COLORS.error,

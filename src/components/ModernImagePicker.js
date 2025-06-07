@@ -1,23 +1,36 @@
 import React, { useState, useRef } from 'react';
-import { View, TouchableOpacity, Image, StyleSheet, ActivityIndicator, Text } from 'react-native';
+import { View, TouchableOpacity, Image, StyleSheet, ActivityIndicator, Text, ScrollView } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { COLORS } from '../constants/theme';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, Feather } from '@expo/vector-icons';
 
-// Debug log moved here from imports section
-console.log('[DEBUG] ModernImagePicker - React hooks imported');
+// REMOVED: Debug log
+// console.log('[DEBUG] ModernImagePicker - React hooks imported');
 
-export default function ModernImagePicker({ onPick, images, setImages, maxImages = 10, avatar, style: customStyle, loading, containerStyle }) {
-  console.log(`[DEBUG][${new Date().toISOString()}] ModernImagePicker - Component function executing`); 
+export default function ModernImagePicker({ 
+  onPick, 
+  images, 
+  setImages, 
+  existingImages = [], 
+  onRemoveExisting,
+  onRemoveNew,
+  maxImages = 10, 
+  avatar, 
+  style: customStyle, 
+  loading, 
+  containerStyle 
+}) {
+  // REMOVED: Debug log
+  // console.log(`[DEBUG][${new Date().toISOString()}] ModernImagePicker - Component function executing`); 
 
-  // Test useRef availability immediately
-  try {
-    console.log(`[DEBUG][${new Date().toISOString()}] ModernImagePicker - Testing useRef`);
-    const testRef = useRef({test: 'testing useRef'});
-    console.log(`[DEBUG][${new Date().toISOString()}] ModernImagePicker - useRef is available:`, testRef.current);
-  } catch (error) {
-    console.error(`[DEBUG][${new Date().toISOString()}] ModernImagePicker - useRef ERROR:`, error);
-  }
+  // REMOVED: Debug logs related to useRef
+  // try {
+  //   console.log(`[DEBUG][${new Date().toISOString()}] ModernImagePicker - Testing useRef`);
+  //   const testRef = useRef({test: 'testing useRef'});
+  //   console.log(`[DEBUG][${new Date().toISOString()}] ModernImagePicker - useRef is available:`, testRef.current);
+  // } catch (error) {
+  //   console.error(`[DEBUG][${new Date().toISOString()}] ModernImagePicker - useRef ERROR:`, error);
+  // }
   const [pickingImage, setPickingImage] = useState(false);
   
   const pickImage = async () => {
@@ -28,7 +41,7 @@ export default function ModernImagePicker({ onPick, images, setImages, maxImages
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       
       if (status !== 'granted') {
-        console.error('Media library permission not granted');
+        // console.error('Media library permission not granted'); // Keep internal logs if desired, but ensure they don't break rendering
         alert('Sorry, we need camera roll permissions to make this work!');
         setPickingImage(false);
         return;
@@ -44,11 +57,11 @@ export default function ModernImagePicker({ onPick, images, setImages, maxImages
         exif: false, // Disable exif to reduce data size and potential issues
       });
       
-      console.log('Image picker result:', JSON.stringify(result));
+      // console.log('Image picker result:', JSON.stringify(result)); // Keep internal logs if desired
       
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const selectedAsset = result.assets[0];
-        console.log('Selected asset:', JSON.stringify(selectedAsset));
+        // console.log('Selected asset:', JSON.stringify(selectedAsset)); // Keep internal logs if desired
         
         // Determine MIME type based on file extension if not provided
         let mimeType = selectedAsset.mimeType;
@@ -82,7 +95,7 @@ export default function ModernImagePicker({ onPick, images, setImages, maxImages
         }
       }
     } catch (error) {
-      console.error('Error picking image:', error);
+      // console.error('Error picking image:', error); // Keep internal logs if desired
       alert('There was a problem selecting the image. Please try again.');
     } finally {
       setPickingImage(false);
@@ -91,25 +104,71 @@ export default function ModernImagePicker({ onPick, images, setImages, maxImages
   
   // For gallery view
   if (setImages && images !== undefined) {
+    // Calculate total images (existing + new)
+    const totalImages = (existingImages ? existingImages.length : 0) + images.length;
+    
+    // Helper function for rendering image item with delete button
+    const renderImageItem = (uri, index, isExisting = false) => {
+      const handleRemove = () => {
+        if (isExisting && onRemoveExisting) {
+          onRemoveExisting(index);
+        } else if (!isExisting && onRemoveNew) {
+          onRemoveNew(index);
+        }
+      };
+      
+      return (
+        <View key={isExisting ? `existing-${index}-${uri.substring(0,20)}` : `new-${index}-${uri.substring(0,20)}`} style={styles.imageContainer}>
+          <Image 
+            source={{ uri }} 
+            style={styles.imagePreview}
+            onError={() => console.log(`[IMAGE_ERROR] Failed to load image: ${uri.substring(0,50)}...`)}
+          />
+          <TouchableOpacity style={styles.removeButton} onPress={handleRemove}>
+            <Feather name="x-circle" size={22} color={COLORS.error} />
+          </TouchableOpacity>
+        </View>
+      );
+    };
+    
     return (
-      <View style={[styles.galleryContainer, containerStyle]}>
-        <TouchableOpacity 
-          style={[styles.addButton, customStyle]}
-          onPress={pickImage}
-          disabled={loading || pickingImage || (maxImages && images.length >= maxImages)}
+      <View style={[styles.container, containerStyle]}>
+        <ScrollView 
+          horizontal={true} 
+          showsHorizontalScrollIndicator={false} 
+          contentContainerStyle={styles.galleryContentContainer}
         >
-          {loading || pickingImage ? (
-            <ActivityIndicator size="small" color={COLORS.primary} />
-          ) : (
-            <>
-              <Ionicons name="add-circle" size={24} color={COLORS.primary} />
-              <Text style={styles.addText}>Add Image</Text>
-              {maxImages && (
-                <Text style={styles.maxText}>{images.length}/{maxImages}</Text>
+          {/* Display existing images */}
+          {existingImages && existingImages.map((uri, index) => (
+            renderImageItem(uri, index, true)
+          ))}
+          
+          {/* Display newly selected images */}
+          {images.map((img, index) => (
+            renderImageItem(img.uri, index, false)
+          ))}
+          
+          {/* Add button */}
+          {totalImages < maxImages && (
+            <TouchableOpacity 
+              style={[styles.addButton, customStyle]}
+              onPress={pickImage}
+              disabled={loading || pickingImage}
+            >
+              {loading || pickingImage ? (
+                <ActivityIndicator size="small" color={COLORS.primary} />
+              ) : (
+                <>
+                  <Ionicons name="add-circle" size={24} color={COLORS.primary} />
+                  <Text style={styles.addText}>Add Image</Text>
+                  {maxImages && (
+                    <Text style={styles.maxText}>{totalImages}/{maxImages}</Text>
+                  )}
+                </>
               )}
-            </>
+            </TouchableOpacity>
           )}
-        </TouchableOpacity>
+        </ScrollView>
       </View>
     );
   }
@@ -139,6 +198,9 @@ export default function ModernImagePicker({ onPick, images, setImages, maxImages
 }
 
 const styles = StyleSheet.create({
+  container: {
+    width: '100%',
+  },
   avatarWrap: {
     width: 96,
     height: 96,
@@ -154,9 +216,11 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   galleryContainer: {
+    marginBottom: 10,
+  },
+  galleryContentContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
   },
   addButton: {
     width: 120,
@@ -168,6 +232,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#ddd',
     borderStyle: 'dashed',
+    marginRight: 10,
   },
   addText: {
     color: COLORS.primary,
@@ -198,9 +263,33 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(255,255,255,0.7)',
+    backgroundColor: 'rgba(255, 255, 255, 0.7)',
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: 48,
+  },
+  imageContainer: {
+    width: 120,
+    height: 96,
+    borderRadius: 8,
+    marginRight: 10,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  imagePreview: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 8,
+    backgroundColor: '#f0f0f0',
+  },
+  removeButton: {
+    position: 'absolute',
+    top: 5,
+    right: 5,
+    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+    borderRadius: 12,
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
