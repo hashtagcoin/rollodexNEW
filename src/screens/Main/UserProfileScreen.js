@@ -28,7 +28,19 @@ const UserProfileScreen = () => {
   const route = useRoute();
   const navigation = useNavigation();
   console.log('UserProfileScreen route params:', route.params); // Debug log
-  const { user: loggedInUser } = useUser(); // Logged-in user
+  const { user: loggedInUser, profile: userProfile } = useUser(); // Logged-in user and profile
+  
+  // Handle back button press
+  const handleBackPress = () => {
+    navigation.goBack();
+  };
+  
+  // Handle avatar press - navigate to user's own profile
+  const handleAvatarPress = () => {
+    if (loggedInUser?.id) {
+      navigation.navigate('ProfileScreen');
+    }
+  };
 
   // Defensive: Check for missing or malformed params
   if (!route.params || !route.params.userId) {
@@ -306,7 +318,15 @@ const UserProfileScreen = () => {
 
   return (
     <View style={styles.safeArea}>
-      <AppHeader title={viewedUserProfile?.username || 'User Profile'} showBackButton={true} onBack={() => navigation.goBack()} />
+      <AppHeader
+        title={viewedUserProfile?.full_name || 'Profile'}
+        navigation={navigation}
+        showBackButton={true}
+        onBackPressOverride={handleBackPress}
+        userAvatar={viewedUserProfile?.avatar_url}
+        onAvatarPress={handleAvatarPress}
+        showAvatar={true}
+      />
       <FlatList
         data={listData}
         keyExtractor={keyExtractor}
