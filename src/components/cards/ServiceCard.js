@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, TouchableOpacity, Image, ActivityIndicator } from 'react-native'; 
+import React, { useState, useMemo } from 'react';
+// Corrected import: Added StyleSheet, removed unused useEffect and SIZES
+import { View, Text, TouchableOpacity, Image, ActivityIndicator, StyleSheet } from 'react-native'; 
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { getValidImageUrl } from '../../utils/imageHelper';
 import { CardStyles } from '../../constants/CardStyles'; // Import CardStyles
-import { COLORS, SIZES } from '../../constants/theme'; // For specific colors if needed directly
+import { COLORS } from '../../constants/theme'; // Removed SIZES as it was unused
 
 // Main component
 const ServiceCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', isFavorited, onToggleFavorite, onSharePress }) => { 
@@ -193,7 +194,8 @@ const ServiceCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', isFavor
   }
 };
 
-const localStyles = {
+// FIX: Wrapped the plain object in StyleSheet.create() for performance and correctness.
+const localStyles = StyleSheet.create({
   listCredentialsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -211,6 +213,6 @@ const localStyles = {
     color: COLORS.white,
     fontWeight: '500',
   },
-};
+});
 
 export default ServiceCard;
