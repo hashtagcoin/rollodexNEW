@@ -337,11 +337,6 @@ const BookingDetailScreen = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      <AppHeader
-        title="Booking Details"
-        navigation={navigation}
-        canGoBack={true}
-      />
       <ScrollView contentContainerStyle={styles.contentContainer}>
         {loading ? (
           <View style={styles.loadingContainer}>
