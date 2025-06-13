@@ -242,10 +242,7 @@ export const CardStyles = {
     left: 0,
     right: 0,
     bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.3)',
-    zIndex: 1,
+    backgroundColor: '#e0e0e0', // Light grey placeholder
   },
 };
 

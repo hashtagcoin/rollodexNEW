@@ -6,7 +6,12 @@ import AppHeader from '../../components/layout/AppHeader';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../../lib/supabaseClient';
 import { COLORS } from '../../constants/theme';
-import { getValidImageUrl } from '../../utils/imageHelper';
+import { getValidImageUrl, getOptimizedImageUrl } from '../../utils/imageHelper';
+
+// Debug logger – stripped in production
+const debug = (...args) => {
+  if (__DEV__) console.log(...args);
+};
 
 const FILTERS = [
   { key: 'all', label: 'All' },
@@ -17,7 +22,7 @@ const FILTERS = [
 ];
 
 const GroupsListScreen = () => {
-  console.log('[GroupsListScreen] --- Component Mounting/Rendering ---');
+  debug('[GroupsListScreen] --- Component Mounting/Rendering ---');
   const navigation = useNavigation();
   const [filter, setFilter] = useState('all');
   const [groupsData, setGroupsData] = useState([]);
@@ -431,6 +436,9 @@ const GroupsListScreen = () => {
     
     const { text: membershipButtonText, buttonStyle, textStyle, disabled } = getMembershipButtonInfo();
 
+    // Optimised thumbnail URL
+    const thumbUrl = useMemo(() => getOptimizedImageUrl(item.image, 400, 70), [item.image]);
+
     return (
       <TouchableOpacity 
         onPress={() => {
@@ -443,7 +451,7 @@ const GroupsListScreen = () => {
         style={styles.card}
       >
         <Image 
-          source={{ uri: item.image || 'https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/housing/exterior/alejandra-cifre-gonzalez-ylyn5r4vxcA-unsplash.jpg' }} 
+          source={{ uri: thumbUrl || 'https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/housing/exterior/alejandra-cifre-gonzalez-ylyn5r4vxcA-unsplash.jpg' }} 
           style={styles.cardImage}
           onError={(e) => {/* Image load error handling */}}
         />
@@ -498,6 +506,13 @@ const GroupsListScreen = () => {
     return <GroupCard item={item} navigation={navigation} userId={userId} userRole={userRole} />;
   }, [navigation, userId, userGroupRoles]);
 
+  // Prefetch thumbnails to smooth scrolling
+  useEffect(() => {
+    if (!filteredGroups || filteredGroups.length === 0) return;
+    const urls = filteredGroups.slice(0, 12).map(g => getOptimizedImageUrl(g.image, 400, 70)).filter(Boolean);
+    urls.forEach(u => Image.prefetch(u));
+  }, [filteredGroups]);
+
   if (loading) {
     return (
       <View style={styles.centeredContainer}>
@@ -544,6 +559,10 @@ const GroupsListScreen = () => {
         renderItem={renderGroupCard}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
+        initialNumToRender={10}
+        windowSize={11}
+        maxToRenderPerBatch={10}
+        removeClippedSubviews
         onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { y: scrollY } } }],
           {

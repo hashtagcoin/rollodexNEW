@@ -8,7 +8,8 @@ import {
   Dimensions,
   TouchableOpacity,
   Alert,
-  RefreshControl 
+  RefreshControl,
+  Image as RNImage
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native'; 
 import { supabase } from '../../lib/supabaseClient'; 
@@ -31,17 +32,24 @@ import {
   ICON_COLOR_DARK, 
   ICON_COLOR_LIGHT 
 } from '../../constants/theme';
+import { getValidImageUrl, getOptimizedImageUrl } from '../../utils/imageHelper';
 
 const { width, height } = Dimensions.get('window');
 
 // Constants
 const CATEGORIES = ['Therapy', 'Housing', 'Support', 'Transport', 'Tech', 'Personal', 'Social'];
 const VIEW_MODES = ['Grid', 'List', 'Swipe'];
+const PAGE_SIZE = 20;
 const APP_HEADER_HEIGHT = 50; 
 const CONTROLS_HEIGHT = 140; 
 const VIEW_MODE_TOGGLE_HEIGHT = 60; 
 const BOTTOM_NAV_HEIGHT = 60; 
 const CARD_MARGIN = 10;
+
+// Debug logger – stripped in production builds
+const debug = (...args) => {
+  if (__DEV__) console.log(...args);
+};
 
 /**
  * Provider Discovery Screen - Main screen for exploring services and housing
@@ -56,6 +64,8 @@ const ProviderDiscoveryScreen = ({ route }) => {
   // Track swiped items to prevent them from reappearing
   const [swipedItemIds, setSwipedItemIds] = useState(new Set());
   const listViewRef = useRef(null);
+  // Cache previously fetched items by category to avoid refetching and remounting
+  const cacheRef = useRef({});
   
   // Handle initial category from params
   useEffect(() => {
@@ -64,93 +74,20 @@ const ProviderDiscoveryScreen = ({ route }) => {
     }
   }, [initialParams.initialCategory]);
   
-  // Function to refresh just the user favorites without reloading all items
-  const refreshUserFavorites = useCallback(async () => {
-    try {
-      console.log('[ProviderDiscovery] Refreshing user favorites');
-      
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-      if (authError || !user) {
-        console.log('[ProviderDiscovery] Not logged in, cannot refresh favorites');
-        return;
-      }
-      
-      // Get current displayed item IDs
-      if (!items || items.length === 0) {
-        console.log('[ProviderDiscovery] No items to refresh favorites for');
-        return;
-      }
-      
-      // Determine correct item type for the current category
-      const isHousing = selectedCategory === 'Housing';
-      const itemTypeForFavorites = isHousing ? 'housing_listing' : 'service_provider';
-      const itemIds = items.map(item => item.id);
-      
-      console.log(`[ProviderDiscovery] Refreshing favorites for ${items.length} ${itemTypeForFavorites} items`);
-      
-      // Try to get any favorited items for the current items shown
-      try {
-        // First, clear the current user favorites if switching categories
-        const prevFavorites = new Set(userFavorites);
-        setUserFavorites(new Set());
-        
-        // Fetch latest favorites status for these items
-        const { data: favoritesData, error: favoritesError } = await supabase
-          .from('favorites')
-          .select('item_id')
-          .eq('user_id', user.id)
-          .eq('item_type', itemTypeForFavorites)
-          .in('item_id', itemIds);
-        
-        if (favoritesError) {
-          console.error('[ProviderDiscovery] DB Error refreshing favorites:', favoritesError);
-        } else if (favoritesData) {
-          const favoritedIds = new Set(favoritesData.map(fav => fav.item_id));
-          console.log(`[ProviderDiscovery] Found ${favoritesData.length} favorited items of type ${itemTypeForFavorites}`);
-          
-          // Always update regardless of previous state to ensure consistency
-          setUserFavorites(favoritedIds);
-        }
-      } catch (dbError) {
-        console.error('[ProviderDiscovery] Exception querying favorites:', dbError);
-      }
-    } catch (err) {
-      console.error('[ProviderDiscovery] Top-level exception refreshing favorites:', err);
-    }
-  }, [items, selectedCategory]);
-  
-  
-  // Reset scroll position when tab is focused and refresh favorites data
-  useFocusEffect(
-    useCallback(() => {
-      console.log('[ProviderDiscovery] Screen focused');
-      
-      // Reset scroll position if in list view
-      if (viewMode === 'List' && listViewRef.current) {
-        listViewRef.current.scrollToOffset({ offset: 0, animated: false });
-      }
-      
-      // IMPORTANT: Always refresh favorites when screen gains focus
-      // This ensures changes from other screens (like ServiceDetailScreen) are reflected
-      console.log('[ProviderDiscovery] Screen focused - refreshing favorites data');
-      refreshUserFavorites();
-      
-      // Force a fetchData call to ensure we have the most recent data
-      // This helps ensure consistency across the app
-      fetchData(true);
-      
-      return () => {
-        // Code to run when screen loses focus (optional)
-        console.log('[ProviderDiscovery] Screen unfocused');
-      };
-    }, [refreshUserFavorites, fetchData]) // Include fetchData in dependencies
-  );
   const [viewMode, setViewMode] = useState(VIEW_MODES[0]);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [userFavorites, setUserFavorites] = useState(new Set());
+  // Keep a ref in sync so callbacks always have latest value
+  const userFavoritesRef = useRef(new Set());
+  useEffect(() => {
+    userFavoritesRef.current = userFavorites;
+  }, [userFavorites]);
   const [refreshing, setRefreshing] = useState(false);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   
   // Sort related state
   const [sortConfig, setSortConfig] = useState({
@@ -168,21 +105,45 @@ const ProviderDiscoveryScreen = ({ route }) => {
     };
   }, []);
   
-  // Reset items and scroll position when category changes (primarily for non-swipe views)
+  // Replace old category-change effect with cached version
   useEffect(() => {
-    if (isMounted.current) {
-      console.log('[ProviderDiscovery] Category changed, resetting items');
+    if (!isMounted.current) return;
+
+    let refreshTimer;
+
+    // Show cached data instantly
+    if (cacheRef.current[selectedCategory]) {
+      setItems(cacheRef.current[selectedCategory]);
+      setLoading(false);
+
+      // Silent background refresh to sync latest data
+      refreshTimer = setTimeout(() => {
+        fetchData(false, 0, false);
+      }, 800);
+    } else {
+      // No cache – fetch immediately
       setItems([]);
-      // Clear swiped items when category changes
-      if (viewMode === 'Swipe') {
-        console.log('[ProviderDiscovery] Resetting swiped items with category change');
-        setSwipedItemIds(new Set());
-      } 
-      if (listViewRef.current && viewMode !== 'Swipe') {
-        listViewRef.current.scrollToOffset({ offset: 0, animated: false });
-      }
+      fetchData(false, 0, false);
     }
-  }, [selectedCategory, viewMode]);
+
+    // Reset swipe state when switching category
+    if (viewMode === 'Swipe') {
+      setSwipedItemIds(new Set());
+    }
+
+    // Scroll to top for list/grid views
+    if (listViewRef.current && viewMode !== 'Swipe') {
+      listViewRef.current.scrollToOffset({ offset: 0, animated: false });
+    }
+
+    // Reset pagination states
+    setPage(0);
+    setHasMore(true);
+
+    return () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+    };
+  }, [selectedCategory, fetchData, viewMode]);
   
   // useMemo to filter out swiped items for the swipe deck
   const filteredItems = useMemo(() => {
@@ -193,7 +154,7 @@ const ProviderDiscoveryScreen = ({ route }) => {
     const filtered = items
       .filter(item => item && item.id && !swipedItemIds.has(item.id));
       
-    console.log(`[ProviderDiscovery] Filtered items: ${filtered.length} (total: ${items.length}, swiped: ${swipedItemIds.size})`);
+    debug(`[ProviderDiscovery] Filtered items: ${filtered.length} (total: ${items.length}, swiped: ${swipedItemIds.size})`);
     return filtered;
   }, [items, swipedItemIds, viewMode]);
 
@@ -235,12 +196,13 @@ const ProviderDiscoveryScreen = ({ route }) => {
   }, [toggleFavorite, swipedItemIds]);
 
   // Main data fetching logic as a useCallback
-  const fetchData = useCallback(async (isRefreshing = false) => {
+  const fetchData = useCallback(async (isRefreshing = false, targetPage = 0, append = false) => {
     if (!isMounted.current) return;
     console.log('[ProviderDiscovery] fetchData called. Category:', selectedCategory, 'Search:', searchTerm, 'Refreshing:', isRefreshing);
 
     try {
-      if (!isRefreshing) setLoading(true);
+      const hasCache = cacheRef.current[selectedCategory]?.length > 0;
+      if (!hasCache || isRefreshing) setLoading(true);
       
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       if (authError || !user) {
@@ -276,9 +238,11 @@ const ProviderDiscoveryScreen = ({ route }) => {
       const isAscending = direction === 'asc';
       if (field) query = query.order(field, { ascending: isAscending });
       
-      // Adjust limit based on view mode, swipe might want fewer initially
-      const limit = viewMode === 'Swipe' ? 10 : 20;
-      query = query.limit(limit);
+      // Pagination
+      const limit = viewMode === 'Swipe' ? 10 : PAGE_SIZE;
+      const from = targetPage * limit;
+      const to = from + limit - 1;
+      query = query.range(from, to);
       
       const { data, error } = await query;
       
@@ -289,7 +253,18 @@ const ProviderDiscoveryScreen = ({ route }) => {
         if (isMounted.current) setItems([]);
       } else {
         console.log(`[ProviderDiscovery] Fetched ${data ? data.length : 0} items for ${tableName}`);
-        if (isMounted.current) setItems(data || []);
+        if (isMounted.current) {
+          if (append) {
+            setItems(prev => [...prev, ...(data || [])]);
+          } else {
+            setItems(data || []);
+          }
+          // Update hasMore flag
+          setHasMore((data || []).length === limit);
+          setPage(targetPage);
+        }
+        // Cache the fetched data for instant reuse next time
+        cacheRef.current[selectedCategory] = append ? [...(cacheRef.current[selectedCategory] || []), ...(data || [])] : (data || []);
         
         if (user && data && data.length > 0) {
           const itemIds = data.map(item => item.id);
@@ -306,7 +281,11 @@ const ProviderDiscoveryScreen = ({ route }) => {
           } else if (favoritesData && isMounted.current) {
             const favoritedIds = new Set(favoritesData.map(fav => fav.item_id));
             console.log('[ProviderDiscovery] User favorited IDs:', favoritedIds);
-            setUserFavorites(favoritedIds);
+            setUserFavorites(prev => {
+              // Merge with previous favorites for incremental pages
+              const newSet = append ? new Set([...prev, ...favoritedIds]) : favoritedIds;
+              return newSet;
+            });
           }
         } else if (isMounted.current) {
           // No items fetched or no user, clear favorites for current view
@@ -323,17 +302,17 @@ const ProviderDiscoveryScreen = ({ route }) => {
         if (isRefreshing) setRefreshing(false);
       }
     }
-  }, [selectedCategory, searchTerm, sortConfig, viewMode]); // Added viewMode as it affects limit
+  }, [selectedCategory, searchTerm, sortConfig, viewMode]);
 
   // useEffect to call fetchData
   useEffect(() => {
-    fetchData(false); // Initial fetch, not a refresh
+    fetchData(false, 0, false); // Initial fetch
   }, [fetchData]); // fetchData is now a stable useCallback
 
   const onRefresh = useCallback(() => {
     console.log('[ProviderDiscovery] onRefresh called');
     setRefreshing(true);
-    fetchData(true); // Call fetchData with isRefreshing = true
+    fetchData(true, 0, false); // Call fetchData with isRefreshing = true
   }, [fetchData]);
   
   // Toggle Favorite Function
@@ -352,12 +331,22 @@ const ProviderDiscoveryScreen = ({ route }) => {
     }
 
     const itemId = item.id;
-    const isCurrentlyFavorited = userFavorites.has(itemId);
+    const isCurrentlyFavorited = userFavoritesRef.current.has(itemId);
 
-    console.log(`[ProviderDiscovery] toggleFavorite: Item ID: ${itemId}, Type: ${itemType}, Currently Favorited: ${isCurrentlyFavorited}, User: ${user.id}`);
+    console.log(`[ProviderDiscovery] toggleFavorite OPTIMISTIC: Item ID: ${itemId}, Type: ${itemType}, Currently Favorited: ${isCurrentlyFavorited}`);
 
+    // --- optimistic UI update first ---
+    setUserFavorites(prev => {
+      const next = new Set(prev);
+      isCurrentlyFavorited ? next.delete(itemId) : next.add(itemId);
+      return next;
+    });
+
+    // Save snapshot for potential rollback
+    const snapshot = new Set(userFavoritesRef.current);
+
+    // Fire & forget API call
     if (isCurrentlyFavorited) {
-      // Unfavorite
       const { error } = await supabase
         .from('favorites')
         .delete()
@@ -367,17 +356,11 @@ const ProviderDiscoveryScreen = ({ route }) => {
 
       if (error) {
         console.error('[ProviderDiscovery] Error unfavoriting item:', error);
+        // rollback UI
+        setUserFavorites(snapshot);
         Alert.alert('Error', 'Could not remove from favorites. Please try again.');
-      } else {
-        setUserFavorites(prevFavorites => {
-          const newFavorites = new Set(prevFavorites);
-          newFavorites.delete(itemId);
-          console.log('[ProviderDiscovery] Item unfavorited. New favorites set:', newFavorites);
-          return newFavorites;
-        });
       }
     } else {
-      // Favorite with created_at field in ISO format
       const { error } = await supabase
         .from('favorites')
         .upsert({
@@ -385,24 +368,16 @@ const ProviderDiscoveryScreen = ({ route }) => {
           item_id: itemId,
           item_type: itemType,
           created_at: new Date().toISOString()
-        }, { 
-          onConflict: 'user_id,item_id,item_type',
-          ignoreDuplicates: false 
-        });
+        }, { onConflict: 'user_id,item_id,item_type', ignoreDuplicates: true });
 
       if (error) {
         console.error('[ProviderDiscovery] Error favoriting item:', error);
+        // rollback UI
+        setUserFavorites(snapshot);
         Alert.alert('Error', 'Could not add to favorites. Please try again.');
-      } else {
-        setUserFavorites(prevFavorites => {
-          const newFavorites = new Set(prevFavorites);
-          newFavorites.add(itemId);
-          console.log('[ProviderDiscovery] Item favorited. New favorites set:', newFavorites);
-          return newFavorites;
-        });
       }
     }
-  }, [userFavorites]); // Dependency: userFavorites
+  }, []);
 
   // Handle sort changes
   const handleSortChange = (newSortConfig) => {
@@ -477,11 +452,53 @@ const ProviderDiscoveryScreen = ({ route }) => {
     console.log('All cards viewed in this category');
   }, []);
   
+  // Prefetch thumbnails to reduce image loading jank
+  useEffect(() => {
+    if (!items || items.length === 0) return;
+
+    const urls = items.slice(0, 12).map(it => {
+      const raw = it.media_urls && it.media_urls.length > 0 ? it.media_urls[0] : null;
+      const bucket = selectedCategory === 'Housing' ? 'housingimages' : 'providerimages';
+      const full = getValidImageUrl(raw, bucket);
+      return getOptimizedImageUrl(full, viewMode === 'Swipe' ? 800 : 400, 70);
+    }).filter(Boolean);
+
+    urls.forEach(u => RNImage.prefetch(u));
+  }, [items, selectedCategory, viewMode]);
+
+  // Load more handler for pagination
+  const handleLoadMore = () => {
+    if (!hasMore || loadingMore) return;
+    setLoadingMore(true);
+    const nextPage = page + 1;
+    fetchData(false, nextPage, true).finally(() => setLoadingMore(false));
+  };
+
+  // Reset scroll position when tab is focused and refresh favorites data
+  useFocusEffect(
+    useCallback(() => {
+      console.log('[ProviderDiscovery] Screen focused');
+      
+      // Reset scroll position if in list view
+      if (listViewRef.current) {
+        listViewRef.current.scrollToOffset({ offset: 0, animated: false });
+      }
+      
+      // Force a fetchData call to ensure we have the most recent data & favorites
+      // This helps ensure consistency across the app
+      fetchData(true, 0, false);
+      
+      return () => {
+        // Code to run when screen loses focus (optional)
+        console.log('[ProviderDiscovery] Screen unfocused');
+      };
+    }, [fetchData, selectedCategory, viewMode])
+  );
+
   // Render main content 
   const renderContent = () => {
-    // Add console logging to help debug rendering issues
-    console.log(`[ProviderDiscovery] Rendering content in ${viewMode} mode`);
-    console.log(`[ProviderDiscovery] Total items: ${items.length}, Filtered items: ${filteredItems.length}, Swiped items: ${swipedItemIds.size}`);
+    // Development-only render tracing
+    debug(`[ProviderDiscovery] Render ${viewMode}. items=${items.length}, filtered=${filteredItems.length}, swiped=${swipedItemIds.size}`);
     
     // Loading state
     if (loading && items.length === 0) {
@@ -501,7 +518,8 @@ const ProviderDiscoveryScreen = ({ route }) => {
       
       return (
         <FlatList
-          key={`${isHousing ? 'housing' : 'services'}-grid`}
+          key="grid"
+          listKey="grid-view"
           data={items}
           renderItem={({ item }) => (
             <CardComponent 
@@ -517,6 +535,13 @@ const ProviderDiscoveryScreen = ({ route }) => {
           numColumns={2}
           contentContainerStyle={styles.gridContainer}
           showsVerticalScrollIndicator={false}
+          initialNumToRender={6}
+          windowSize={5}
+          maxToRenderPerBatch={10}
+          removeClippedSubviews
+          extraData={userFavorites}
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.5}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -524,6 +549,7 @@ const ProviderDiscoveryScreen = ({ route }) => {
               colors={[DARK_GREEN]}
             />
           }
+          ref={listViewRef}
         />
       );
     } 
@@ -536,7 +562,8 @@ const ProviderDiscoveryScreen = ({ route }) => {
       
       return (
         <FlatList
-          key={`${isHousing ? 'housing' : 'services'}-list`}
+          key="list"
+          listKey="list-view"
           data={items}
           renderItem={({ item }) => (
             <View style={styles.listItemContainer}>
@@ -553,6 +580,13 @@ const ProviderDiscoveryScreen = ({ route }) => {
           keyExtractor={(item, index) => `${item.id}-${index}`}
           contentContainerStyle={styles.listContainer} 
           showsVerticalScrollIndicator={false}
+          initialNumToRender={10}
+          windowSize={7}
+          maxToRenderPerBatch={15}
+          removeClippedSubviews
+          extraData={userFavorites}
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.5}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -560,6 +594,7 @@ const ProviderDiscoveryScreen = ({ route }) => {
               colors={[DARK_GREEN]}
             />
           }
+          ref={listViewRef}
         />
       );
     }

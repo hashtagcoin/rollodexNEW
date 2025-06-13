@@ -1,8 +1,9 @@
 import React, { useState, useMemo } from 'react';
 // Corrected import: Added StyleSheet, removed unused useEffect and SIZES
-import { View, Text, TouchableOpacity, Image, ActivityIndicator, StyleSheet } from 'react-native'; 
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'; 
+import { Image } from 'expo-image';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { getValidImageUrl } from '../../utils/imageHelper';
+import { getValidImageUrl, getOptimizedImageUrl } from '../../utils/imageHelper';
 import { CardStyles } from '../../constants/CardStyles'; // Import CardStyles
 import { COLORS } from '../../constants/theme'; // Removed SIZES as it was unused
 
@@ -32,9 +33,16 @@ const ServiceCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', isFavor
   const category = item.category ? item.category.charAt(0).toUpperCase() + item.category.slice(1) : 'Uncategorized';
   const rawImageUrl = item.media_urls && item.media_urls.length > 0 ? item.media_urls[0] : null;
   const imageUrl = getValidImageUrl(rawImageUrl, 'providerimages');
+  // Request CDN-optimised thumbnail for list/grid; swipe gets a larger width
+  const thumbUrl = getOptimizedImageUrl(
+    imageUrl,
+    displayAs === 'swipe' ? 800 : 400,
+    70
+  );
+
   const imageSource = useMemo(() => {
-    return imageUrl ? { uri: imageUrl } : { uri: 'https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/providerimages/default-service.png' };
-  }, [imageUrl]);
+    return thumbUrl ? { uri: thumbUrl } : { uri: 'https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/providerimages/default-service.png' };
+  }, [thumbUrl]);
   const suburb = item.address_suburb || 'Suburb';
   const description = item.description || 'No description available';
 
@@ -66,19 +74,17 @@ const ServiceCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', isFavor
       >
         <View style={CardStyles.listCardInner}> 
           <View style={CardStyles.listImageContainer}> 
-            {!imageLoaded && (
-              <View style={CardStyles.loaderContainer}> 
-                <ActivityIndicator size="large" color={COLORS.primary} />
-              </View>
-            )}
+            {!imageLoaded && <View style={CardStyles.loaderContainer} />}
             <Image 
-              source={imageError ? require('../../assets/images/default-service.png') : imageSource}
+              source={imageError ? require('../../assets/images/default-service.png') : { uri: thumbUrl }}
               style={CardStyles.listImage} 
               onLoad={() => {
                 setImageLoaded(true);
                 if (typeof onImageLoaded === 'function' && imageUrl && !imageError) onImageLoaded(imageUrl);
               }}
               onError={handleImageError}
+              contentFit="cover"
+              cachePolicy="immutable"
             />
             <TouchableOpacity 
               style={CardStyles.iconContainer} 
@@ -141,19 +147,17 @@ const ServiceCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', isFavor
         >
           <View style={CardStyles.gridCardInner}> 
             <View style={CardStyles.gridImageContainer}> 
-              {!imageLoaded && (
-                <View style={CardStyles.loaderContainer}> 
-                  <ActivityIndicator size="large" color={COLORS.primary} />
-                </View>
-              )}
+              {!imageLoaded && <View style={CardStyles.loaderContainer} />}
               <Image 
-                source={imageError ? require('../../assets/images/default-service.png') : imageSource}
+                source={imageError ? require('../../assets/images/default-service.png') : { uri: thumbUrl }}
                 style={CardStyles.gridImage} 
                 onLoad={() => {
                   setImageLoaded(true);
                   if (typeof onImageLoaded === 'function' && imageUrl && !imageError) onImageLoaded(imageUrl);
                 }}
                 onError={handleImageError}
+                contentFit="cover"
+                cachePolicy="immutable"
               />
               <TouchableOpacity 
                 style={CardStyles.iconContainer} 
@@ -215,4 +219,5 @@ const localStyles = StyleSheet.create({
   },
 });
 
-export default ServiceCard;
+// Memoize to prevent unnecessary re-renders when unrelated props/state change
+export default React.memo(ServiceCard);

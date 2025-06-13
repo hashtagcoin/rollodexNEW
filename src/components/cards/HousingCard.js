@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, TouchableOpacity, Image, ActivityIndicator } from 'react-native'; 
+import { View, Text, TouchableOpacity } from 'react-native'; 
+import { Image } from 'expo-image';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { getValidImageUrl } from '../../utils/imageHelper';
+import { getValidImageUrl, getOptimizedImageUrl } from '../../utils/imageHelper';
 import { COLORS, SIZES } from '../../constants/theme'; 
 import { CardStyles } from '../../constants/CardStyles'; 
 
@@ -21,23 +22,27 @@ const HousingCard = ({ item, onPress, displayAs = 'grid', onImageLoaded, isFavor
   
   const rawImageUrl = item.media_urls && item.media_urls.length > 0 ? item.media_urls[0] : null;
   const imageUrl = getValidImageUrl(rawImageUrl, 'housingimages');
+  // Optimise thumbnail size – larger for swipe view
+  const thumbUrl = getOptimizedImageUrl(
+    imageUrl,
+    displayAs === 'swipe' ? 800 : 400,
+    70
+  );
+
   const imageSource = useMemo(() => {
-    return imageUrl ? { uri: imageUrl } : { uri: 'https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/housingimages/default-housing.png' };
-  }, [imageUrl]);
+    return thumbUrl ? { uri: thumbUrl } : { uri: 'https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/housingimages/default-housing.png' };
+  }, [thumbUrl]);
 
   if (displayAs === 'swipe') {
     return (
       <TouchableOpacity style={localStyles.swipeItemContainer} onPress={() => onPress(item)} activeOpacity={0.9}>
         <View style={localStyles.swipeImageBackground}>
-          {!imageLoaded && (
-            <View style={localStyles.loaderContainerSwipe}> 
-              <ActivityIndicator size="large" color={COLORS.white} />
-            </View>
-          )}
+          {!imageLoaded && <View style={localStyles.loaderContainerSwipe} />}
           <Image
-            source={imageSource}
+            source={{uri: thumbUrl}}
             style={localStyles.swipeImageBackground}
-            resizeMode="cover"
+            contentFit="cover"
+            cachePolicy="immutable"
             onLoad={() => {
               setImageLoaded(true);
               if (typeof onImageLoaded === 'function' && imageUrl) onImageLoaded(imageUrl);
@@ -93,14 +98,12 @@ const HousingCard = ({ item, onPress, displayAs = 'grid', onImageLoaded, isFavor
       >
         <View style={CardStyles.listCardInner}>
           <View style={CardStyles.listImageContainer}>
-            {!imageLoaded && (
-              <View style={CardStyles.loaderContainer}>
-                <ActivityIndicator size="large" color={COLORS.primary} />
-              </View>
-            )}
+            {!imageLoaded && <View style={CardStyles.loaderContainer} />}
             <Image 
-              source={imageSource}
+              source={{uri: thumbUrl}}
               style={CardStyles.listImage}
+              contentFit="cover"
+              cachePolicy="immutable"
               onLoad={() => {
                 setImageLoaded(true);
                 if (typeof onImageLoaded === 'function' && imageUrl) onImageLoaded(imageUrl);
@@ -161,14 +164,12 @@ const HousingCard = ({ item, onPress, displayAs = 'grid', onImageLoaded, isFavor
       >
         <View style={CardStyles.gridCardInner}>
           <View style={CardStyles.gridImageContainer}>
-            {!imageLoaded && (
-              <View style={CardStyles.loaderContainer}>
-                <ActivityIndicator size="large" color={COLORS.primary} />
-              </View>
-            )}
+            {!imageLoaded && <View style={CardStyles.loaderContainer} />}
             <Image 
-              source={imageSource}
+              source={{uri: thumbUrl}}
               style={CardStyles.gridImage}
+              contentFit="cover"
+              cachePolicy="immutable"
               onLoad={() => {
                 setImageLoaded(true);
                 if (typeof onImageLoaded === 'function' && imageUrl) onImageLoaded(imageUrl);
@@ -312,4 +313,4 @@ const localStyles = {
   },
 };
 
-export default HousingCard;
+export default React.memo(HousingCard);

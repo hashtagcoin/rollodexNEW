@@ -197,9 +197,14 @@ const DashboardScreen = () => {
       return { date: 'Unknown', time: 'Unknown' };
     }
   };
+  // Use the user's custom background image if available, otherwise fall back to default
+  const backgroundImageSource = profile?.background_url 
+    ? { uri: profile.background_url } 
+    : require('../../assets/images/MegaTron.jpg');
+
   return (
     <ImageBackground
-      source={require('../../assets/images/MegaTron.jpg')}
+      source={backgroundImageSource}
       style={styles.wallpaper}
       resizeMode="cover"
     >

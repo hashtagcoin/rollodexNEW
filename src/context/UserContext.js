@@ -17,7 +17,7 @@ export const UserProvider = ({ children }) => {
       const { data, error } = await supabase
         .from('user_profiles')
         .select(`
-          id, username, full_name, avatar_url, bio, email, role, 
+          id, username, full_name, avatar_url, background_url, bio, email, role, 
           ndis_number, primary_disability, support_level, 
           age, sex, address,
           mobility_aids, dietary_requirements, accessibility_preferences,

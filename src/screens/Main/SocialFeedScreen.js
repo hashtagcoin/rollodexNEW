@@ -5,7 +5,6 @@ import {
   Text, 
   StyleSheet, 
   FlatList, 
-  Image, 
   TouchableOpacity, 
   ActivityIndicator,
   Modal,
@@ -13,6 +12,8 @@ import {
   SafeAreaView,
   Dimensions
 } from 'react-native';
+import { Image } from 'expo-image';
+import { getOptimizedImageUrl } from '../../utils/imageHelper';
 import ActionButton from '../../components/common/ActionButton';
 import CreatePostModal from '../../components/social/CreatePostModal';
 import { useNavigation } from '@react-navigation/native';
@@ -108,7 +109,16 @@ const SocialFeedScreen = () => {
   useEffect(() => {
     fetchPosts();
   }, []);
-  
+
+  // Prefetch first 12 thumbnails when posts change
+  useEffect(() => {
+    if (!posts || posts.length === 0) return;
+    const urls = posts.slice(0, 12)
+      .map(p => (p.media_urls && p.media_urls.length > 0 ? getOptimizedImageUrl(p.media_urls[0], 400, 70) : null))
+      .filter(Boolean);
+    urls.forEach(u => Image.prefetch(u));
+  }, [posts]);
+
   // Refresh posts after creating a new one
   const handlePostCreated = async () => {
     fetchPosts();
@@ -129,16 +139,24 @@ const SocialFeedScreen = () => {
     />
   );
 
-  const renderHousingGroup = ({ item }) => (
-    <View style={styles.housingCard}>
-      <Image source={{ uri: item.image }} style={styles.housingCardImage} />
-      <View style={styles.housingCardContent}>
-        <Text style={styles.housingCardTitle}>{item.name}</Text>
-        <Text style={styles.housingCardDesc}>{item.desc}</Text>
-        <Text style={styles.housingCardMembers}>{item.members} members</Text>
+  const renderHousingGroup = ({ item }) => {
+    const thumbUrl = getOptimizedImageUrl(item.image, 400, 70);
+    return (
+      <View style={styles.housingCard}>
+        <Image 
+          source={{ uri: thumbUrl }} 
+          style={styles.housingCardImage} 
+          contentFit="cover"
+          cachePolicy="immutable"
+        />
+        <View style={styles.housingCardContent}>
+          <Text style={styles.housingCardTitle}>{item.name}</Text>
+          <Text style={styles.housingCardDesc}>{item.desc}</Text>
+          <Text style={styles.housingCardMembers}>{item.members} members</Text>
+        </View>
       </View>
-    </View>
-  );
+    );
+  };
 
   // Header component with sticky navigation buttons
   const HeaderComponent = () => (
@@ -187,6 +205,7 @@ const SocialFeedScreen = () => {
         </View>
       ) : (
         <FlatList
+          listKey="social-feed"
           ref={flatListRef}
           data={posts}
           renderItem={renderPost}
@@ -197,6 +216,10 @@ const SocialFeedScreen = () => {
           refreshing={refreshing}
           ListHeaderComponent={<HeaderComponent />}
           stickyHeaderIndices={[0]}
+          initialNumToRender={6}
+          windowSize={5}
+          maxToRenderPerBatch={10}
+          removeClippedSubviews
         />
       )}
 

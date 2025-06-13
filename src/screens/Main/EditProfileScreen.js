@@ -7,6 +7,7 @@ import AppHeader from '../../components/layout/AppHeader';
 import { supabase } from '../../lib/supabaseClient';
 import ModernImagePicker from '../../components/ModernImagePicker';
 import { useAuth, useUser } from '../../context/UserContext';
+import * as ImagePicker from 'expo-image-picker';
 
 // Define colors for UI elements
 const COLORS = {
@@ -26,6 +27,7 @@ export default function EditProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadingBackground, setUploadingBackground] = useState(false);
   
   // Username validation states
   const [checkingUsername, setCheckingUsername] = useState(false);
@@ -249,6 +251,74 @@ export default function EditProfileScreen() {
     }
   };
 
+  // Handle background image upload
+  const handleBackgroundUpload = async () => {
+    try {
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      
+      if (!permissionResult.granted) {
+        Alert.alert('Permission required', 'We need access to your photos to set a background image.');
+        return;
+      }
+      
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [3, 1],
+        quality: 0.8,
+      });
+
+      if (result.canceled) return;
+
+      setUploadingBackground(true);
+      
+      // Get the image URI
+      const imageUri = result.assets[0].uri;
+      
+      // Generate a unique filename
+      const fileExt = imageUri.split('.').pop();
+      const fileName = `background_${Date.now()}.${fileExt}`;
+      const filePath = `user-backgrounds/${profile.id}/${fileName}`;
+      
+      // Upload the image to Supabase Storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('backgrounds')
+        .upload(filePath, {
+          uri: imageUri,
+          type: `image/${fileExt}`,
+          name: fileName,
+        }, {
+          cacheControl: '3600',
+          upsert: true
+        });
+
+      if (uploadError) throw uploadError;
+
+      // Get the public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('backgrounds')
+        .getPublicUrl(filePath);
+
+      // Update the user's profile with the new background URL
+      const { error: updateError } = await supabase
+        .from('user_profiles')
+        .update({ background_url: publicUrl })
+        .eq('id', profile.id);
+
+      if (updateError) throw updateError;
+      
+      // Update the local profile state
+      updateProfile({ background_url: publicUrl });
+      
+      Alert.alert('Success', 'Background image updated successfully');
+    } catch (error) {
+      console.error('Error uploading background image:', error);
+      Alert.alert('Error', 'Failed to update background image. Please try again.');
+    } finally {
+      setUploadingBackground(false);
+    }
+  };
+
   // Function to validate required fields before saving
   const validateProfile = () => {
     if (!profile.username || profile.username.trim() === '') {
@@ -428,6 +498,22 @@ export default function EditProfileScreen() {
               loading={uploading}
             />
             <Text style={styles.changePhotoText}>Change Profile Photo</Text>
+            
+            {/* Background Image Upload */}
+            <View style={styles.backgroundUploadContainer}>
+              <Text style={styles.sectionTitle}>Background Image</Text>
+              <TouchableOpacity 
+                style={styles.backgroundButton}
+                onPress={handleBackgroundUpload}
+                disabled={uploadingBackground}
+              >
+                {uploadingBackground ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.backgroundButtonText}>Change Background</Text>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
           
           {/* Basic Information */}

@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import { Image, StyleSheet, View, ActivityIndicator } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import { Image } from 'expo-image';
+import { getOptimizedImageUrl } from '../../utils/imageHelper';
 import { COLORS } from '../../constants/theme';
 
 /**
@@ -27,12 +29,15 @@ const FallbackImage = ({
   // Process the source to ensure it's in the correct format for Image component
   const processSource = (src) => {
     if (typeof src === 'string') {
-      return { uri: src };
-    } else if (src && src.uri) {
-      // Already a proper source object with URI
-      return src;
+      const optimised = getOptimizedImageUrl(src, 800, 80);
+      return { uri: optimised };
     }
-    // Default fallback - return the fallbackSource directly since it's a require() call
+    if (src && src.uri) {
+      return {
+        ...src,
+        uri: getOptimizedImageUrl(src.uri, 800, 80),
+      };
+    }
     return fallbackSource;
   };
   
@@ -66,11 +71,7 @@ const FallbackImage = ({
         />
       )}
       
-      {isLoading && (
-        <View style={styles.loaderContainer}>
-          <ActivityIndicator size="small" color={COLORS.DARK_GREEN} />
-        </View>
-      )}
+      {isLoading && <View style={styles.loaderPlaceholder} />}
     </View>
   );
 };
@@ -86,15 +87,13 @@ const styles = StyleSheet.create({
     height: '100%',
     resizeMode: 'cover',
   },
-  loaderContainer: {
+  loaderPlaceholder: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(240, 240, 240, 0.5)',
+    backgroundColor: '#e0e0e0',
   }
 });
 

@@ -203,3 +203,30 @@ export const getDefaultImage = (type) => {
     return { uri: `${SUPABASE_URL}/storage/v1/object/public/providerimages/default-post.png` };
   }
 };
+
+// NEW: Utility to request CDN-optimised variants (webp, resized)
+// ---------------------------------------------------------------------------
+/**
+ * Append Supabase image transformation parameters so the CDN returns a resized / compressed
+ * variant suited to list and grid thumbnails. If the URL already has query params we leave it.
+ * Use sparingly – full-size URLs should still be used on detail screens.
+ *
+ * @param {string} url – fully resolved public URL (output of getValidImageUrl)
+ * @param {number} width – desired width in px (height will auto scale). Default 400.
+ * @param {number} quality – jpeg/webp quality (1-100). Default 70.
+ * @returns {string}
+ */
+export const getOptimizedImageUrl = (url, width = 400, quality = 70) => {
+  try {
+    if (!url || typeof url !== 'string') return url;
+
+    // Skip if a transformation is already applied (presence of ?width or format)
+    if (url.includes('?width=')) return url;
+
+    const params = `?width=${width}&quality=${quality}&format=webp`;
+    return `${url}${params}`;
+  } catch (err) {
+    // On error just return original
+    return url;
+  }
+};
