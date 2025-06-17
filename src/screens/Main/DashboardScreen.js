@@ -238,40 +238,34 @@ const DashboardScreen = () => {
           console.log('[Dashboard] Fetch already in progress, skipping');
           return;
         }
+        
+        // Check if useFocusEffect already loaded cached data
+        const cache = cacheRef.current;
+        const userChanged = lastFetchUserRef.current !== profile.id;
+        const cacheExpired = !cache.timestamp || Date.now() - cache.timestamp > CACHE_TIMEOUT;
+        
+        // Skip fetch if we have valid cached data (useFocusEffect already handled this)
+        if (cache.wallet && cache.bookings && cache.recommendations && !userChanged && !cacheExpired) {
+          console.log('[Dashboard] Skipping useEffect fetch - useFocusEffect already loaded cached data');
+          return;
+        }
+        
         fetchInProgressRef.current = true;
 
         try {
-          // Check cache first
-          const cache = cacheRef.current;
-          const userChanged = lastFetchUserRef.current !== profile.id;
-          const cacheExpired = !cache.timestamp || Date.now() - cache.timestamp > CACHE_TIMEOUT;
+          console.log('[Dashboard] Fetching fresh data from useEffect');
           
-          if (cache.wallet && cache.bookings && cache.recommendations && !userChanged && !cacheExpired) {
-            console.log('[Dashboard] Using cached data');
-            setWallet(cache.wallet);
-            setUpcomingBookings(cache.bookings);
-            setRecommendations(cache.recommendations);
-            setLoading({
-              wallet: false,
-              bookings: false,
-              recommendations: false
-            });
-            debugTiming('Cache hit', startTime);
-          } else {
-            console.log('[Dashboard] Fetching fresh data');
-            
-            // Fetch all data in parallel - the individual functions will update cache
-            await Promise.all([
-              fetchWalletData(),
-              fetchUpcomingBookings(), 
-              fetchRecommendations()
-            ]);
+          // Fetch all data in parallel - the individual functions will update cache
+          await Promise.all([
+            fetchWalletData(),
+            fetchUpcomingBookings(), 
+            fetchRecommendations()
+          ]);
 
-            // Update cache timestamp after successful fetch
-            cacheRef.current.timestamp = Date.now();
-            lastFetchUserRef.current = profile.id;
-            debugTiming('Fresh fetch completed', startTime);
-          }
+          // Update cache timestamp after successful fetch
+          cacheRef.current.timestamp = Date.now();
+          lastFetchUserRef.current = profile.id;
+          debugTiming('Fresh fetch completed', startTime);
         } catch (error) {
           console.error('[Dashboard] Error in fetchAllData:', error);
         } finally {

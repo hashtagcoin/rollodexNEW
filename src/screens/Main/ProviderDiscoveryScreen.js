@@ -81,6 +81,26 @@ const ProviderDiscoveryScreen = ({ route }) => {
   // Search state
   const [searchTerm, setSearchTerm] = useState('');
   
+  // Auto-set category to Therapy and scroll to top on navigation
+  useFocusEffect(
+    useCallback(() => {
+      console.log('[ProviderDiscovery] Screen focused - setting category to Therapy and scrolling to top');
+      
+      // Always set category to "Therapy" when navigating to this screen
+      setSelectedCategory('Therapy');
+      
+      // Scroll to top of the list
+      if (listViewRef.current) {
+        listViewRef.current.scrollToOffset({ animated: false, offset: 0 });
+      }
+      
+      // Reset pagination
+      setPage(0);
+      setHasMore(true);
+      
+    }, [])
+  );
+
   // Handle initial category from params
   useEffect(() => {
     if (initialParams.initialCategory && CATEGORIES.includes(initialParams.initialCategory)) {

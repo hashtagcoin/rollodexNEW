@@ -59,7 +59,9 @@ const WalletScreen = () => {
         setAllUserClaims(cache.claims);
         setLoading(false);
         setActiveTab('overview');
+        // Don't fetch when we have valid cache
       } else {
+        console.log('[Wallet] No valid cache, fetching fresh data');
         // Only fetch if no valid cache
         fetchWalletAndClaims();
       }
@@ -145,10 +147,6 @@ const WalletScreen = () => {
       debugTiming('Fetch and cache update', startTime);
     }
   }, []);
-
-  useEffect(() => {
-    fetchWalletAndClaims();
-  }, [fetchWalletAndClaims]);
 
   const onRefresh = () => {
     setRefreshing(true);
