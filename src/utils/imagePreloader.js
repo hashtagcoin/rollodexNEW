@@ -46,59 +46,66 @@ const isValidImageUrl = (url) => {
   }
 };
 
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 500; // ms
+
+// Helper function to attempt preloading with retries
+const attemptPreload = (uri, tag, retriesLeft) => {
+  return new Promise((resolve) => {
+    Image.prefetch(uri)
+      .then(() => {
+        if (__DEV__) {
+          console.log(`[ImagePreloader][${tag}] Successfully preloaded: ${uri.substring(0, 60)}...`);
+        }
+        globalImageCache.add(uri);
+        prefetchPromises.delete(uri);
+        resolve(true);
+      })
+      .catch((error) => {
+        if (retriesLeft > 0) {
+          if (__DEV__) {
+            console.warn(`[ImagePreloader][${tag}] Failed to preload, ${retriesLeft} retries left. Retrying in ${RETRY_DELAY}ms...`, uri.substring(0, 60));
+          }
+          setTimeout(() => {
+            resolve(attemptPreload(uri, tag, retriesLeft - 1));
+          }, RETRY_DELAY);
+        } else {
+          console.error(`[ImagePreloader][${tag}] Failed to preload after ${MAX_RETRIES} retries: ${uri.substring(0, 60)}...`, error?.message || 'Unknown error');
+          // Mark as failed to prevent further attempts in this session
+          globalImageCache.add(uri);
+          prefetchPromises.delete(uri);
+          resolve(false);
+        }
+      });
+  });
+};
+
 export const preloadImage = (uri, tag = 'default') => {
   if (!uri) {
-    console.warn('[ImagePreloader] Attempted to preload undefined or null URI');
+    if (__DEV__) console.warn('[ImagePreloader] Attempted to preload undefined or null URI');
     return Promise.resolve(false);
   }
-  
+
   // Validate the URL before attempting to preload
   if (!isValidImageUrl(uri)) {
-    console.warn(`[ImagePreloader][${tag}] Invalid image URL: ${uri?.substring?.(0, 30)}...`);
+    if (__DEV__) console.warn(`[ImagePreloader][${tag}] Invalid image URL: ${uri?.substring?.(0, 60)}...`);
     return Promise.resolve(false);
   }
-  
-  // If already loaded, return resolved promise
+
+  // If already cached or a download is in progress, don't start another
   if (globalImageCache.has(uri)) {
-    console.log(`[ImagePreloader][${tag}] Image already cached: ${uri.substring(0, 30)}...`);
+    // Add explicit logging for skipped images
+    if (__DEV__) console.log(`[ImagePreloader][${tag}] Skipped: Image already in global cache set. URI: ${uri.substring(0, 60)}...`);
     return Promise.resolve(true);
   }
-  
-  // If already being fetched, return the existing promise
   if (prefetchPromises.has(uri)) {
+    if (__DEV__) console.log(`[ImagePreloader][${tag}] Skipped: Image prefetch already in progress. URI: ${uri.substring(0, 60)}...`);
     return prefetchPromises.get(uri);
   }
-  
-  totalLoadAttempts++;
-  
-  // Create and store the prefetch promise
-  const prefetchPromise = new Promise((resolve) => {
-    // Use a timeout to prevent blocking the JS thread
-    setTimeout(() => {
-      Image.prefetch(uri)
-        .then(() => {
-          globalImageCache.add(uri);
-          successfulLoads++;
-          console.log(`[ImagePreloader][${tag}] Successfully preloaded: ${uri.substring(0, 30)}...`);
-          resolve(true);
-        })
-        .catch(error => {
-          failedLoads++;
-          // Log but don't throw to prevent app crashes - image loading failures are common
-          console.log(`[ImagePreloader][${tag}] Failed to preload: ${uri.substring(0, 30)}...`, 
-            error?.message || 'Unknown error');
-          // Still consider this cached to prevent repeated failures
-          globalImageCache.add(uri);
-          resolve(false);
-        })
-        .finally(() => {
-          // Remove from in-progress map
-          prefetchPromises.delete(uri);
-        });
-    }, 0);
-  });
-  
+
+  const prefetchPromise = attemptPreload(uri, tag, MAX_RETRIES);
   prefetchPromises.set(uri, prefetchPromise);
+
   return prefetchPromise;
 };
 
@@ -163,11 +170,28 @@ export const clearCache = () => {
   console.log('[ImagePreloader] Image cache cleared');
 };
 
+/**
+ * Clear the image preload cache
+ * Resets the preloader's state by clearing the cache and in-progress promises
+ */
+export const clearImagePreloadCache = () => {
+  const clearedPromiseCount = prefetchPromises.size;
+  const clearedCacheCount = globalImageCache.size;
+
+  prefetchPromises.clear();
+  globalImageCache.clear();
+
+  if (__DEV__) {
+    console.log(`[ImagePreloader] Cache cleared. Removed ${clearedPromiseCount} in-progress promises and ${clearedCacheCount} cached URIs.`);
+  }
+};
+
 export default {
   preloadImage,
   preloadImages,
   isImageCached,
   getCacheStats,
   clearFromCache,
-  clearCache
+  clearCache,
+  clearImagePreloadCache
 };

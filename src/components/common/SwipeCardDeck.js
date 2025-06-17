@@ -1,520 +1,155 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { View, StyleSheet, Platform } from 'react-native';
+import PropTypes from 'prop-types';
+import Swiper from 'react-native-deck-swiper';
+
 /**
- * SwipeCardDeck Component
- * A high-performance Tinder-style card swiping component optimized for React Native
+ * SwipeCardDeck component using react-native-deck-swiper library
+ * This replaces the previous custom implementation with a more robust solution
  */
+const SwipeCardDeck = ({
+  data = [],
+  renderCard,
+  onSwipeLeft,
+  onSwipeRight,
+  infinite = false,
+  stackSize = 3,
+  containerStyle,
+  cardStyle,
+  emptyView,
+}) => {
+  const swipedCardIdsRef = useRef(new Set());
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const swiperRef = useRef(null);
 
-import React, { useState, useRef, useCallback, useMemo, useImperativeHandle, forwardRef, useEffect } from 'react';
-import {
-  View, 
-  Text,
-  Animated, 
-  PanResponder, 
-  Dimensions, 
-  StyleSheet,
-  InteractionManager
-} from 'react-native';
-import { COLORS } from '../../constants/theme';
-import SwipeCardOverlay from './SwipeCardOverlay';
+  // Reset current index when data changes
+  useEffect(() => {
+    setCurrentIndex(0);
+    swipedCardIdsRef.current = new Set();
+  }, [data]);
 
-// Get screen dimensions
-const { width, height } = Dimensions.get('window');
+  // Handle when no cards are available
+  if (!data || data.length === 0) {
+    return emptyView || <View style={styles.emptyContainer} />;
+  }
 
-// Constants for swipe behavior
-const SWIPE_THRESHOLD = width * 0.25;
-const SWIPE_OUT_DURATION = 250;
-const ROTATION_RANGE = 30;
-const ROTATION_MULTIPLIER = ROTATION_RANGE / width;
-const VERTICAL_THRESHOLD = height * 0.25;
+  const handleCardSwiped = (cardIndex) => {
+    const item = data[cardIndex];
+    const cardId = item?.id || item?._id;
+    if (cardId) {
+      swipedCardIdsRef.current.add(cardId);
+    }
+    
+    // If we're in infinite mode and reached the end, reset to 0
+    if (infinite && cardIndex === data.length - 1) {
+      setCurrentIndex(0);
+    } else {
+      setCurrentIndex(cardIndex + 1);
+    }
+  };
 
-// Performance constants
-const CARD_PRELOAD_COUNT = 3; // Number of cards to preload
-const MAX_VISIBLE_CARDS = 3;  // Maximum cards visible in stack
+  return (
+    <View style={[styles.container, containerStyle]}>
+      <Swiper
+        ref={swiperRef}
+        cards={data}
+        renderCard={renderCard}
+        onSwipedLeft={(cardIndex) => {
+          handleCardSwiped(cardIndex);
+          if (onSwipeLeft && data[cardIndex]) {
+            onSwipeLeft(data[cardIndex]);
+          }
+        }}
+        onSwipedRight={(cardIndex) => {
+          handleCardSwiped(cardIndex);
+          if (onSwipeRight && data[cardIndex]) {
+            onSwipeRight(data[cardIndex]);
+          }
+        }}
+        backgroundColor={'transparent'}
+        stackSize={stackSize}
+        infinite={infinite}
+        animateCardOpacity={true}
+        cardIndex={currentIndex}
+        stackSeparation={15}
+        stackScale={0.1}
+        cardVerticalMargin={10}
+        cardHorizontalMargin={5}
+        cardStyle={cardStyle}
+        overlayLabels={{
+          left: {
+            title: 'NOPE',
+            style: {
+              label: styles.overlayLabelLeft,
+              wrapper: styles.overlayWrapper,
+            }
+          },
+          right: {
+            title: 'LIKE',
+            style: {
+              label: styles.overlayLabelRight,
+              wrapper: styles.overlayWrapper,
+            }
+          },
+        }}
+        animateOverlayLabelsOpacity
+        overlayOpacityHorizontalThreshold={15}
+        inputOverlayLabelsOpacityRangeX={[-45, -30, 30, 45]}
+        outputOverlayLabelsOpacityRangeX={[0, 1, 1, 0]}
+        disableBottomSwipe={false}
+        disableTopSwipe={true}
+        useViewOverflow={Platform.OS === 'ios'}
+      />
+    </View>
+  );
+};
 
-// Component styles
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+    overflow: 'visible',
+    zIndex: 1,
+  },
+  emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  card: {
-    position: 'absolute',
-    width: '100%',
-  }
+  overlayWrapper: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+    padding: 10,
+    borderWidth: 2,
+    borderRadius: 10,
+  },
+  overlayLabelLeft: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    padding: 10,
+    color: '#d33',
+    borderColor: '#d33',
+  },
+  overlayLabelRight: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    padding: 10,
+    color: '#2b9',
+    borderColor: '#2b9',
+  },
 });
 
-const SwipeCardDeck = forwardRef((props, ref) => { 
-  const { 
-    data = [],
-    renderCard,
-    onSwipeLeft,
-    onSwipeRight, 
-    onSwipeTop,
-    onSwipeBottom,
-    onCardDisappear,
-    onAllCardsViewed,
-    backgroundColor = 'transparent',
-    cardStyle = {},
-    stackSize = 3,
-    stackScale = 0.08,
-    stackSeparation = 15,
-    infinite = false,
-    disableTopSwipe = false,
-    disableBottomSwipe = false,
-    disableLeftSwipe = false,
-    disableRightSwipe = false,
-    animationOverlayOpacity = 0.8,
-    animationDuration = SWIPE_OUT_DURATION,
-    rotationEnabled = true,
-    scaleEnabled = true,
-    overlayLabels = {}
-  } = props;
-  
-  // State
-  const [currentIndex, setCurrentIndex] = useState(0);
-  
-  // Refs for animations
-  const panRef = useRef(new Animated.ValueXY()).current;
-  const rotateRef = useRef(new Animated.Value(0)).current;
-  const nextCardScale = useRef(new Animated.Value(1 - stackScale)).current;
-  
-  // Ref to track cards that have been swiped to prevent duplicates
-  const swipedCardIdsRef = useRef(new Set());
-  
-  // Reset swipe history when data changes
-  useEffect(() => {
-    console.log('[SwipeCardDeck] useEffect [stackScale]: Triggered. Initial currentIndex:', currentIndex, 'Initial data.length:', data.length);
-    swipedCardIdsRef.current = new Set();
-    setCurrentIndex(0);
-    
-    // Reset animation values
-    panRef.setValue({ x: 0, y: 0 });
-    rotateRef.setValue(0);
-    nextCardScale.setValue(1 - stackScale);
-    console.log('[SwipeCardDeck] useEffect [stackScale]: State and animations reset. New currentIndex:', 0, 'panRef:', JSON.stringify(panRef), 'rotateRef:', rotateRef._value, 'nextCardScale:', nextCardScale._value);
-  }, [stackScale]);
-  
-  // Function to reset the animation values
-  const resetCardPosition = () => {
-    console.log('[SwipeCardDeck] resetCardPosition called. Current panRef:', JSON.stringify(panRef), 'Current rotateRef:', rotateRef._value);
-    Animated.spring(panRef, {
-      toValue: { x: 0, y: 0 },
-      friction: 5,
-      useNativeDriver: false
-    }).start();
-    
-    Animated.spring(rotateRef, {
-      toValue: 0,
-      friction: 5,
-      useNativeDriver: false
-    }).start();
-  };
-  
-  // Function to handle card swipe
-  const swipeCard = useCallback((direction) => {
-    // Capture current card and index to prevent stale closures
-    const swipedCard = data[currentIndex];
-    const swipedIndex = currentIndex;
-    const oldIndex = currentIndex;
-    console.log(`[SwipeCardDeck] swipeCard: Direction: ${direction}, oldIndex: ${oldIndex}, CardID: ${swipedCard?.id || `card-${swipedIndex}`}, current panRef: ${JSON.stringify(panRef)}, current rotateRef: ${rotateRef._value}`);
-    
-    // Prevent duplicate swipes of the same card
-    const cardId = swipedCard?.id || `card-${swipedIndex}`;
-    if (swipedCardIdsRef.current.has(cardId)) return;
-    
-    // Mark this card as swiped
-    if (swipedCard) {
-      swipedCardIdsRef.current.add(cardId);
-    }
-    
-    // Determine the direction to swipe
-    let xOffset = 0;
-    let yOffset = 0;
-    
-    switch (direction) {
-      case 'left':
-        xOffset = -width * 1.5;
-        break;
-      case 'right':
-        xOffset = width * 1.5;
-        break;
-      case 'up':
-        yOffset = -height * 1.5;
-        break;
-      case 'down':
-        yOffset = height * 1.5;
-        break;
-      default:
-        return;
-    }
-    
-    // Animate the swipe
-    console.log(`[SwipeCardDeck] swipeCard: Animating swipe. To x: ${xOffset}, y: ${yOffset}, rotate: 0. nextCardScale toValue: 1`);
-    Animated.parallel([
-      Animated.timing(panRef, {
-        toValue: { x: xOffset, y: yOffset },
-        duration: animationDuration,
-        useNativeDriver: false
-      }),
-
-      Animated.timing(rotateRef, {
-        toValue: 0,
-        duration: animationDuration,
-        useNativeDriver: false
-      }),
-      Animated.spring(nextCardScale, {
-        toValue: 1,
-        friction: 5,
-        useNativeDriver: false
-      })
-    ]).start(() => {
-      // Reset animation values for reuse
-      panRef.setValue({ x: 0, y: 0 });
-      rotateRef.setValue(0);
-      nextCardScale.setValue(1 - stackScale);
-      console.log('[SwipeCardDeck] swipeCard animation completed. AFTER reset: panRef.x:', panRef.x._value, 'panRef.y:', panRef.y._value, 'rotateRef:', rotateRef._value, 'nextCardScale:', nextCardScale._value);
-      
-      // Update the current index, cycling back to 0 if infinite is true
-      const newIndex = infinite && swipedIndex >= data.length - 1 ? 0 : swipedIndex + 1;
-      setCurrentIndex(newIndex);
-      console.log(`[SwipeCardDeck] swipeCard: setCurrentIndex to newIndex: ${newIndex}. swipedCardIdsRef size: ${swipedCardIdsRef.current.size}`);
-      
-      // Call appropriate callbacks based on direction
-      if (swipedCard) {
-        switch (direction) {
-          case 'left':
-            onSwipeLeft?.(swipedCard, oldIndex);
-            break;
-          case 'right':
-            onSwipeRight?.(swipedCard, oldIndex);
-            break;
-          case 'up':
-            onSwipeTop?.(swipedCard, oldIndex);
-            break;
-          case 'down':
-            onSwipeBottom?.(swipedCard, oldIndex);
-            break;
-        }
-        
-        // Call onCardDisappear callback
-        onCardDisappear?.(swipedCard, oldIndex);
-        
-        // Call onAllCardsViewed when we've gone through all cards
-        if (newIndex === data.length && typeof onAllCardsViewed === 'function') {
-          InteractionManager.runAfterInteractions(() => {
-            onAllCardsViewed();
-          });
-        }
-      }
-    });
-  }, [
-    currentIndex, 
-    data, 
-    animationDuration, 
-    infinite, 
-    onSwipeLeft, 
-    onSwipeRight, 
-    onSwipeTop, 
-    onSwipeBottom,
-    onCardDisappear,
-    onAllCardsViewed,
-    panRef,
-    rotateRef,
-    nextCardScale,
-    stackScale
-  ]);
-  
-  // Create pan responder for touch gestures
-  const panResponder = useMemo(() => PanResponder.create({
-    // Return true to ensure we capture the initial touch event
-    onStartShouldSetPanResponder: () => true,
-    
-    // Return true to enable gesture recognition for this card
-    onMoveShouldSetPanResponder: () => true,
-    
-    // Handle grant event to initialize any state
-    onPanResponderGrant: () => {
-      
-      // Ensure animation values are in correct initial state
-      // This is important when a card gets recycled in infinite mode
-      panRef.extractOffset();
-    },
-    
-    // Handle movement by updating Animated values
-    onPanResponderMove: (event, gesture) => {
-      // Update position
-      panRef.setValue({ x: gesture.dx, y: gesture.dy });
-      
-      // Calculate rotation based on horizontal movement if enabled
-      if (rotationEnabled) {
-        rotateRef.setValue(gesture.dx * ROTATION_MULTIPLIER);
-      }
-      
-      // We can add a console.log here for debugging, but remove in production
-      // console.log(`Swipe movement - dx: ${gesture.dx}, dy: ${gesture.dy}`);
-    },
-    
-    // Handle release to determine if card should be swiped away
-    onPanResponderRelease: (event, gesture) => {
-      
-      // Reset offset to avoid accumulative offsets
-      panRef.flattenOffset();
-      
-      // Determine if the card should be swiped away
-      if (gesture.dx > SWIPE_THRESHOLD && !disableRightSwipe) {
-        
-        swipeCard('right');
-      } else if (gesture.dx < -SWIPE_THRESHOLD && !disableLeftSwipe) {
-        
-        swipeCard('left');
-      } else if (gesture.dy < -VERTICAL_THRESHOLD && !disableTopSwipe) {
-        
-        swipeCard('up');
-      } else if (gesture.dy > VERTICAL_THRESHOLD && !disableBottomSwipe) {
-        
-        swipeCard('down');
-      } else {
-        
-        resetCardPosition();
-      }
-    },
-    
-    // Handle termination (e.g., another responder takes over)
-    onPanResponderTerminate: () => {
-      
-      resetCardPosition();
-    }
-  }), [
-    swipeCard, 
-    resetCardPosition, 
-    rotationEnabled, 
-    disableRightSwipe, 
-    disableLeftSwipe,
-    disableTopSwipe,
-    disableBottomSwipe,
-    panRef,
-    rotateRef,
-    SWIPE_THRESHOLD,
-    VERTICAL_THRESHOLD,
-    ROTATION_MULTIPLIER
-  ]);
-  
-  // Expose methods to parent component via ref
-  useImperativeHandle(ref, () => ({
-    swipeLeft: () => swipeCard('left'),
-    swipeRight: () => swipeCard('right'),
-    swipeTop: () => swipeCard('up'),
-    swipeBottom: () => swipeCard('down'),
-    resetPosition: resetCardPosition
-  }));
-  
-  // Function to get the rotation transform
-  const getCardRotation = useCallback(() => {
-    if (!rotationEnabled) return '0deg';
-    
-    return rotateRef.interpolate({
-      inputRange: [-width, 0, width],
-      outputRange: [`-${ROTATION_RANGE}deg`, '0deg', `${ROTATION_RANGE}deg`],
-      extrapolate: 'clamp'
-    });
-  }, [rotateRef, rotationEnabled]);
-  
-  // Render the cards efficiently using useMemo to prevent unnecessary re-renders
-  const renderCards = useMemo(() => {
-    console.log(`[SwipeCardDeck] renderCards: ENTER. currentIndex: ${currentIndex}, data.length: ${data.length}, stackSize (prop): ${props.stackSize || 3}, swipedCardIdsRef size: ${swipedCardIdsRef.current.size}`);
-    if (!data.length || currentIndex >= data.length) {
-      return null;
-    }
-    
-    // Calculate the end index, considering the stack size and data length
-    const endIndex = Math.min(currentIndex + stackSize - 1, data.length - 1);
-    
-    // Store rendered cards in this array
-    const cards = [];
-    
-    // Track which card IDs have been rendered to prevent duplicates
-    const renderedCardIds = new Set();
-    
-    // Render cards from endIndex down to currentIndex to ensure proper stacking order
-    for (let i = endIndex; i >= currentIndex; i--) {
-      const item = data[i];
-      if (!item) continue;
-      
-      // Use ID if available or fallback to index
-      const cardKey = item.id || `card-${i}`;
-      
-      // Skip if this card has already been rendered (prevent duplicates)
-      if (renderedCardIds.has(cardKey)) continue;
-      renderedCardIds.add(cardKey);
-      
-      // Calculate card position in the stack
-      const stackIndex = i - currentIndex;
-      
-      // For top card (current card)
-      if (i === currentIndex) {
-        const rotateTransform = {
-          transform: [
-            { translateX: panRef.x },
-            { translateY: panRef.y },
-            { rotate: getCardRotation() }
-          ]
-        };
-        
-        // Calculate overlay opacity based on swipe direction
-        const rightOpacity = panRef.x.interpolate({
-          inputRange: [0, SWIPE_THRESHOLD],
-          outputRange: [0, animationOverlayOpacity],
-          extrapolate: 'clamp'
-        });
-        
-        const leftOpacity = panRef.x.interpolate({
-          inputRange: [-SWIPE_THRESHOLD, 0],
-          outputRange: [animationOverlayOpacity, 0],
-          extrapolate: 'clamp'
-        });
-        
-        const topOpacity = panRef.y.interpolate({
-          inputRange: [-VERTICAL_THRESHOLD, 0],
-          outputRange: [animationOverlayOpacity, 0],
-          extrapolate: 'clamp'
-        });
-        
-        const bottomOpacity = panRef.y.interpolate({
-          inputRange: [0, VERTICAL_THRESHOLD],
-          outputRange: [0, animationOverlayOpacity],
-          extrapolate: 'clamp'
-        });
-        
-        cards.push(
-          <Animated.View 
-            key={cardKey} 
-            style={[styles.card, cardStyle, rotateTransform]} 
-            {...panResponder.panHandlers}
-          >
-            {renderCard(item, i)}
-            
-            {/* Render overlay labels if provided */}
-            {overlayLabels.right && (
-              <SwipeCardOverlay 
-                type="right" 
-                label={overlayLabels.right}
-                opacity={rightOpacity}
-              />
-            )}
-            
-            {overlayLabels.left && (
-              <SwipeCardOverlay 
-                type="left" 
-                label={overlayLabels.left}
-                opacity={leftOpacity}
-              />
-            )}
-            
-            {overlayLabels.top && (
-              <SwipeCardOverlay 
-                type="top" 
-                label={overlayLabels.top}
-                opacity={topOpacity}
-              />
-            )}
-            
-            {overlayLabels.bottom && (
-              <SwipeCardOverlay 
-                type="bottom" 
-                label={overlayLabels.bottom}
-                opacity={bottomOpacity}
-              />
-            )}
-          </Animated.View>
-        );
-      } 
-      // For subsequent cards in the stack (background cards)
-      else {
-        const stackOffset = stackIndex * stackSeparation;
-        const cardScale = 1 - (stackIndex * stackScale);
-        
-        // Create a transform for this card with appropriate scaling and offset
-        const cardTransform = {
-          transform: [
-            { translateY: stackOffset },
-            { scale: scaleEnabled ? cardScale : 1 }
-          ],
-          zIndex: -stackIndex
-        };
-        
-        cards.push(
-          <Animated.View 
-            key={cardKey} 
-            style={[styles.card, cardStyle, cardTransform]}
-          >
-            {renderCard(item, i)}
-          </Animated.View>
-        );
-      }
-    }
-    
-    console.log(`[SwipeCardDeck] renderCards: About to return ${cards.length} card components.`);
-    if (cards.length > 0 && cards[0] && cards[0].props) {
-        const firstCardStyle = cards[0].props.style; 
-        // console.log('[SwipeCardDeck] renderCards: Style of card at BOTTOM of stack (cards[0]):', JSON.stringify(firstCardStyle));
-    }
-    if (cards.length > 1 && cards[cards.length - 2] && cards[cards.length - 2].props) { 
-        const secondToTopCardStyle = cards[cards.length - 2].props.style;
-        console.log('[SwipeCardDeck] renderCards: Style of card IMMEDIATELY UNDER TOP (cards[len-2]):', JSON.stringify(secondToTopCardStyle));
-    }
-    if (cards.length > 0 && cards[cards.length - 1] && cards[cards.length - 1].props) { 
-        const topCardStyle = cards[cards.length - 1].props.style;
-        // console.log('[SwipeCardDeck] renderCards: Style of TOP card (cards[len-1]):', JSON.stringify(topCardStyle));
-    }
-    return cards;
-  }, [
-    data, 
-    currentIndex, 
-    panRef, 
-    renderCard, 
-    getCardRotation, 
-    scaleEnabled, 
-    rotationEnabled, 
-    stackScale, 
-    stackSeparation, 
-    cardStyle, 
-    panResponder,
-    stackSize,
-    onCardDisappear,
-    onAllCardsViewed,
-    overlayLabels,
-    animationOverlayOpacity,
-    SWIPE_THRESHOLD,
-    VERTICAL_THRESHOLD
-  ]);
-  
-  // Return the component's JSX
-  return (
-    <View style={[styles.container, { backgroundColor }]}>
-      {renderCards}
-    </View>
-  );
-});
-
-// Add display name for better debugging
-SwipeCardDeck.displayName = 'SwipeCardDeck';
-
-// Default props
-SwipeCardDeck.defaultProps = {
-  data: [],
-  stackSize: 3,
-  stackSeparation: 15,
-  stackScale: 0.08,
-  infinite: false,
-  disableTopSwipe: false,
-  disableBottomSwipe: false,
-  disableLeftSwipe: false,
-  disableRightSwipe: false,
-  animationDuration: SWIPE_OUT_DURATION,
-  rotationEnabled: true,
-  scaleEnabled: true,
-  backgroundColor: 'transparent',
-  overlayLabels: {}
+SwipeCardDeck.propTypes = {
+  data: PropTypes.array,
+  renderCard: PropTypes.func.isRequired,
+  onSwipeLeft: PropTypes.func,
+  onSwipeRight: PropTypes.func,
+  infinite: PropTypes.bool,
+  stackSize: PropTypes.number,
+  containerStyle: PropTypes.object,
+  cardStyle: PropTypes.object,
+  emptyView: PropTypes.element,
 };
 
 export default SwipeCardDeck;

@@ -8,15 +8,13 @@ import {
   Dimensions,
   TouchableOpacity,
   Alert,
-  RefreshControl,
-  Image as RNImage
+  RefreshControl
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native'; 
 import { supabase } from '../../lib/supabaseClient'; 
 import ServiceCard from '../../components/cards/ServiceCard'; 
 import HousingCard from '../../components/cards/HousingCard';
 import AppHeader from '../../components/layout/AppHeader';
-import CachedImage from '../../components/common/CachedImage';
 import SearchComponent from '../../components/common/SearchComponent';
 import SwipeCardDeck from '../../components/common/SwipeCardDeck.js';
 import SwipeCard from '../../components/common/SwipeCard';
@@ -32,32 +30,10 @@ import {
   ICON_COLOR_DARK, 
   ICON_COLOR_LIGHT 
 } from '../../constants/theme';
-import { getValidImageUrl, getOptimizedImageUrl } from '../../utils/imageHelper';
-import { InteractionManager } from 'react-native';
-import ImagePreloadService from '../../services/ImagePreloadService';
+import Ionicons from 'react-native-vector-icons/Ionicons';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 const { width, height } = Dimensions.get('window');
-
-// Performance tracking
-const performanceTracker = {
-  componentId: `PDS-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-  mountTime: null,
-  renders: 0,
-  categoryChanges: {},
-  fetchTimes: {},
-  imageTimes: {}
-};
-
-// Enhanced debug logger with timing
-const debugTiming = (action, details = {}) => {
-  const timestamp = Date.now();
-  const elapsed = performanceTracker.mountTime ? timestamp - performanceTracker.mountTime : 0;
-  console.log(`[PROVIDER-TIMING][${performanceTracker.componentId}][${elapsed}ms] ${action}`, {
-    timestamp,
-    elapsed,
-    ...details
-  });
-};
 
 // Constants
 const CATEGORIES = ['Therapy', 'Housing', 'Support', 'Transport', 'Tech', 'Personal', 'Social'];
@@ -69,40 +45,15 @@ const VIEW_MODE_TOGGLE_HEIGHT = 60;
 const BOTTOM_NAV_HEIGHT = 60; 
 const CARD_MARGIN = 10;
 
-// Debug logger – stripped in production builds
-const debug = (...args) => {
-  if (__DEV__) console.log(...args);
-};
-
 /**
  * Provider Discovery Screen - Main screen for exploring services and housing
  */
 const ProviderDiscoveryScreen = ({ route }) => {  
   // Track component mount
   useEffect(() => {
-    performanceTracker.mountTime = Date.now();
-    performanceTracker.renders = 0;
-    debugTiming('COMPONENT_MOUNTED', { 
-      route: route?.params,
-      componentId: performanceTracker.componentId 
-    });
-    
     return () => {
-      debugTiming('COMPONENT_UNMOUNTING', { 
-        totalRenders: performanceTracker.renders,
-        lifetimeMs: Date.now() - performanceTracker.mountTime,
-        categoryChanges: performanceTracker.categoryChanges
-      });
     };
   }, []);
-
-  // Track renders
-  performanceTracker.renders++;
-  debugTiming('RENDER', { 
-    renderNumber: performanceTracker.renders,
-    hasRoute: !!route,
-    routeParams: route?.params 
-  });
 
   // Extract route params
   const initialParams = route?.params || {};
@@ -131,10 +82,6 @@ const ProviderDiscoveryScreen = ({ route }) => {
   // Handle initial category from params
   useEffect(() => {
     if (initialParams.initialCategory && CATEGORIES.includes(initialParams.initialCategory)) {
-      debugTiming('INITIAL_CATEGORY_FROM_PARAMS', { 
-        category: initialParams.initialCategory,
-        previousCategory: selectedCategory 
-      });
       setSelectedCategory(initialParams.initialCategory);
     }
   }, [initialParams.initialCategory]);
@@ -170,13 +117,6 @@ const ProviderDiscoveryScreen = ({ route }) => {
   
   // Replace old category-change effect with cached version
   useEffect(() => {
-    const categoryChangeStart = Date.now();
-    debugTiming('CATEGORY_CHANGE_START', { 
-      category: selectedCategory,
-      hasCachedData: !!cacheRef.current[selectedCategory],
-      hasCachedFavorites: !!favoritesCacheRef.current[selectedCategory]
-    });
-
     if (!isMounted.current) return;
 
     // Show cached data instantly
@@ -186,29 +126,12 @@ const ProviderDiscoveryScreen = ({ route }) => {
       const cachedFavs = favoritesCacheRef.current[selectedCategory];
       setUserFavorites(cachedFavs ? new Set(cachedFavs) : new Set());
       setLoading(false);
-
-      debugTiming('CACHED_DATA_APPLIED', { 
-        category: selectedCategory,
-        itemCount: cacheRef.current[selectedCategory].length,
-        favoriteCount: cachedFavs ? cachedFavs.size : 0,
-        timeMs: Date.now() - categoryChangeStart
-      });
-
-      // Remove the 800ms delay - fetch immediately in background
-      // But don't fetch if we're already fetching this category
-      if (!fetchInProgressRef.current || lastFetchCategoryRef.current !== selectedCategory) {
-        fetchData(false, 0, false);
-      }
     } else {
-      debugTiming('NO_CACHE_FETCHING', { category: selectedCategory });
       // No cache – fetch immediately without clearing current items to avoid flicker
       if (!fetchInProgressRef.current || lastFetchCategoryRef.current !== selectedCategory) {
         fetchData(false, 0, false);
       }
     }
-
-    // Preload adjacent categories for instant switching
-    ImagePreloadService.preloadAdjacentCategories(selectedCategory);
 
     // Reset swipe state when switching category
     if (viewMode === 'Swipe') {
@@ -223,30 +146,17 @@ const ProviderDiscoveryScreen = ({ route }) => {
     // Reset pagination states
     setPage(0);
     setHasMore(true);
-
-    // Track category change
-    performanceTracker.categoryChanges[selectedCategory] = {
-      timestamp: Date.now(),
-      timeToShow: Date.now() - categoryChangeStart
-    };
-
-    return () => {
-      // No cleanup needed
-    };
   }, [selectedCategory, fetchData, viewMode]);
   
   // useMemo to filter out swiped items for the swipe deck
   const filteredItems = useMemo(() => {
     if (viewMode !== 'Swipe' || !items) return items;
     
-    // Filter out any items that have already been swiped
-    // Also ensure each item has a unique ID to prevent React key issues
-    const filtered = items
-      .filter(item => item && item.id && !swipedItemIds.has(item.id));
-      
-    debug(`[ProviderDiscovery] Filtered items: ${filtered.length} (total: ${items.length}, swiped: ${swipedItemIds.size})`);
-    return filtered;
-  }, [items, swipedItemIds, viewMode]);
+    // For SwipeCardDeck: DO NOT filter out swiped items
+    // SwipeCardDeck manages its own internal index for swiping
+    // Just ensure each item has a unique ID
+    return items.filter(item => item && item.id);
+  }, [items, viewMode]);
 
   // Handle card swipe events - keeps track of which items have been swiped
   // and optionally adds to favorites for right swipes
@@ -289,15 +199,9 @@ const ProviderDiscoveryScreen = ({ route }) => {
   const fetchData = useCallback(async (isRefreshing = false, targetPage = 0, append = false) => {
     // Prevent duplicate fetches
     if (fetchInProgressRef.current && lastFetchCategoryRef.current === selectedCategory && !append) {
-      debugTiming('FETCH_PREVENTED_DUPLICATE', { 
-        category: selectedCategory,
-        isRefreshing,
-        targetPage
-      });
       return;
     }
     
-    const fetchStart = Date.now();
     const fetchId = ++fetchCounterRef.current; // Increment fetch counter
     
     if (!isMounted.current) return;
@@ -306,26 +210,7 @@ const ProviderDiscoveryScreen = ({ route }) => {
     fetchInProgressRef.current = true;
     lastFetchCategoryRef.current = selectedCategory;
     
-    debugTiming('FETCH_DATA_START', { 
-      category: selectedCategory,
-      search: searchTerm,
-      refreshing: isRefreshing,
-      page: targetPage,
-      append,
-      fetchId
-    });
-
     try {
-      const hasCache = cacheRef.current[selectedCategory]?.length > 0;
-      
-      // Set loading state appropriately
-      if (!hasCache && !append) {
-        setLoading(true);
-      }
-      if (isRefreshing) {
-        setRefreshing(true);
-      }
-
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       if (authError || !user) {
         console.error('[ProviderDiscovery] Auth error or no user:', authError);
@@ -334,7 +219,6 @@ const ProviderDiscoveryScreen = ({ route }) => {
           setUserFavorites(new Set());
           if (!isRefreshing) setLoading(false);
           if (isRefreshing) setRefreshing(false);
-          // Alert.alert('Authentication Error', 'Could not retrieve user details. Please try logging in again.');
         }
         return;
       }
@@ -368,23 +252,10 @@ const ProviderDiscoveryScreen = ({ route }) => {
       
       const { data, error } = await query;
       
-      const fetchTime = Date.now() - fetchStart;
-      performanceTracker.fetchTimes[`${selectedCategory}-${targetPage}`] = fetchTime;
-      
-      debugTiming('FETCH_DATA_COMPLETE', { 
-        category: selectedCategory,
-        itemCount: data?.length || 0,
-        fetchTimeMs: fetchTime,
-        error: !!error,
-        fetchId,
-        isStale: fetchId !== fetchCounterRef.current || categoryAtStart !== selectedCategory
-      });
-      
       if (!isMounted.current) return;
       
       // Ignore if a newer fetch started or category has changed
       if (fetchId !== fetchCounterRef.current || categoryAtStart !== selectedCategory) {
-        debugTiming('STALE_FETCH_IGNORED', { fetchId, currentFetchId: fetchCounterRef.current });
         return;
       }
       
@@ -420,11 +291,6 @@ const ProviderDiscoveryScreen = ({ route }) => {
             console.error('[ProviderDiscovery] Error fetching user favorites:', favoritesError);
           } else if (favoritesData && isMounted.current) {
             const favoritedIds = new Set(favoritesData.map(fav => fav.item_id));
-            debugTiming('FAVORITES_FETCHED', { 
-              category: selectedCategory,
-              favoriteCount: favoritedIds.size,
-              totalTimeMs: Date.now() - fetchStart
-            });
             setUserFavorites(prev => {
               // Merge with previous favorites for incremental pages
               const newSet = append ? new Set([...prev, ...favoritedIds]) : favoritedIds;
@@ -457,11 +323,11 @@ const ProviderDiscoveryScreen = ({ route }) => {
   }, [fetchData]); // fetchData is now a stable useCallback
 
   const onRefresh = useCallback(() => {
-    console.log('[ProviderDiscovery] onRefresh called');
+    console.log('[ProviderDiscovery] Refresh triggered');
     setRefreshing(true);
-    fetchData(true, 0, false); // Call fetchData with isRefreshing = true
+    fetchData(true, 0, false).finally(() => setRefreshing(false));
   }, [fetchData]);
-  
+
   // Toggle Favorite Function
   const toggleFavorite = useCallback(async (item, itemType) => {
     if (!item || !item.id || !itemType) {
@@ -542,13 +408,6 @@ const ProviderDiscoveryScreen = ({ route }) => {
     navigation.navigate('HousingDetail', { item });
   }, [navigation]);
   
-  // Image handlers
-  // Create a stable callback that only logs completion once
-  const handleImageLoaded = useCallback((uri) => {
-    // Empty callback that maintains stable reference
-    // No need to do anything here as the CachedImage component handles caching
-  }, []);
-  
   // Swipe card handlers
   const handleSwipeCard = useCallback(async (cardData, direction) => {
     // This method is called by the SwipeCardDeck component and is separate from handleCardSwipe
@@ -586,7 +445,7 @@ const ProviderDiscoveryScreen = ({ route }) => {
       console.error('Error handling swipe:', error);
     }
   }, [selectedCategory]);
-  
+
   const handleSwipeCardPress = useCallback((item) => {
     const isHousing = selectedCategory === 'Housing';
     if (isHousing) {
@@ -601,20 +460,6 @@ const ProviderDiscoveryScreen = ({ route }) => {
     console.log('All cards viewed in this category');
   }, []);
   
-  // Prefetch thumbnails to reduce image loading jank
-  useEffect(() => {
-    if (!items || items.length === 0) return;
-
-    const urls = items.slice(0, 12).map(it => {
-      const raw = it.media_urls && it.media_urls.length > 0 ? it.media_urls[0] : null;
-      const bucket = selectedCategory === 'Housing' ? 'housingimages' : 'providerimages';
-      const full = getValidImageUrl(raw, bucket);
-      return getOptimizedImageUrl(full, viewMode === 'Swipe' ? 800 : 400, 70);
-    }).filter(Boolean);
-
-    urls.forEach(u => RNImage.prefetch(u));
-  }, [items, selectedCategory, viewMode]);
-
   // Load more handler for pagination
   const handleLoadMore = () => {
     if (!hasMore || loadingMore) return;
@@ -641,14 +486,6 @@ const ProviderDiscoveryScreen = ({ route }) => {
 
   // Render main content 
   const renderContent = () => {
-    // Development-only render tracing
-    debugTiming('RENDER_CONTENT', { 
-      viewMode,
-      items: items.length,
-      filteredItems: filteredItems.length,
-      swipedItems: swipedItemIds.size
-    });
-    
     // Loading state
     if (loading && items.length === 0) {
       return <ActivityIndicator size="large" color={DARK_GREEN} style={styles.loadingIndicator} />;
@@ -661,33 +498,37 @@ const ProviderDiscoveryScreen = ({ route }) => {
     
     // Grid view
     if (viewMode === 'Grid') {
-      const isHousing = selectedCategory === 'Housing';
-      const CardComponent = isHousing ? HousingCard : ServiceCard;
-      const handlePress = isHousing ? handleHousingPress : handleServicePress;
-      
+      const renderItem = ({ item, index }) => {
+        const isHousing = selectedCategory === 'Housing';
+        // Use HousingCard for 'Housing', ServiceCard for all other categories.
+        const CardComponent = isHousing ? HousingCard : ServiceCard;
+
+        return (
+          <CardComponent
+            item={item}
+            onPress={() => handleServicePress(item)}
+            displayAs="grid"
+            isFavorited={userFavorites.has(item.id)} 
+            onToggleFavorite={() => toggleFavorite(item, isHousing ? 'housing_listing' : 'service_provider')}
+          />
+        );
+      };
+
       return (
         <FlatList
           key="grid-view"
           listKey="grid-view"
           data={items}
-          renderItem={({ item }) => (
-            <CardComponent 
-              item={item} 
-              onPress={handlePress}
-              displayAs="grid"
-              onImageLoaded={handleImageLoaded}
-              isFavorited={userFavorites.has(item.id)} 
-              onToggleFavorite={() => toggleFavorite(item, isHousing ? 'housing_listing' : 'service_provider')}
-            />
-          )}
-          keyExtractor={item => `${isHousing ? 'housing' : 'service'}-${item.id}`}
+          renderItem={renderItem}
+          keyExtractor={item => `${selectedCategory === 'Housing' ? 'housing' : 'service'}-${item.id}`}
           numColumns={2}
           contentContainerStyle={styles.gridContainer}
           showsVerticalScrollIndicator={false}
-          initialNumToRender={6}
-          windowSize={5}
-          maxToRenderPerBatch={10}
-          removeClippedSubviews
+          initialNumToRender={4}
+          maxToRenderPerBatch={4}
+          updateCellsBatchingPeriod={50}
+          windowSize={7}
+          removeClippedSubviews={true}
           extraData={userFavorites}
           onEndReached={handleLoadMore}
           onEndReachedThreshold={0.5}
@@ -705,42 +546,51 @@ const ProviderDiscoveryScreen = ({ route }) => {
     
     // List view
     else if (viewMode === 'List') {
-      const isHousing = selectedCategory === 'Housing';
-      const CardComponent = isHousing ? HousingCard : ServiceCard;
-      const handlePress = isHousing ? handleHousingPress : handleServicePress;
-      
+      const renderItem = ({ item, index }) => {
+        const isHousing = selectedCategory === 'Housing';
+        // Use HousingCard for 'Housing', ServiceCard for all other categories.
+        const CardComponent = isHousing ? HousingCard : ServiceCard;
+
+        return (
+          <View style={styles.listItemContainer}>
+            <CardComponent 
+              item={item} 
+              onPress={() => handleServicePress(item)}
+              displayAs="list"
+              isFavorited={userFavorites.has(item.id)} 
+              onToggleFavorite={() => toggleFavorite(item, isHousing ? 'housing_listing' : 'service_provider')}
+            />
+          </View>
+        );
+      };
+
       return (
         <FlatList
           key="list-view"
           listKey="list-view"
           data={items}
-          renderItem={({ item }) => (
-            <View style={styles.listItemContainer}>
-              <CardComponent 
-                item={item} 
-                onPress={handlePress}
-                displayAs="list"
-                onImageLoaded={handleImageLoaded}
-                isFavorited={userFavorites.has(item.id)} 
-                onToggleFavorite={() => toggleFavorite(item, isHousing ? 'housing_listing' : 'service_provider')}
-              />
-            </View>
-          )}
-          keyExtractor={(item, index) => `${isHousing ? 'housing' : 'service'}-${item.id}-${index}`}
+          renderItem={renderItem}
+          keyExtractor={(item, index) => `${selectedCategory === 'Housing' ? 'housing' : 'service'}-${item.id}-${index}`}
           contentContainerStyle={styles.listContainer} 
           showsVerticalScrollIndicator={false}
-          initialNumToRender={10}
-          windowSize={7}
-          maxToRenderPerBatch={15}
-          removeClippedSubviews
+          initialNumToRender={3}
+          maxToRenderPerBatch={2}
+          updateCellsBatchingPeriod={100}
+          windowSize={5}
+          removeClippedSubviews={true}
+          getItemLayout={null} 
+          legacyImplementation={false}
+          onViewableItemsChanged={null} 
+          viewabilityConfig={null}
           extraData={userFavorites}
           onEndReached={handleLoadMore}
-          onEndReachedThreshold={0.5}
+          onEndReachedThreshold={0.3}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              colors={[DARK_GREEN]}
+              colors={['#000000']}
+              tintColor={'#000000'}
             />
           }
           ref={listViewRef}
@@ -750,87 +600,82 @@ const ProviderDiscoveryScreen = ({ route }) => {
     
     // Swipe view
     else if (viewMode === 'Swipe') {
-      // Use filtered items for swipe view to avoid showing already swiped cards
-      if (loading) {
-        return <ActivityIndicator style={styles.loader} size="large" color={COLORS.DARK_GREEN} />;
-      }
-      
-      if (!filteredItems || filteredItems.length === 0) {
-        // Check if we have items but all have been swiped
-        if (items.length > 0 && swipedItemIds.size === items.length) {
-          return (
-            <View style={styles.noResultsContainer}>
-              <Text style={styles.noResultsText}>You've viewed all {selectedCategory} items</Text>
-              <TouchableOpacity 
-                style={styles.resetButton} 
-                onPress={() => {
-                  console.log('[ProviderDiscovery] Resetting swiped items');
-                  setSwipedItemIds(new Set());
-                }}
-              >
-                <Text style={styles.resetButtonText}>View Again</Text>
-              </TouchableOpacity>
-            </View>
-          );
-        }
-        return <Text style={styles.noResultsText}>No {selectedCategory} matches found</Text>;
-      }
-      
-      console.log(`[ProviderDiscovery] Rendering SwipeCardDeck with ${filteredItems.length} items`);
-      
       return (
-        <View style={styles.swipeContainer}>
-          <SwipeCardDeck
-            data={filteredItems}
-            renderCard={(item) => (
-              <SwipeCard 
-                item={item} 
-                isHousing={selectedCategory === 'Housing'} 
-                onPress={() => handleSwipeCardPress(item)}
-              />
-            )}
-            onSwipeLeft={(item) => handleCardSwipe('left', item)}
-            onSwipeRight={(item) => handleCardSwipe('right', item)}
-            onSwipeBottom={(item) => handleCardSwipe('bottom', item)}
-            onCardDisappear={(item, index) => {
-              // Just log the disappear event but don't update state here to avoid duplicates
-              // State updates are handled by the onSwipe* callbacks
-              if (item) {
-                console.log(`[ProviderDiscovery] Card disappeared: ${item.id || 'unknown'} at index ${index}`);
-              }
-            }}
-            onAllCardsViewed={() => {
-              console.log('[ProviderDiscovery] All cards have been viewed');
-              // Optional: Show a message to the user that they've viewed all cards
-            }}
-            stackSize={3}
-            stackSeparation={15}
-            stackScale={0.08}
-            infinite={false}
-            backgroundColor="transparent"
-            disableTopSwipe={true}
-            disableBottomSwipe={false}
-            animationDuration={300}
-            cardStyle={styles.swipeCard}
-            overlayLabels={{
-              left: {
-                title: 'SKIP',
-                color: '#E74C3C',
-                fontSize: 32
+        <SwipeCardDeck
+          data={filteredItems}
+          renderCard={(item) => (
+            <SwipeCard 
+              item={item} 
+              isHousing={selectedCategory === 'Housing'} 
+              onPress={() => handleSwipeCardPress(item)}
+              onBackPress={() => setViewMode('Grid')}
+            />
+          )}
+          onSwipeLeft={(item) => handleCardSwipe('left', item)}
+          onSwipeRight={(item) => handleCardSwipe('right', item)}
+          cardIndex={0}
+          backgroundColor="transparent"
+          stackSize={3}
+          stackSeparation={15}
+          animateCardOpacity={true}
+          swipeAnimationDuration={350}
+          disableBottomSwipe={true}
+          disableTopSwipe={true}
+          verticalSwipe={false}
+          onSwipedAll={handleAllCardsViewed}
+          keyExtractor={(item) => `swipe-${item.id}`}
+          showSecondCard={true}
+          stackAnimationFriction={7}
+          stackAnimationTension={40}
+          inputOverlayLabelsOpacity={0.8}
+          animateOverlayLabelsOpacity={true}
+          overlayLabels={{
+            left: {
+              title: 'PASS',
+              style: {
+                label: {
+                  backgroundColor: '#E74C3C',
+                  borderColor: '#E74C3C',
+                  color: 'white',
+                  borderWidth: 1,
+                  fontSize: 24,
+                  fontWeight: 'bold',
+                  padding: 10,
+                  borderRadius: 10,
+                },
+                wrapper: {
+                  flexDirection: 'column',
+                  alignItems: 'flex-end',
+                  justifyContent: 'flex-start',
+                  marginTop: 20,
+                  marginLeft: -20,
+                },
               },
-              right: {
-                title: 'LIKE',
-                color: '#27AE60',
-                fontSize: 32
+            },
+            right: {
+              title: 'LIKE',
+              style: {
+                label: {
+                  backgroundColor: '#27AE60',
+                  borderColor: '#27AE60',
+                  color: 'white',
+                  borderWidth: 1,
+                  fontSize: 24,
+                  fontWeight: 'bold',
+                  padding: 10,
+                  borderRadius: 10,
+                },
+                wrapper: {
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  justifyContent: 'flex-start',
+                  marginTop: 20,
+                  marginLeft: 20,
+                },
               },
-              bottom: {
-                title: 'DISMISS',
-                color: '#7F8C8D',
-                fontSize: 24
-              }
-            }}
-          />
-        </View>
+            },
+          }}
+        />
       );
     }
     
@@ -899,20 +744,44 @@ const ProviderDiscoveryScreen = ({ route }) => {
           showSort={true}
         />
       ) : (
-        <View style={styles.viewModeSelectorContainer}>
-          <Text style={styles.categoryTitle}>{selectedCategory}</Text>
-          <View style={styles.viewModeControls}>
-            {VIEW_MODES.map((mode) => (
-              <TouchableOpacity
-                key={mode}
-                style={[styles.viewModeButton, viewMode === mode && styles.viewModeButtonActive]}
-                onPress={() => setViewMode(mode)}
-              >
-                <Text style={[styles.viewModeButtonText, viewMode === mode && styles.viewModeButtonTextActive]}>
-                  {mode}
-                </Text>
-              </TouchableOpacity>
-            ))}
+        <View style={styles.swipeViewHeader}>
+          {/* Back Arrow - replaces category title */}
+          <TouchableOpacity style={styles.backButton} onPress={() => setViewMode('Grid')}>
+            <Ionicons name="arrow-back" size={24} color="#000000" />
+          </TouchableOpacity>
+          
+          {/* View Mode Controls - using SearchComponent style */}
+          <View style={styles.viewModeButtonGroup}>
+            <TouchableOpacity
+              style={[
+                styles.viewModeIconButton,
+                viewMode === 'Grid' && styles.selectedViewModeButton
+              ]}
+              onPress={() => setViewMode('Grid')}
+            >
+              <Ionicons name="grid-outline" size={18} color={viewMode === 'Grid' ? '#FFFFFF' : '#000000'} />
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[
+                styles.viewModeIconButton,
+                viewMode === 'List' && styles.selectedViewModeButton
+              ]}
+              onPress={() => setViewMode('List')}
+            >
+              <MaterialCommunityIcons name="format-list-bulleted" size={18} color={viewMode === 'List' ? '#FFFFFF' : '#000000'} />
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[
+                styles.viewModeIconButton,
+                styles.rightButton,
+                viewMode === 'Swipe' && styles.selectedViewModeButton
+              ]}
+              onPress={() => setViewMode('Swipe')}
+            >
+              <Ionicons name="swap-horizontal" size={18} color={viewMode === 'Swipe' ? '#FFFFFF' : '#000000'} />
+            </TouchableOpacity>
           </View>
         </View>
       )}
@@ -933,7 +802,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F8F7F3', 
   },
-  viewModeSelectorContainer: {
+  swipeViewHeader: {
     backgroundColor: '#fff',
     paddingHorizontal: 15,
     paddingVertical: 10,
@@ -943,37 +812,34 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
   },
-  categoryTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: DARK_GREEN,
+  backButton: {
+    padding: 10,
   },
-  viewModeControls: {
+  viewModeButtonGroup: {
     flexDirection: 'row',
     backgroundColor: '#f0f0f0',
     borderRadius: 20,
     padding: 4,
   },
-  viewModeButton: {
+  viewModeIconButton: {
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 16,
   },
-  viewModeButtonActive: {
-    backgroundColor: DARK_GREEN,
+  selectedViewModeButton: {
+    backgroundColor: '#000000',
   },
-  viewModeButtonText: {
-    color: '#666',
-    fontWeight: '500',
-    fontSize: 14,
-  },
-  viewModeButtonTextActive: {
-    color: '#fff',
+  rightButton: {
+    marginLeft: 5,
   },
   swipeContainer: {
     flex: 1,
+    overflow: 'visible', // Important to ensure cards are visible beyond container bounds
+    zIndex: 1,           // Ensure cards stack correctly
+    height: height - (APP_HEADER_HEIGHT + VIEW_MODE_TOGGLE_HEIGHT + BOTTOM_NAV_HEIGHT),
+    alignSelf: 'center',
+    width: '100%',
     paddingHorizontal: 10,
-    paddingTop: 5, 
   },
   gridContainer: {
     paddingBottom: 20,

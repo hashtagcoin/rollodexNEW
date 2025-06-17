@@ -22,6 +22,11 @@ import { COLORS } from '../../constants/theme';
 
 const { width, height } = Dimensions.get('window');
 
+// Constants for layout calculations
+const BOTTOM_NAV_HEIGHT = 85; // Height of bottom navigation bar
+const CARD_PADDING = 20; // Padding around card
+const APP_HEADER_HEIGHT = 60; // Height of app header
+
 /**
  * SwipeCard - A component that renders a single provider/service card with image and details
  * Optimized for smooth swiping animations and performance
@@ -32,7 +37,8 @@ const SwipeCard = memo(({
   onPress = null,
   onImageLoad = null,
   onLike = null,
-  onDismiss = null
+  onDismiss = null,
+  onBackPress = null // New prop for back button functionality
 }) => {
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
@@ -40,9 +46,7 @@ const SwipeCard = memo(({
   // Get image URL with fallbacks
   const getImageUrl = useCallback(() => {
     if (!item) return null;
-    
 
-    
     // Try multiple possible image URL fields
     const url = item.media_urls?.[0] || 
            item.image_url || 
@@ -91,15 +95,15 @@ const SwipeCard = memo(({
   // Get category color
   const getCategoryColor = useCallback((category) => {
     const colors = {
-      'Therapy': '#3498DB',
-      'Housing': '#E74C3C',
-      'Support': '#27AE60',
-      'Transport': '#F39C12',
-      'Tech': '#9B59B6',
-      'Personal': '#1ABC9C',
-      'Social': '#E67E22'
+      'Therapy': '#000000',
+      'Housing': '#000000',
+      'Support': '#000000',
+      'Transport': '#000000',
+      'Tech': '#000000',
+      'Personal': '#000000',
+      'Social': '#000000'
     };
-    return colors[category] || COLORS.DARK_GREEN;
+    return colors[category] || '#000000';
   }, []);
 
   if (!item) {
@@ -114,7 +118,7 @@ const SwipeCard = memo(({
 
   const CardContent = (
     <View style={styles.card}>
-      {/* Image Section */}
+      {/* Image Section - Now takes full width */}
       <View style={styles.imageContainer}>
         {/* Always attempt to render the image */}
         <Image
@@ -128,7 +132,7 @@ const SwipeCard = memo(({
         {/* Loading indicator overlay */}
         {!imageLoaded && !imageError && (
           <View style={styles.imageLoader}>
-            <ActivityIndicator size="large" color={COLORS.DARK_GREEN} />
+            <ActivityIndicator size="large" color="#000000" />
           </View>
         )}
         
@@ -140,31 +144,31 @@ const SwipeCard = memo(({
           </View>
         )}
 
-        {/* Gradient overlay */}
+        {/* Gradient overlay - starts from bottom of image */}
         <LinearGradient
-          colors={['transparent', 'rgba(0,0,0,0.5)', 'rgba(0,0,0,0.8)']}
+          colors={['transparent', 'rgba(0,0,0,0.4)', 'rgba(0,0,0,0.8)']}
           style={styles.gradientOverlay}
         />
         
-        {/* Category badge */}
-        {item.category && (
-          <View style={[styles.categoryBadge, { backgroundColor: getCategoryColor(item.category) }]}>
-            <Text style={styles.categoryText}>{item.category}</Text>
-          </View>
+        {/* Back arrow button - replaces category badge */}
+        {onBackPress && (
+          <TouchableOpacity style={styles.backButton} onPress={onBackPress}>
+            <Ionicons name="arrow-back" size={24} color="white" />
+          </TouchableOpacity>
         )}
 
-        {/* Bottom info overlay */}
+        {/* Bottom info overlay - Airbnb style */}
         <View style={styles.infoOverlay}>
           {/* Title */}
           <Text style={styles.overlayTitle} numberOfLines={2}>
             {item.title || item.name || 'Untitled'}
           </Text>
 
-          {/* Location and Price */}
-          <View style={styles.overlayDetails}>
+          {/* Location and Price Row */}
+          <View style={styles.overlayDetailsRow}>
             {item.location && (
               <View style={styles.locationContainer}>
-                <Ionicons name="location" size={16} color="white" />
+                <Ionicons name="location" size={14} color="rgba(255,255,255,0.9)" />
                 <Text style={styles.overlayLocation} numberOfLines={1}>
                   {item.location}
                 </Text>
@@ -179,82 +183,82 @@ const SwipeCard = memo(({
             )}
           </View>
 
-          {/* Tags or Quick Info */}
-          {item.tags && item.tags.length > 0 && (
-            <View style={styles.overlayTags}>
-              {item.tags.slice(0, 3).map((tag, index) => (
-                <View key={index} style={styles.overlayTag}>
-                  <Text style={styles.overlayTagText}>{tag}</Text>
-                </View>
-              ))}
+          {/* Housing specific details - organized in row */}
+          {isHousing && (item.bedrooms || item.bathrooms || item.square_feet) && (
+            <View style={styles.housingOverlayDetails}>
+              {item.bedrooms && (
+                <Text style={styles.housingDetailText}>{item.bedrooms} bed</Text>
+              )}
+              {item.bathrooms && (
+                <Text style={styles.housingDetailText}>• {item.bathrooms} bath</Text>
+              )}
+              {item.square_feet && (
+                <Text style={styles.housingDetailText}>• {item.square_feet} sq ft</Text>
+              )}
             </View>
           )}
         </View>
       </View>
 
-      {/* Expandable Content Section */}
-      <ScrollView style={styles.contentContainer} showsVerticalScrollIndicator={false}>
+      {/* Content Section - Airbnb style layout */}
+      <View style={styles.contentContainer}>
         <View style={styles.content}>
-          {/* Description */}
-          {item.description && (
-            <Text style={styles.description} numberOfLines={4}>
-              {item.description}
-            </Text>
-          )}
-
-          {/* Additional Info for Housing */}
-          {isHousing && (
-            <View style={styles.housingDetails}>
-              {item.bedrooms && (
-                <View style={styles.detailItem}>
-                  <Ionicons name="bed-outline" size={20} color={COLORS.DARK_GREEN} />
-                  <Text style={styles.detailText}>{item.bedrooms} bed</Text>
-                </View>
-              )}
-              {item.bathrooms && (
-                <View style={styles.detailItem}>
-                  <Ionicons name="water-outline" size={20} color={COLORS.DARK_GREEN} />
-                  <Text style={styles.detailText}>{item.bathrooms} bath</Text>
-                </View>
-              )}
-              {item.square_feet && (
-                <View style={styles.detailItem}>
-                  <Ionicons name="resize-outline" size={20} color={COLORS.DARK_GREEN} />
-                  <Text style={styles.detailText}>{item.square_feet} sq ft</Text>
-                </View>
-              )}
-            </View>
-          )}
-
-          {/* Service Provider Info */}
+          {/* Service Provider Info - moved to top for better visibility */}
           {!isHousing && item.provider_name && (
             <View style={styles.providerInfo}>
-              <Text style={styles.providerName}>By {item.provider_name}</Text>
+              <Text style={styles.providerName}>{item.provider_name}</Text>
               {item.rating && (
                 <View style={styles.ratingContainer}>
-                  <Ionicons name="star" size={16} color="#FFD700" />
+                  <Ionicons name="star" size={14} color="#FFD700" />
                   <Text style={styles.ratingText}>{item.rating}</Text>
                 </View>
               )}
             </View>
           )}
 
-          {/* Features/Amenities */}
-          {item.features && item.features.length > 0 && (
-            <View style={styles.featuresSection}>
-              <Text style={styles.sectionTitle}>Features</Text>
-              <View style={styles.featuresGrid}>
-                {item.features.slice(0, 6).map((feature, index) => (
-                  <View key={index} style={styles.featureItem}>
-                    <Ionicons name="checkmark-circle" size={16} color={COLORS.DARK_GREEN} />
-                    <Text style={styles.featureText}>{feature}</Text>
-                  </View>
-                ))}
-              </View>
+          {/* Description */}
+          {item.description && (
+            <Text style={styles.description} numberOfLines={3}>
+              {item.description}
+            </Text>
+          )}
+
+          {/* Housing Details Grid - organized better */}
+          {isHousing && (
+            <View style={styles.housingDetailsGrid}>
+              {item.bedrooms && (
+                <View style={styles.detailItem}>
+                  <Ionicons name="bed-outline" size={18} color="#000000" />
+                  <Text style={styles.detailText}>{item.bedrooms} Bedroom{item.bedrooms > 1 ? 's' : ''}</Text>
+                </View>
+              )}
+              {item.bathrooms && (
+                <View style={styles.detailItem}>
+                  <Ionicons name="water-outline" size={18} color="#000000" />
+                  <Text style={styles.detailText}>{item.bathrooms} Bathroom{item.bathrooms > 1 ? 's' : ''}</Text>
+                </View>
+              )}
+              {item.square_feet && (
+                <View style={styles.detailItem}>
+                  <Ionicons name="resize-outline" size={18} color="#000000" />
+                  <Text style={styles.detailText}>{item.square_feet} sq ft</Text>
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* Tags/Features - compact display */}
+          {((item.tags && item.tags.length > 0) || (item.features && item.features.length > 0)) && (
+            <View style={styles.tagsSection}>
+              {(item.tags || item.features || []).slice(0, 4).map((tag, index) => (
+                <View key={index} style={styles.tag}>
+                  <Text style={styles.tagText}>{tag}</Text>
+                </View>
+              ))}
             </View>
           )}
         </View>
-      </ScrollView>
+      </View>
 
       {/* Action buttons at bottom */}
       <View style={styles.actionHint}>
@@ -267,17 +271,6 @@ const SwipeCard = memo(({
             <Ionicons name="close" size={24} color="white" />
           </View>
           <Text style={styles.actionText}>Pass</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={styles.actionItem}
-          onPress={() => onPress && onPress(item)}
-          activeOpacity={0.7}
-        >
-          <View style={[styles.actionIcon, styles.superLikeIcon]}>
-            <Ionicons name="star" size={20} color="white" />
-          </View>
-          <Text style={styles.actionText}>Super</Text>
         </TouchableOpacity>
         
         <TouchableOpacity 
@@ -312,7 +305,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     borderRadius: 20,
     overflow: 'hidden',
-    minHeight: height * 0.7, // Force minimum height
+    minHeight: height * 0.65, // Adjusted to avoid bottom navigator overlap
     width: width - 20, // Force width
     ...Platform.select({
       ios: {
@@ -330,12 +323,15 @@ const styles = StyleSheet.create({
     }),
   },
   imageContainer: {
-    height: height * 0.55,
+    height: height * 0.45, // Reduced from 0.55 to accommodate moved up overlay
     position: 'relative',
+    width: '100%', // Ensure full width
   },
   cardImage: {
     width: '100%',
     height: '100%',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
   },
   imageLoader: {
     position: 'absolute',
@@ -364,142 +360,126 @@ const styles = StyleSheet.create({
   },
   gradientOverlay: {
     position: 'absolute',
-    bottom: 0,
+    bottom: 0, // Moved up
     left: 0,
     right: 0,
-    height: '60%', // Increased for better visibility
+    height: '40%', // Adjusted for better visibility
     zIndex: 5, // Ensure overlay is on top
   },
-  categoryBadge: {
+  backButton: {
     position: 'absolute',
     top: 20,
-    right: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
+    left: 20,
+    zIndex: 10, // Ensure button is on top
     backgroundColor: 'rgba(0,0,0,0.5)',
-  },
-  categoryText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    borderRadius: 20,
+    padding: 8,
   },
   infoOverlay: {
     position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: 20,
-    paddingBottom: 15,
-    zIndex: 10, // Ensure info is on top of gradient
-    backgroundColor: 'rgba(0,0,0,0.3)', // Add slight background for better text contrast
+    bottom: 20, // Moved up from previous position
+    left: 20,
+    right: 20,
+    zIndex: 10,
   },
   overlayTitle: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: 'bold',
     color: 'white',
     marginBottom: 8,
-    textShadowColor: 'rgba(0, 0, 0, 0.5)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
+    textShadowColor: 'rgba(0, 0, 0, 0.8)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
-  overlayDetails: {
+  overlayDetailsRow: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 10,
+    alignItems: 'center',
+    marginBottom: 8,
   },
   locationContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
-    marginRight: 10,
   },
   overlayLocation: {
-    fontSize: 14,
+    fontSize: 16,
     color: 'white',
     marginLeft: 4,
     flex: 1,
-    textShadowColor: 'rgba(0, 0, 0, 0.5)',
-    textShadowOffset: { width: 0, height: 1 },
+    textShadowColor: 'rgba(0, 0, 0, 0.8)',
+    textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 2,
   },
   overlayPrice: {
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: 'bold',
     color: 'white',
-    textShadowColor: 'rgba(0, 0, 0, 0.5)',
-    textShadowOffset: { width: 0, height: 1 },
+    textShadowColor: 'rgba(0, 0, 0, 0.8)',
+    textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 2,
   },
-  overlayTags: {
+  housingOverlayDetails: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
   },
-  overlayTag: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginRight: 6,
-    marginTop: 4,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
-  },
-  overlayTagText: {
-    fontSize: 11,
+  housingDetailText: {
+    fontSize: 14,
     color: 'white',
-    fontWeight: '500',
+    textShadowColor: 'rgba(0, 0, 0, 0.8)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+    marginRight: 8,
   },
   contentContainer: {
     flex: 1,
-    minHeight: height * 0.15,
-    maxHeight: height * 0.2,
-    backgroundColor: '#ffffff',
+    maxHeight: height * 0.18, // Reduced content area
+    backgroundColor: 'white',
   },
   content: {
     padding: 20,
-    paddingTop: 15,
-    backgroundColor: '#ffffff',
   },
   description: {
-    fontSize: 15,
-    color: '#444',
-    lineHeight: 22,
-    marginBottom: 16,
+    fontSize: 14,
+    color: '#666',
+    lineHeight: 20,
+    marginBottom: 12,
   },
-  housingDetails: {
+  housingDetailsGrid: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginBottom: 16,
+    justifyContent: 'space-around',
+    marginBottom: 12,
+    paddingVertical: 8,
+    backgroundColor: '#f8f8f8',
+    borderRadius: 8,
   },
   detailItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginRight: 20,
-    marginBottom: 8,
   },
   detailText: {
     fontSize: 14,
-    color: '#666',
-    marginLeft: 6,
+    color: '#333',
+    marginLeft: 4,
     fontWeight: '500',
   },
   providerInfo: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
+    marginBottom: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: '#f0f8ff',
+    borderRadius: 8,
   },
   providerName: {
-    fontSize: 14,
-    color: '#666',
-    fontStyle: 'italic',
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#000000',
   },
   ratingContainer: {
     flexDirection: 'row',
@@ -507,45 +487,35 @@ const styles = StyleSheet.create({
   },
   ratingText: {
     fontSize: 14,
-    color: '#666',
+    fontWeight: '600',
     marginLeft: 4,
-    fontWeight: '600',
-  },
-  featuresSection: {
-    marginTop: 16,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
     color: '#333',
-    marginBottom: 10,
   },
-  featuresGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+  tagsSection: {
+    marginBottom: 12,
   },
-  featureItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    width: '50%',
-    marginBottom: 8,
+  tag: {
+    backgroundColor: 'rgba(0,0,0,0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginRight: 6,
+    marginBottom: 4,
   },
-  featureText: {
-    fontSize: 13,
-    color: '#666',
-    marginLeft: 6,
+  tagText: {
+    fontSize: 12,
+    color: '#000000',
+    fontWeight: '500',
   },
   actionHint: {
+    position: 'absolute',
+    bottom: 10,
+    left: 0,
+    right: 0,
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingHorizontal: 40,
-    paddingVertical: 12,
-    backgroundColor: '#fafafa',
-    borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
-  },
-  actionItem: {
+    justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 20,
   },
   actionIcon: {
     width: 40,
@@ -557,9 +527,6 @@ const styles = StyleSheet.create({
   },
   passIcon: {
     backgroundColor: '#E74C3C',
-  },
-  superLikeIcon: {
-    backgroundColor: '#3498DB',
   },
   likeIcon: {
     backgroundColor: '#27AE60',

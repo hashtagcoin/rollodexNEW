@@ -40,9 +40,9 @@ const logImageProcessing = (source, from, to, isError = false) => {
 export const getValidImageUrl = (url, bucket = 'postsimages', source = 'unknown', userId = null, type = 'service') => {
   try {
     // Handle null/undefined/empty URLs
-    if (!url || url === 'null' || url === 'undefined' || url === '') {
+    if (!url || url === 'null' || url === 'undefined') {
       const fallbackUrl = `${SUPABASE_URL}/storage/v1/object/public/${DEFAULT_IMAGES[type] || DEFAULT_IMAGES.service}`;
-      logImageProcessing(source, 'null/undefined/empty', fallbackUrl, true);
+      logImageProcessing(source, url, fallbackUrl, true);
       return fallbackUrl;
     }
     
@@ -99,7 +99,6 @@ export const getValidImageUrl = (url, bucket = 'postsimages', source = 'unknown'
     logImageProcessing(source, url, result);
     return result;
   } catch (error) {
-    // If any error occurs during processing, return a default image
     const fallbackUrl = `${SUPABASE_URL}/storage/v1/object/public/${DEFAULT_IMAGES[type] || DEFAULT_IMAGES.service}`;
     logImageProcessing(source, url, fallbackUrl, true);
     console.error(`[IMAGE_ERROR][${source}] Error processing URL: ${error.message}`);
