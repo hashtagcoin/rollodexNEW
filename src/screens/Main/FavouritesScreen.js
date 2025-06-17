@@ -7,10 +7,10 @@ import {
   TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
-  Image,
   Dimensions,
   Alert
 } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
 import { useScrollContext } from '../../context/ScrollContext';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,7 +18,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { COLORS, SIZES, FONTS, SHADOWS } from '../../constants/theme';
 // Assuming isSingleLineTitle from CardStyles might be different or not used due to local redefinition
 import { CardStyles, ConsistentHeightTitle /*, isSingleLineTitle as importedIsSingleLineTitle */ } from '../../constants/CardStyles';
-import { getValidImageUrl } from '../../utils/imageHelper';
+import { getValidImageUrl, getOptimizedImageUrl } from '../../utils/imageHelper';
 import SearchComponent from '../../components/common/SearchComponent';
 import AppHeader from '../../components/layout/AppHeader';
 import ServiceCardComponent from '../../components/cards/ServiceCard';
@@ -27,6 +27,26 @@ import EventFavoriteCard from '../../components/cards/EventFavoriteCard';
 import ShareTrayModal from '../../components/common/ShareTrayModal';
 
 const { width } = Dimensions.get('window');
+
+// Performance tracking
+const performanceTracker = {
+  componentId: `FAV-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+  mountTime: null,
+  renders: 0,
+  categoryChanges: {},
+  fetchTimes: {}
+};
+
+// Enhanced debug logger with timing
+const debugTiming = (action, details = {}) => {
+  const timestamp = Date.now();
+  const elapsed = performanceTracker.mountTime ? timestamp - performanceTracker.mountTime : 0;
+  console.log(`[FAVORITES-TIMING][${performanceTracker.componentId}][${elapsed}ms] ${action}`, {
+    timestamp,
+    elapsed,
+    ...details
+  });
+};
 
 // Constants
 const CARD_MARGIN = 10;
@@ -48,6 +68,39 @@ const FavouritesScreen = () => {
   const [loadingMore, setLoadingMore] = useState(false);
   const [shareModalVisible, setShareModalVisible] = useState(false);
   const [itemToShare, setItemToShare] = useState(null);
+
+  // Cache refs for performance optimization
+  const cacheRef = useRef({}); // Cache favorites by category
+  const fetchInProgressRef = useRef(false); // Prevent duplicate fetches
+  const lastFetchCategoryRef = useRef(null); // Track last fetched category
+  const fetchCounterRef = useRef(0); // Track latest fetch to ignore stale responses
+  const isMounted = useRef(true); // Track component mount state
+
+  // Track component mount/unmount
+  useEffect(() => {
+    performanceTracker.mountTime = Date.now();
+    performanceTracker.renders = 0;
+    debugTiming('COMPONENT_MOUNTED');
+    
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+      debugTiming('COMPONENT_UNMOUNTING', { 
+        totalRenders: performanceTracker.renders,
+        lifetimeMs: Date.now() - performanceTracker.mountTime,
+        categoryChanges: performanceTracker.categoryChanges
+      });
+    };
+  }, []);
+
+  // Track renders
+  performanceTracker.renders++;
+  debugTiming('RENDER', { 
+    renderNumber: performanceTracker.renders,
+    category: selectedCategory,
+    searchTerm,
+    viewMode
+  });
 
   const categories = ['All', 'Services', 'Events', 'Housing', 'Groups', 'Housing Groups'];
 
@@ -72,21 +125,55 @@ const FavouritesScreen = () => {
   };
 
 
-  const fetchFavorites = useCallback(async (pageNum = 0, isRefreshing = false) => {
-    console.log(`[FavouritesScreen] fetchFavorites called. Page: ${pageNum}, Refreshing: ${isRefreshing}, Loading: ${loading}, HasMore: ${hasMore}, Category: ${selectedCategory}, Search: ${searchTerm}`);
-    if ((!isRefreshing && loading && pageNum > 0) || (pageNum > 0 && !hasMore)) { // Adjusted condition slightly: loading check mainly for non-refresh, non-initial loads
-      console.log('[FavouritesScreen] fetchFavorites: Bailing out due to loading or no more data.');
+  const fetchFavorites = useCallback(async (pageNum = 0, isRefreshing = false, isBackgroundRefresh = false) => {
+    debugTiming('FETCH_FAVORITES_CALLED', { 
+      page: pageNum, 
+      refreshing: isRefreshing, 
+      background: isBackgroundRefresh,
+      category: selectedCategory, 
+      search: searchTerm 
+    });
+    
+    // Prevent duplicate fetches
+    if (fetchInProgressRef.current && lastFetchCategoryRef.current === selectedCategory && !isRefreshing) {
+      debugTiming('FETCH_PREVENTED_DUPLICATE', { 
+        category: selectedCategory,
+        isRefreshing,
+        targetPage: pageNum
+      });
+      return;
+    }
+    
+    // For pagination, bail out if already loading or no more data
+    if ((!isRefreshing && loading && pageNum > 0) || (pageNum > 0 && !hasMore)) {
+      debugTiming('FETCH_BAILED_PAGINATION', {
+        loading,
+        hasMore,
+        page: pageNum
+      });
       return;
     }
 
     try {
-      if (pageNum === 0) {
-        console.log('[FavouritesScreen] fetchFavorites: Setting loading to true (pageNum is 0).');
+      const fetchStart = Date.now();
+      const fetchId = ++fetchCounterRef.current; // Increment fetch counter
+      const categoryAtStart = selectedCategory;  // Snapshot category
+      
+      fetchInProgressRef.current = true;
+      lastFetchCategoryRef.current = selectedCategory;
+      
+      // Set appropriate loading states
+      const hasCache = cacheRef.current[selectedCategory]?.length > 0;
+      
+      if (!hasCache && !isBackgroundRefresh && pageNum === 0) {
         setLoading(true);
         if (!isRefreshing) setFavorites([]); // Clear existing favorites on initial load for new filters
-      } else {
-        console.log('[FavouritesScreen] fetchFavorites: Setting loadingMore to true.');
+      } else if (pageNum > 0) {
         setLoadingMore(true);
+      }
+      
+      if (isRefreshing) {
+        setRefreshing(true);
       }
 
       const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -117,18 +204,40 @@ const FavouritesScreen = () => {
       query = query.range(from, to);
 
       const { data, error } = await query; // Removed count as it wasn't used
-      console.log('[FavouritesScreen] Supabase query result (favorites table):', { data, error });
+      
+      const fetchTime = Date.now() - fetchStart;
+      performanceTracker.fetchTimes[`${selectedCategory}-${pageNum}`] = fetchTime;
+      
+      debugTiming('FETCH_DATA_COMPLETE', { 
+        category: selectedCategory,
+        itemCount: data?.length || 0,
+        fetchTimeMs: fetchTime,
+        error: !!error,
+        fetchId,
+        isStale: fetchId !== fetchCounterRef.current || categoryAtStart !== selectedCategory
+      });
+      
+      if (!isMounted.current) return;
+      
+      // Ignore if a newer fetch started or category has changed
+      if (fetchId !== fetchCounterRef.current || categoryAtStart !== selectedCategory) {
+        debugTiming('STALE_FETCH_IGNORED', { fetchId, currentFetchId: fetchCounterRef.current });
+        return;
+      }
+
       if (error) {
-        throw error;
+        console.error('[FavouritesScreen] Fetch error:', error);
+        if (isMounted.current) setFavorites([]);
+        return;
       }
 
       if (!data) { // Handle null data case
-          setLoading(false);
-          setRefreshing(false);
-          setLoadingMore(false);
-          setHasMore(false);
-          if (pageNum === 0) setFavorites([]);
-          return;
+        setLoading(false);
+        setRefreshing(false);
+        setLoadingMore(false);
+        setHasMore(false);
+        if (pageNum === 0) setFavorites([]);
+        return;
       }
 
       const favoritesWithEnrichedData = await Promise.all(
@@ -249,8 +358,6 @@ const FavouritesScreen = () => {
                 }
                 break;
               }
-              // The original code had a case for 'event' in renderItem, but not in enrichment.
-              // Assuming 'group_event' is the intended type for events.
               default:
                 console.warn('[FavouritesScreen] Unknown item type for enrichment:', favorite.item_type);
                 break;
@@ -262,7 +369,34 @@ const FavouritesScreen = () => {
         })
       );
 
-      console.log('[FavouritesScreen] favoritesWithEnrichedData after enrichment:', JSON.stringify(favoritesWithEnrichedData.length, null, 2));
+      debugTiming('ENRICHMENT_COMPLETE', {
+        category: selectedCategory,
+        itemCount: favoritesWithEnrichedData.length,
+        timeMs: Date.now() - fetchStart
+      });
+
+      // Update cache with the new data
+      if (pageNum === 0) {
+        cacheRef.current[selectedCategory] = favoritesWithEnrichedData;
+        debugTiming('CACHE_UPDATED', {
+          category: selectedCategory,
+          itemCount: favoritesWithEnrichedData.length
+        });
+      } else if (cacheRef.current[selectedCategory]) {
+        // For pagination, append to cache
+        const existingIds = new Set(cacheRef.current[selectedCategory].map(p => p.favorite_table_id));
+        const newItemsToAdd = favoritesWithEnrichedData.filter(item => !existingIds.has(item.favorite_table_id));
+        cacheRef.current[selectedCategory] = [...cacheRef.current[selectedCategory], ...newItemsToAdd];
+        
+        debugTiming('CACHE_APPENDED', {
+          category: selectedCategory,
+          previousCount: existingIds.size,
+          newItemsCount: newItemsToAdd.length,
+          totalCount: cacheRef.current[selectedCategory].length
+        });
+      }
+
+      // Update state with the new data
       setFavorites(prev => {
         let newItemsToAdd = favoritesWithEnrichedData;
         // When appending (not a refresh or initial load), filter out items already present based on favorite_table_id
@@ -272,12 +406,19 @@ const FavouritesScreen = () => {
         }
 
         const updatedFavorites = isRefreshing || pageNum === 0 
-          ? newItemsToAdd // For refresh or initial load, directly use (potentially filtered if pageNum > 0 but isRefreshing is true, though typically pageNum would be 0 for refresh)
+          ? newItemsToAdd // For refresh or initial load, directly use new items
           : [...prev, ...newItemsToAdd]; // For append, add the filtered new items
         
-        console.log('[FavouritesScreen] setFavorites called. Prev count:', prev.length, 'New items received:', favoritesWithEnrichedData.length, 'New items to add:', newItemsToAdd.length, 'Updated favorites count:', updatedFavorites.length);
+        debugTiming('STATE_UPDATED', {
+          category: selectedCategory,
+          prevCount: prev.length,
+          newItemsCount: newItemsToAdd.length,
+          updatedCount: updatedFavorites.length
+        });
+        
         return updatedFavorites;
       });
+      
       setHasMore(data.length === PAGE_SIZE);
       setPage(pageNum);
 
@@ -285,11 +426,12 @@ const FavouritesScreen = () => {
       console.error('[FavouritesScreen] fetchFavorites error:', error);
       // Alert.alert('Error', 'Could not fetch favorites.'); // Consider user-facing error
     } finally {
+      fetchInProgressRef.current = false;
       setLoading(false);
       setRefreshing(false);
       setLoadingMore(false);
     }
-  }, [selectedCategory, searchTerm, sortConfig, loading, hasMore]); // Added loading, hasMore as they affect conditional fetching logic
+  }, [selectedCategory, searchTerm, sortConfig, loading, hasMore, mapCategoryToItemType]);
 
   // Reset scroll, state, and fetch data when tab is focused or critical filters change
   useFocusEffect(
@@ -312,16 +454,22 @@ const FavouritesScreen = () => {
   }, [selectedCategory, searchTerm, sortConfig]); // Note: fetchFavorites is not a dep here to avoid loop, it's called directly.
 
   const onRefresh = useCallback(() => {
-    console.log("[FavouritesScreen] onRefresh called");
-    setRefreshing(true); // Handled inside fetchFavorites now
-    setPage(0); // Reset page on refresh
-    fetchFavorites(0, true);
-  }, [fetchFavorites]); // fetchFavorites is memoized
+    debugTiming('MANUAL_REFRESH_TRIGGERED');
+    setRefreshing(true);
+    setPage(0);
+    fetchFavorites(0, true, false);
+  }, [fetchFavorites]);
 
   const loadMore = useCallback(() => {
-    console.log("[FavouritesScreen] loadMore called. HasMore:", hasMore, "LoadingMore:", loadingMore, "Loading:", loading);
+    debugTiming('LOAD_MORE_TRIGGERED', {
+      hasMore,
+      loadingMore,
+      loading,
+      page
+    });
+    
     if (!loading && !loadingMore && hasMore) {
-      fetchFavorites(page + 1);
+      fetchFavorites(page + 1, false, false);
     }
   }, [page, loading, loadingMore, hasMore, fetchFavorites]);
 
@@ -482,7 +630,7 @@ const FavouritesScreen = () => {
                 <View style={CardStyles.gridCardInner}>
                   <View style={CardStyles.gridImageContainer}>
                     {groupImageUrl ? (
-                      <Image source={{ uri: groupImageUrl }} style={CardStyles.gridImage} resizeMode="cover" />
+                      <ExpoImage source={{ uri: getOptimizedImageUrl(groupImageUrl, 400, 70) }} style={CardStyles.gridImage} contentFit="cover" cachePolicy="immutable" />
                     ) : (
                       <View style={[CardStyles.gridImage, CardStyles.gridCardPlaceholderImage]}>
                         <Ionicons name="people-outline" size={SIZES.xxxLarge} color={COLORS.mediumGray} />
@@ -534,7 +682,7 @@ const FavouritesScreen = () => {
               <View style={CardStyles.listCardInner}>
                 <View style={CardStyles.listImageContainer}>
                   {groupImageUrl ? (
-                    <Image source={{ uri: groupImageUrl }} style={CardStyles.listImage} onError={(e) => console.log('Group List Image Error:', e.nativeEvent.error)} />
+                    <ExpoImage source={{ uri: getOptimizedImageUrl(groupImageUrl, 400, 70) }} style={CardStyles.listImage} contentFit="cover" cachePolicy="immutable" onError={(e) => console.log('Group List Image Error:', e.nativeEvent.error)} />
                   ) : (
                     <View style={CardStyles.listPlaceholderImage}><Ionicons name="people-outline" size={SIZES.xLarge} color={COLORS.mediumGray} /></View>
                   )}
@@ -607,7 +755,7 @@ const FavouritesScreen = () => {
                 <View style={CardStyles.gridCardInner}>
                   <View style={CardStyles.gridImageContainer}>
                     {hgImageUrl ? (
-                      <Image source={{ uri: hgImageUrl }} style={CardStyles.gridImage} resizeMode="cover" />
+                      <ExpoImage source={{ uri: getOptimizedImageUrl(hgImageUrl, 400, 70) }} style={CardStyles.gridImage} contentFit="cover" cachePolicy="immutable" />
                     ) : (
                       <View style={[CardStyles.gridImage, CardStyles.gridCardPlaceholderImage]}>
                         <Ionicons name="home-outline" size={SIZES.xxxLarge} color={COLORS.mediumGray} />
@@ -663,7 +811,7 @@ const FavouritesScreen = () => {
               <View style={CardStyles.listCardInner}>
                 <View style={CardStyles.listImageContainer}>
                   {hgImageUrl ? (
-                    <Image source={{ uri: hgImageUrl }} style={CardStyles.listImage} onError={(e) => console.log('Housing Group List Image Error:', e.nativeEvent.error)} />
+                    <ExpoImage source={{ uri: getOptimizedImageUrl(hgImageUrl, 400, 70) }} style={CardStyles.listImage} contentFit="cover" cachePolicy="immutable" onError={(e) => console.log('Housing Group List Image Error:', e.nativeEvent.error)} />
                   ) : (
                     <View style={CardStyles.listPlaceholderImage}><Ionicons name="home-outline" size={SIZES.xLarge} color={COLORS.mediumGray} /></View>
                   )}
@@ -723,6 +871,44 @@ const FavouritesScreen = () => {
         }
     }
   };
+
+  // Prefetch first batch of thumbnail URLs for snappy display
+  useEffect(() => {
+    if (favorites.length === 0) return;
+
+    const urls = favorites.slice(0, 12).map(fav => {
+      let rawUrl = null;
+      switch (fav.item_type) {
+        case 'service_provider':
+          rawUrl = fav.avatar_url || fav.image_url || fav.item_image_url;
+          rawUrl = getValidImageUrl(rawUrl, 'provideravatars');
+          break;
+        case 'housing_listing':
+          rawUrl = fav.media_urls?.[0];
+          rawUrl = getValidImageUrl(rawUrl, 'housingimages');
+          break;
+        case 'group':
+          rawUrl = fav.image || fav.avatar_url;
+          rawUrl = getValidImageUrl(rawUrl, 'groupavatars');
+          break;
+        case 'housing_group': {
+          const listingMedia = fav.housing_group_data?.housing_listing_data?.media_urls?.[0];
+          rawUrl = listingMedia || fav.housing_group_data?.avatar_url;
+          rawUrl = getValidImageUrl(rawUrl, 'housingimages');
+          break; }
+        case 'group_event':
+          rawUrl = fav.media_urls?.[0] || fav.item_image_url;
+          rawUrl = getValidImageUrl(rawUrl, 'eventimages');
+          break;
+        default:
+          break;
+      }
+      if (!rawUrl) return null;
+      return getOptimizedImageUrl(rawUrl, 400, 70);
+    }).filter(Boolean);
+
+    urls.forEach(u => ExpoImage.prefetch(u));
+  }, [favorites]);
 
   return (
     <View style={styles.container}>

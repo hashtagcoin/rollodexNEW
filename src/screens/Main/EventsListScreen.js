@@ -1,5 +1,6 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useDeferredValue } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, TextInput, ScrollView, Animated, ActivityIndicator, RefreshControl } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import ActionButton from '../../components/common/ActionButton';
 import { supabase } from '../../lib/supabaseClient';
 import { useFocusEffect } from '@react-navigation/native';
@@ -20,8 +21,12 @@ const EVENT_FILTERS = [
 
 const EventsListScreen = ({ navigation }) => {
   const [search, setSearch] = useState('');
+  const deferredSearch = useDeferredValue(search);
   const [activeFilter, setActiveFilter] = useState('all');
   const [events, setEvents] = useState([]);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [isFetchingMore, setIsFetchingMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [viewMode, setViewMode] = useState('list'); // 'list' or 'grid'
@@ -32,53 +37,87 @@ const EventsListScreen = ({ navigation }) => {
   const [isScrolling, setIsScrolling] = useState(false);
   const scrollEndTimer = useRef(null);
 
-  // Fetch events when the screen is focused or refreshed
-  const fetchEvents = async (isRefreshing = false) => {
+  const PAGE_SIZE = 15;
+
+  // Fetch events with pagination
+  const fetchEvents = async (pageNum = 0, isRefreshing = false) => {
     try {
-      if (!isRefreshing) setLoading(true);
-      
+      if (!isRefreshing && pageNum === 0) setLoading(true);
+      if (pageNum > 0) setIsFetchingMore(true);
+       
       // Fetch events using our events_with_details view
+      const start = pageNum * PAGE_SIZE;
+      const end = start + PAGE_SIZE - 1;
+
       const { data, error } = await supabase
         .from('events_with_details')
         .select('*')
-        .order('start_time', { ascending: true });
-        
+        .order('start_time', { ascending: true })
+        .range(start, end);
+         
       if (error) throw error;
       
-      setEvents(data || []);
+      const fetched = data || [];
+      setHasMore(fetched.length === PAGE_SIZE);
+      setPage(pageNum);
+
+      if (pageNum === 0) {
+        setEvents(fetched);
+      } else {
+        setEvents(prev => {
+          const existingIds = new Set(prev.map(e => e.id));
+          return [...prev, ...fetched.filter(e => !existingIds.has(e.id))];
+        });
+      }
     } catch (error) {
       console.error('Error fetching events:', error);
     } finally {
       setLoading(false);
       setRefreshing(false);
+      setIsFetchingMore(false);
+
+      // Cache first page
+      if (pageNum === 0) {
+        try {
+          await AsyncStorage.setItem('cachedEvents', JSON.stringify(events));
+        } catch (err) {}
+      }
     }
   };
   
   // Initial fetch
   useEffect(() => {
-    fetchEvents();
+    const loadCacheAndFetch = async () => {
+      try {
+        const cached = await AsyncStorage.getItem('cachedEvents');
+        if (cached) setEvents(JSON.parse(cached));
+      } catch (err) {}
+      fetchEvents(0);
+    };
+    loadCacheAndFetch();
   }, []);
   
   // Refresh on focus
   useFocusEffect(
     useCallback(() => {
-      fetchEvents();
+      fetchEvents(0);
       return () => {};
     }, [])
   );
   
   // Handle pull-to-refresh
   const handleRefresh = () => {
-    setRefreshing(true);
-    fetchEvents(true);
+    setHasMore(true);
+    setPage(0);
+    fetchEvents(0, true);
   };
   
   // Filter events based on search and category
   const filteredEvents = events.filter(event => {
     const matchType = activeFilter === 'all' || event.category === activeFilter;
     const matchSearch = 
-      event.title?.toLowerCase().includes(search.toLowerCase()) ||
-      event.description?.toLowerCase().includes(search.toLowerCase()) ||
+      event.title?.toLowerCase().includes(deferredSearch.toLowerCase()) ||
+      event.description?.toLowerCase().includes(deferredSearch.toLowerCase()) ||
       false;
     return matchType && matchSearch;
   });
@@ -185,6 +224,9 @@ const EventsListScreen = ({ navigation }) => {
           numColumns={viewMode === 'grid' ? 2 : 1}
           columnWrapperStyle={viewMode === 'grid' ? { justifyContent: 'space-between' } : null}
           showsVerticalScrollIndicator={false}
+          initialNumToRender={4}
+          maxToRenderPerBatch={6}
+          windowSize={7}
           refreshControl={(
             <RefreshControl
               refreshing={refreshing}
@@ -193,40 +235,46 @@ const EventsListScreen = ({ navigation }) => {
               tintColor={COLORS.primary}
             />
           )}
-        onScroll={Animated.event(
-          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          { 
-            useNativeDriver: true,
-            listener: () => {
-              // Clear any existing timer
-              if (scrollEndTimer.current) {
-                clearTimeout(scrollEndTimer.current);
+          onScroll={Animated.event(
+            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+            { 
+              useNativeDriver: true,
+              listener: () => {
+                // Clear any existing timer
+                if (scrollEndTimer.current) {
+                  clearTimeout(scrollEndTimer.current);
+                }
+                
+                // If not already scrolling, animate button fade out
+                if (!isScrolling) {
+                  setIsScrolling(true);
+                  Animated.timing(fadeAnim, {
+                    toValue: 0,
+                    duration: 200,
+                    useNativeDriver: true,
+                  }).start();
+                }
+                
+                // Set a timer to detect when scrolling stops
+                scrollEndTimer.current = setTimeout(() => {
+                  setIsScrolling(false);
+                  Animated.timing(fadeAnim, {
+                    toValue: 1,
+                    duration: 500, // Slower fade in
+                    useNativeDriver: true,
+                  }).start();
+                }, 200);
               }
-              
-              // If not already scrolling, animate button fade out
-              if (!isScrolling) {
-                setIsScrolling(true);
-                Animated.timing(fadeAnim, {
-                  toValue: 0,
-                  duration: 200,
-                  useNativeDriver: true,
-                }).start();
-              }
-              
-              // Set a timer to detect when scrolling stops
-              scrollEndTimer.current = setTimeout(() => {
-                setIsScrolling(false);
-                Animated.timing(fadeAnim, {
-                  toValue: 1,
-                  duration: 500, // Slower fade in
-                  useNativeDriver: true,
-                }).start();
-              }, 200);
             }
-          }
-        )}
-        scrollEventThrottle={16}
-      />
+          )}
+          scrollEventThrottle={16}
+          onEndReached={() => {
+            if (hasMore && !isFetchingMore && !loading) {
+              fetchEvents(page + 1);
+            }
+          }}
+          onEndReachedThreshold={0.4}
+        />
       )}
     </View>
   );

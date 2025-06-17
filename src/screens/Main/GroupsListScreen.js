@@ -8,6 +8,26 @@ import { supabase } from '../../lib/supabaseClient';
 import { COLORS } from '../../constants/theme';
 import { getValidImageUrl, getOptimizedImageUrl } from '../../utils/imageHelper';
 
+// Performance tracking for diagnostics
+const performanceTracker = {
+  componentId: `GLS-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+  mountTime: null,
+  renders: 0,
+  fetchTimes: {},
+  filterChanges: {},
+  focusEvents: 0
+};
+
+const debugTiming = (action, details = {}) => {
+  const timestamp = Date.now();
+  const elapsed = performanceTracker.mountTime ? timestamp - performanceTracker.mountTime : 0;
+  console.log(`[GROUPS-TIMING][${performanceTracker.componentId}][${elapsed}ms] ${action}`, {
+    timestamp,
+    elapsed,
+    ...details
+  });
+};
+
 // Debug logger – stripped in production
 const debug = (...args) => {
   if (__DEV__) console.log(...args);
@@ -31,11 +51,46 @@ const GroupsListScreen = () => {
   const [userId, setUserId] = useState(null);
   const [membershipStatus, setMembershipStatus] = useState({});
   const [userGroupRoles, setUserGroupRoles] = useState({}); // Stores { groupId: role }
+  
+  // Performance optimization refs
+  const fetchInProgressRef = useRef(false);
+  const cacheRef = useRef({}); // Cache by filter type
+  const membershipCacheRef = useRef({}); // Cache membership status
+  const rolesCacheRef = useRef({}); // Cache user roles
+  const fetchCounterRef = useRef(0);
+  const isMounted = useRef(true);
 
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const scrollY = useRef(new Animated.Value(0)).current;
   const [isScrolling, setIsScrolling] = useState(false);
   const scrollEndTimer = useRef(null);
+  
+  // Track component lifecycle
+  useEffect(() => {
+    performanceTracker.mountTime = Date.now();
+    debugTiming('COMPONENT_MOUNTED', {
+      componentId: performanceTracker.componentId
+    });
+    
+    return () => {
+      isMounted.current = false;
+      debugTiming('COMPONENT_UNMOUNTING', {
+        totalFocusEvents: performanceTracker.focusEvents,
+        totalRenders: performanceTracker.renders,
+        totalFilterChanges: Object.keys(performanceTracker.filterChanges).length
+      });
+    };
+  }, []);
+  
+  // Track renders
+  performanceTracker.renders++;
+  debugTiming('RENDER', {
+    renderCount: performanceTracker.renders,
+    filter,
+    groupCount: groupsData.length,
+    loading,
+    hasCachedData: !!cacheRef.current[filter]
+  });
   
   // Get current user's ID
   useEffect(() => {
@@ -72,6 +127,14 @@ const GroupsListScreen = () => {
       setUserGroupRoles({}); // Clear roles if no user
       return;
     }
+    
+    // Check cache first
+    if (rolesCacheRef.current[userId]) {
+      debugTiming('ROLES_FROM_CACHE', { userId });
+      setUserGroupRoles(rolesCacheRef.current[userId]);
+      return;
+    }
+    
     console.log('[GroupsListScreen] fetchUserGroupRoles: Fetching roles for user:', userId);
     try {
       const { data, error } = await supabase
@@ -92,6 +155,9 @@ const GroupsListScreen = () => {
         });
       }
       console.log('[GroupsListScreen] fetchUserGroupRoles: Roles map:', rolesMap);
+      
+      // Cache the roles
+      rolesCacheRef.current[userId] = rolesMap;
       setUserGroupRoles(rolesMap);
     } catch (e) {
       console.error('[GroupsListScreen] fetchUserGroupRoles: Exception fetching group roles:', e.message);
@@ -106,10 +172,37 @@ const GroupsListScreen = () => {
   
 
 
-  const fetchGroups = async () => {
-    setLoading(true);
-    setError(null);
+  const fetchGroups = async (forceRefresh = false) => {
+    // Prevent duplicate fetches
+    if (fetchInProgressRef.current && !forceRefresh) {
+      debugTiming('FETCH_PREVENTED_DUPLICATE', {
+        filter,
+        forceRefresh
+      });
+      return;
+    }
+    
+    const fetchStart = Date.now();
+    const fetchId = ++fetchCounterRef.current;
+    
+    if (!isMounted.current) return;
+    
+    fetchInProgressRef.current = true;
+    
+    debugTiming('FETCH_GROUPS_START', {
+      filter,
+      forceRefresh,
+      fetchId,
+      hasCachedData: !!cacheRef.current[filter]
+    });
+    
     try {
+      // Only show loading if no cache
+      if (!cacheRef.current[filter]) {
+        setLoading(true);
+      }
+      setError(null);
+      
       // First fetch regular groups
       const { data: regularGroups, error: regularGroupsError } = await supabase
         .from('groups')
@@ -204,23 +297,89 @@ const GroupsListScreen = () => {
       
       // Combine both group types
       const allGroups = [...formattedRegularGroups, ...formattedHousingGroups];
-      setGroupsData(allGroups);
+      
+      const fetchTime = Date.now() - fetchStart;
+      performanceTracker.fetchTimes[`${filter}-${fetchId}`] = fetchTime;
+      
+      debugTiming('FETCH_GROUPS_COMPLETE', {
+        groupCount: allGroups.length,
+        regularGroupCount: formattedRegularGroups.length,
+        housingGroupCount: formattedHousingGroups.length,
+        fetchTimeMs: fetchTime,
+        fetchId,
+        isStale: fetchId !== fetchCounterRef.current
+      });
+      
+      if (!isMounted.current) return;
+      
+      // Ignore if a newer fetch started
+      if (fetchId !== fetchCounterRef.current) {
+        debugTiming('STALE_FETCH_IGNORED', { fetchId, currentFetchId: fetchCounterRef.current });
+        return;
+      }
+      
+      // Cache all groups data before filtering
+      cacheRef.current['all'] = allGroups;
+      
+      // Apply filter and set data
+      const filteredData = getFilteredGroups(allGroups, filter);
+      setGroupsData(filteredData);
+      
+      // Cache filtered data
+      cacheRef.current[filter] = filteredData;
+      
+      debugTiming('CACHE_UPDATED', {
+        filter,
+        cachedGroupCount: filteredData.length
+      });
       
       // Fetch membership status for housing groups if user is logged in
       if (userId) {
         fetchUserMembershipStatus(housingGroups.map(g => g.id));
       }
     } catch (e) {
-      // Error fetching groups
+      console.error('[GroupsListScreen] Error fetching groups:', e);
+      debugTiming('FETCH_ERROR', {
+        error: e.message
+      });
       setError(e.message || 'Failed to fetch groups.');
     } finally {
-      setLoading(false);
+      if (isMounted.current) {
+        setLoading(false);
+      }
+      fetchInProgressRef.current = false;
+    }
+  };
+  
+  // Helper function to filter groups based on selected filter
+  const getFilteredGroups = (allGroups, filterType) => {
+    switch (filterType) {
+      case 'all':
+        return allGroups;
+      case 'groups':
+        return allGroups.filter(g => !g.is_housing_group);
+      case 'housing_groups':
+        return allGroups.filter(g => g.is_housing_group);
+      case 'social':
+        return allGroups.filter(g => !g.is_housing_group && g.type === 'social');
+      case 'interest':
+        return allGroups.filter(g => !g.is_housing_group && g.type === 'interest');
+      default:
+        return allGroups;
     }
   };
   
   // Fetch user's membership status for housing groups
   const fetchUserMembershipStatus = async (housingGroupIds) => {
     if (!userId || housingGroupIds.length === 0) return;
+    
+    // Check cache first
+    const cacheKey = `${userId}-housing`;
+    if (membershipCacheRef.current[cacheKey]) {
+      debugTiming('MEMBERSHIP_FROM_CACHE', { userId });
+      setMembershipStatus(membershipCacheRef.current[cacheKey]);
+      return;
+    }
     
     try {
       const { data, error } = await supabase
@@ -237,34 +396,91 @@ const GroupsListScreen = () => {
         statusMap[membership.group_id] = membership.status;
       });
       
+      // Cache the membership status
+      membershipCacheRef.current[cacheKey] = statusMap;
       setMembershipStatus(statusMap);
+      
+      debugTiming('MEMBERSHIP_FETCHED', {
+        membershipCount: Object.keys(statusMap).length
+      });
     } catch (e) {
-      // Error fetching membership status
+      console.error('[GroupsListScreen] Error fetching membership status:', e);
     }
   };
 
+  // Handle filter changes
+  useEffect(() => {
+    const filterChangeStart = Date.now();
+    debugTiming('FILTER_CHANGE_START', {
+      newFilter: filter,
+      hasCachedData: !!cacheRef.current[filter]
+    });
+    
+    performanceTracker.filterChanges[filter] = (performanceTracker.filterChanges[filter] || 0) + 1;
+    
+    // If we have all groups cached, just filter them
+    if (cacheRef.current['all']) {
+      const filteredData = getFilteredGroups(cacheRef.current['all'], filter);
+      
+      // Check if we have cached data for this specific filter
+      if (cacheRef.current[filter]) {
+        setGroupsData(cacheRef.current[filter]);
+        setLoading(false);
+        debugTiming('CACHED_FILTER_APPLIED', {
+          filter,
+          groupCount: cacheRef.current[filter].length,
+          timeMs: Date.now() - filterChangeStart
+        });
+      } else {
+        // Apply filter to all cached groups
+        setGroupsData(filteredData);
+        cacheRef.current[filter] = filteredData;
+        setLoading(false);
+        debugTiming('FILTER_APPLIED_FROM_ALL_CACHE', {
+          filter,
+          groupCount: filteredData.length,
+          timeMs: Date.now() - filterChangeStart
+        });
+      }
+    } else {
+      // No cache, need to fetch
+      debugTiming('NO_CACHE_FETCHING_FOR_FILTER', { filter });
+      fetchGroups();
+    }
+  }, [filter]);
+
   useFocusEffect(
     React.useCallback(() => {
-      fetchGroups();
-    }, [])
+      performanceTracker.focusEvents++;
+      debugTiming('SCREEN_FOCUSED', {
+        focusCount: performanceTracker.focusEvents,
+        hasCachedData: !!cacheRef.current[filter]
+      });
+      
+      // Only fetch if we don't have cached data
+      if (!cacheRef.current[filter] && !cacheRef.current['all']) {
+        debugTiming('NO_CACHE_ON_FOCUS_FETCHING');
+        fetchGroups();
+      } else {
+        debugTiming('USING_CACHED_DATA_ON_FOCUS', {
+          filter,
+          cachedGroupCount: cacheRef.current[filter]?.length || 0
+        });
+        
+        // Optional: Background refresh after delay to get fresh data
+        const timer = setTimeout(() => {
+          if (isMounted.current) {
+            fetchGroups(true); // Force refresh in background
+          }
+        }, 2000);
+        
+        return () => {
+          clearTimeout(timer);
+          debugTiming('SCREEN_UNFOCUSED');
+        };
+      }
+    }, [filter])
   );
-
-  const filteredGroups = useMemo(() => {
-    switch(filter) {
-      case 'all':
-        return groupsData;
-      case 'groups':
-        return groupsData.filter(g => !g.is_housing_group);
-      case 'housing_groups':
-        return groupsData.filter(g => g.is_housing_group);
-      case 'social':
-        return groupsData.filter(g => g.category === 'social');
-      case 'interest':
-        return groupsData.filter(g => g.category === 'interest');
-      default:
-        return groupsData;
-    }
-  }, [groupsData, filter]);
 
   const GroupCard = React.memo(({ item, navigation, userId, userRole }) => {
     const [isFavorited, setIsFavorited] = useState(false);
@@ -508,10 +724,10 @@ const GroupsListScreen = () => {
 
   // Prefetch thumbnails to smooth scrolling
   useEffect(() => {
-    if (!filteredGroups || filteredGroups.length === 0) return;
-    const urls = filteredGroups.slice(0, 12).map(g => getOptimizedImageUrl(g.image, 400, 70)).filter(Boolean);
+    if (!groupsData || groupsData.length === 0) return;
+    const urls = groupsData.slice(0, 12).map(g => getOptimizedImageUrl(g.image, 400, 70)).filter(Boolean);
     urls.forEach(u => Image.prefetch(u));
-  }, [filteredGroups]);
+  }, [groupsData]);
 
   if (loading) {
     return (
@@ -554,7 +770,7 @@ const GroupsListScreen = () => {
         </ScrollView>
       </View>
       <Animated.FlatList
-        data={filteredGroups}
+        data={groupsData}
         keyExtractor={(item) => item.id}
         renderItem={renderGroupCard}
         contentContainerStyle={styles.listContent}

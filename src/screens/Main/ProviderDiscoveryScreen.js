@@ -33,8 +33,31 @@ import {
   ICON_COLOR_LIGHT 
 } from '../../constants/theme';
 import { getValidImageUrl, getOptimizedImageUrl } from '../../utils/imageHelper';
+import { InteractionManager } from 'react-native';
+import ImagePreloadService from '../../services/ImagePreloadService';
 
 const { width, height } = Dimensions.get('window');
+
+// Performance tracking
+const performanceTracker = {
+  componentId: `PDS-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+  mountTime: null,
+  renders: 0,
+  categoryChanges: {},
+  fetchTimes: {},
+  imageTimes: {}
+};
+
+// Enhanced debug logger with timing
+const debugTiming = (action, details = {}) => {
+  const timestamp = Date.now();
+  const elapsed = performanceTracker.mountTime ? timestamp - performanceTracker.mountTime : 0;
+  console.log(`[PROVIDER-TIMING][${performanceTracker.componentId}][${elapsed}ms] ${action}`, {
+    timestamp,
+    elapsed,
+    ...details
+  });
+};
 
 // Constants
 const CATEGORIES = ['Therapy', 'Housing', 'Support', 'Transport', 'Tech', 'Personal', 'Social'];
@@ -55,6 +78,32 @@ const debug = (...args) => {
  * Provider Discovery Screen - Main screen for exploring services and housing
  */
 const ProviderDiscoveryScreen = ({ route }) => {  
+  // Track component mount
+  useEffect(() => {
+    performanceTracker.mountTime = Date.now();
+    performanceTracker.renders = 0;
+    debugTiming('COMPONENT_MOUNTED', { 
+      route: route?.params,
+      componentId: performanceTracker.componentId 
+    });
+    
+    return () => {
+      debugTiming('COMPONENT_UNMOUNTING', { 
+        totalRenders: performanceTracker.renders,
+        lifetimeMs: Date.now() - performanceTracker.mountTime,
+        categoryChanges: performanceTracker.categoryChanges
+      });
+    };
+  }, []);
+
+  // Track renders
+  performanceTracker.renders++;
+  debugTiming('RENDER', { 
+    renderNumber: performanceTracker.renders,
+    hasRoute: !!route,
+    routeParams: route?.params 
+  });
+
   // Extract route params
   const initialParams = route?.params || {};
   const navigation = useNavigation();
@@ -66,18 +115,33 @@ const ProviderDiscoveryScreen = ({ route }) => {
   const listViewRef = useRef(null);
   // Cache previously fetched items by category to avoid refetching and remounting
   const cacheRef = useRef({});
+  const favoritesCacheRef = useRef({}); // cache favorites per category for instant display
+  
+  // Add fetch in progress flag to prevent duplicate fetches
+  const fetchInProgressRef = useRef(false);
+  const lastFetchCategoryRef = useRef(null);
+  
+  // State variables - loading, pagination
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  
+  // Search state
+  const [searchTerm, setSearchTerm] = useState('');
   
   // Handle initial category from params
   useEffect(() => {
     if (initialParams.initialCategory && CATEGORIES.includes(initialParams.initialCategory)) {
+      debugTiming('INITIAL_CATEGORY_FROM_PARAMS', { 
+        category: initialParams.initialCategory,
+        previousCategory: selectedCategory 
+      });
       setSelectedCategory(initialParams.initialCategory);
     }
   }, [initialParams.initialCategory]);
   
-  const [viewMode, setViewMode] = useState(VIEW_MODES[0]);
+  const [viewMode, setViewMode] = useState(VIEW_MODES[0]); // Default to 'Grid'
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
   const [userFavorites, setUserFavorites] = useState(new Set());
   // Keep a ref in sync so callbacks always have latest value
   const userFavoritesRef = useRef(new Set());
@@ -85,8 +149,6 @@ const ProviderDiscoveryScreen = ({ route }) => {
     userFavoritesRef.current = userFavorites;
   }, [userFavorites]);
   const [refreshing, setRefreshing] = useState(false);
-  const [page, setPage] = useState(0);
-  const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   
   // Sort related state
@@ -97,6 +159,7 @@ const ProviderDiscoveryScreen = ({ route }) => {
   
   // Refs
   const isMounted = useRef(true);
+  const fetchCounterRef = useRef(0); // Tracks latest fetch to ignore stale responses
 
   useEffect(() => {
     isMounted.current = true;
@@ -107,24 +170,45 @@ const ProviderDiscoveryScreen = ({ route }) => {
   
   // Replace old category-change effect with cached version
   useEffect(() => {
-    if (!isMounted.current) return;
+    const categoryChangeStart = Date.now();
+    debugTiming('CATEGORY_CHANGE_START', { 
+      category: selectedCategory,
+      hasCachedData: !!cacheRef.current[selectedCategory],
+      hasCachedFavorites: !!favoritesCacheRef.current[selectedCategory]
+    });
 
-    let refreshTimer;
+    if (!isMounted.current) return;
 
     // Show cached data instantly
     if (cacheRef.current[selectedCategory]) {
       setItems(cacheRef.current[selectedCategory]);
+      // Instant favorite state from cache if available
+      const cachedFavs = favoritesCacheRef.current[selectedCategory];
+      setUserFavorites(cachedFavs ? new Set(cachedFavs) : new Set());
       setLoading(false);
 
-      // Silent background refresh to sync latest data
-      refreshTimer = setTimeout(() => {
+      debugTiming('CACHED_DATA_APPLIED', { 
+        category: selectedCategory,
+        itemCount: cacheRef.current[selectedCategory].length,
+        favoriteCount: cachedFavs ? cachedFavs.size : 0,
+        timeMs: Date.now() - categoryChangeStart
+      });
+
+      // Remove the 800ms delay - fetch immediately in background
+      // But don't fetch if we're already fetching this category
+      if (!fetchInProgressRef.current || lastFetchCategoryRef.current !== selectedCategory) {
         fetchData(false, 0, false);
-      }, 800);
+      }
     } else {
-      // No cache – fetch immediately
-      setItems([]);
-      fetchData(false, 0, false);
+      debugTiming('NO_CACHE_FETCHING', { category: selectedCategory });
+      // No cache – fetch immediately without clearing current items to avoid flicker
+      if (!fetchInProgressRef.current || lastFetchCategoryRef.current !== selectedCategory) {
+        fetchData(false, 0, false);
+      }
     }
+
+    // Preload adjacent categories for instant switching
+    ImagePreloadService.preloadAdjacentCategories(selectedCategory);
 
     // Reset swipe state when switching category
     if (viewMode === 'Swipe') {
@@ -140,8 +224,14 @@ const ProviderDiscoveryScreen = ({ route }) => {
     setPage(0);
     setHasMore(true);
 
+    // Track category change
+    performanceTracker.categoryChanges[selectedCategory] = {
+      timestamp: Date.now(),
+      timeToShow: Date.now() - categoryChangeStart
+    };
+
     return () => {
-      if (refreshTimer) clearTimeout(refreshTimer);
+      // No cleanup needed
     };
   }, [selectedCategory, fetchData, viewMode]);
   
@@ -197,13 +287,45 @@ const ProviderDiscoveryScreen = ({ route }) => {
 
   // Main data fetching logic as a useCallback
   const fetchData = useCallback(async (isRefreshing = false, targetPage = 0, append = false) => {
+    // Prevent duplicate fetches
+    if (fetchInProgressRef.current && lastFetchCategoryRef.current === selectedCategory && !append) {
+      debugTiming('FETCH_PREVENTED_DUPLICATE', { 
+        category: selectedCategory,
+        isRefreshing,
+        targetPage
+      });
+      return;
+    }
+    
+    const fetchStart = Date.now();
+    const fetchId = ++fetchCounterRef.current; // Increment fetch counter
+    
     if (!isMounted.current) return;
-    console.log('[ProviderDiscovery] fetchData called. Category:', selectedCategory, 'Search:', searchTerm, 'Refreshing:', isRefreshing);
+    const categoryAtStart = selectedCategory;  // Snapshot category
+    
+    fetchInProgressRef.current = true;
+    lastFetchCategoryRef.current = selectedCategory;
+    
+    debugTiming('FETCH_DATA_START', { 
+      category: selectedCategory,
+      search: searchTerm,
+      refreshing: isRefreshing,
+      page: targetPage,
+      append,
+      fetchId
+    });
 
     try {
       const hasCache = cacheRef.current[selectedCategory]?.length > 0;
-      if (!hasCache || isRefreshing) setLoading(true);
       
+      // Set loading state appropriately
+      if (!hasCache && !append) {
+        setLoading(true);
+      }
+      if (isRefreshing) {
+        setRefreshing(true);
+      }
+
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       if (authError || !user) {
         console.error('[ProviderDiscovery] Auth error or no user:', authError);
@@ -246,7 +368,25 @@ const ProviderDiscoveryScreen = ({ route }) => {
       
       const { data, error } = await query;
       
+      const fetchTime = Date.now() - fetchStart;
+      performanceTracker.fetchTimes[`${selectedCategory}-${targetPage}`] = fetchTime;
+      
+      debugTiming('FETCH_DATA_COMPLETE', { 
+        category: selectedCategory,
+        itemCount: data?.length || 0,
+        fetchTimeMs: fetchTime,
+        error: !!error,
+        fetchId,
+        isStale: fetchId !== fetchCounterRef.current || categoryAtStart !== selectedCategory
+      });
+      
       if (!isMounted.current) return;
+      
+      // Ignore if a newer fetch started or category has changed
+      if (fetchId !== fetchCounterRef.current || categoryAtStart !== selectedCategory) {
+        debugTiming('STALE_FETCH_IGNORED', { fetchId, currentFetchId: fetchCounterRef.current });
+        return;
+      }
       
       if (error) {
         console.error('[ProviderDiscovery] Fetch error:', error);
@@ -280,10 +420,16 @@ const ProviderDiscoveryScreen = ({ route }) => {
             console.error('[ProviderDiscovery] Error fetching user favorites:', favoritesError);
           } else if (favoritesData && isMounted.current) {
             const favoritedIds = new Set(favoritesData.map(fav => fav.item_id));
-            console.log('[ProviderDiscovery] User favorited IDs:', favoritedIds);
+            debugTiming('FAVORITES_FETCHED', { 
+              category: selectedCategory,
+              favoriteCount: favoritedIds.size,
+              totalTimeMs: Date.now() - fetchStart
+            });
             setUserFavorites(prev => {
               // Merge with previous favorites for incremental pages
               const newSet = append ? new Set([...prev, ...favoritedIds]) : favoritedIds;
+              // Update cache for instant reuse next time
+              favoritesCacheRef.current[selectedCategory] = Array.from(newSet);
               return newSet;
             });
           }
@@ -301,6 +447,7 @@ const ProviderDiscoveryScreen = ({ route }) => {
         if (!isRefreshing) setLoading(false);
         if (isRefreshing) setRefreshing(false);
       }
+      fetchInProgressRef.current = false;
     }
   }, [selectedCategory, searchTerm, sortConfig, viewMode]);
 
@@ -339,6 +486,8 @@ const ProviderDiscoveryScreen = ({ route }) => {
     setUserFavorites(prev => {
       const next = new Set(prev);
       isCurrentlyFavorited ? next.delete(itemId) : next.add(itemId);
+      // update favorites cache instantly so other screens use latest state
+      favoritesCacheRef.current[selectedCategory] = Array.from(next);
       return next;
     });
 
@@ -474,31 +623,31 @@ const ProviderDiscoveryScreen = ({ route }) => {
     fetchData(false, nextPage, true).finally(() => setLoadingMore(false));
   };
 
-  // Reset scroll position when tab is focused and refresh favorites data
+  // Focus effect: Refresh on screen focus only if no cached data
   useFocusEffect(
     useCallback(() => {
       console.log('[ProviderDiscovery] Screen focused');
       
-      // Reset scroll position if in list view
-      if (listViewRef.current) {
-        listViewRef.current.scrollToOffset({ offset: 0, animated: false });
+      // Only fetch if we don't have cached data for current category
+      if (!cacheRef.current[selectedCategory]) {
+        fetchData(false, 0, false);
       }
       
-      // Force a fetchData call to ensure we have the most recent data & favorites
-      // This helps ensure consistency across the app
-      fetchData(true, 0, false);
-      
       return () => {
-        // Code to run when screen loses focus (optional)
         console.log('[ProviderDiscovery] Screen unfocused');
       };
-    }, [fetchData, selectedCategory, viewMode])
+    }, [selectedCategory])
   );
 
   // Render main content 
   const renderContent = () => {
     // Development-only render tracing
-    debug(`[ProviderDiscovery] Render ${viewMode}. items=${items.length}, filtered=${filteredItems.length}, swiped=${swipedItemIds.size}`);
+    debugTiming('RENDER_CONTENT', { 
+      viewMode,
+      items: items.length,
+      filteredItems: filteredItems.length,
+      swipedItems: swipedItemIds.size
+    });
     
     // Loading state
     if (loading && items.length === 0) {
@@ -518,7 +667,7 @@ const ProviderDiscoveryScreen = ({ route }) => {
       
       return (
         <FlatList
-          key="grid"
+          key="grid-view"
           listKey="grid-view"
           data={items}
           renderItem={({ item }) => (
@@ -531,7 +680,7 @@ const ProviderDiscoveryScreen = ({ route }) => {
               onToggleFavorite={() => toggleFavorite(item, isHousing ? 'housing_listing' : 'service_provider')}
             />
           )}
-          keyExtractor={item => String(item.id)}
+          keyExtractor={item => `${isHousing ? 'housing' : 'service'}-${item.id}`}
           numColumns={2}
           contentContainerStyle={styles.gridContainer}
           showsVerticalScrollIndicator={false}
@@ -562,7 +711,7 @@ const ProviderDiscoveryScreen = ({ route }) => {
       
       return (
         <FlatList
-          key="list"
+          key="list-view"
           listKey="list-view"
           data={items}
           renderItem={({ item }) => (
@@ -577,7 +726,7 @@ const ProviderDiscoveryScreen = ({ route }) => {
               />
             </View>
           )}
-          keyExtractor={(item, index) => `${item.id}-${index}`}
+          keyExtractor={(item, index) => `${isHousing ? 'housing' : 'service'}-${item.id}-${index}`}
           contentContainerStyle={styles.listContainer} 
           showsVerticalScrollIndicator={false}
           initialNumToRender={10}

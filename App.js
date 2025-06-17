@@ -1,8 +1,6 @@
 import 'react-native-gesture-handler'; // THIS MUST BE THE FIRST IMPORT
 import './src/navigation/NavigationFix'; // Import this early to fix useRef in navigation
-import 'react-native-gesture-handler'; // THIS MUST BE THE FIRST IMPORT
-import './src/navigation/NavigationFix';
-import React from 'react';
+import React, { useEffect } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { UserProvider } from './src/context/UserContext';
 import AppNavigator from './src/navigation/AppNavigator';
@@ -10,6 +8,7 @@ import { useAutoLogin } from './src/hooks/useAutoLogin';
 import GlobalHooksProvider from './src/hooks/GlobalHooksProvider';
 import { ScrollProvider, useScrollContext } from './src/context/ScrollContext';
 import ChatButton from './src/components/chat/ChatButton';
+import ImagePreloadService from './src/services/ImagePreloadService';
 
 function AppContent() {
   useAutoLogin();
@@ -28,6 +27,11 @@ function ChatOverlay() {
 }
 
 export default function App() {
+  useEffect(() => {
+    // Initialize image preloading service on app startup
+    ImagePreloadService.initializePreloading();
+  }, []);
+
   return (
     <SafeAreaProvider>
       <GlobalHooksProvider>
@@ -41,6 +45,3 @@ export default function App() {
     </SafeAreaProvider>
   );
 }
-
-// Helper for screens: useReportScroll
-export { useScrollContext } from './src/context/ScrollContext';

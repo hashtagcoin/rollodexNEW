@@ -1,5 +1,7 @@
-  import React, { useState, useEffect } from 'react';
-import { View, Text, Image, StyleSheet, TouchableOpacity, Share, Alert, ActivityIndicator } from 'react-native';
+  import React, { useState, useEffect, useMemo } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Share, Alert, ActivityIndicator } from 'react-native';
+import { Image } from 'expo-image';
+import { getValidImageUrl, getOptimizedImageUrl } from '../../utils/imageHelper';
 import { format } from 'date-fns';
 import { COLORS, FONTS, SIZES } from '../../constants/theme';
 import Feather from 'react-native-vector-icons/Feather';
@@ -15,6 +17,7 @@ import { CardStyles } from '../../constants/CardStyles'; // Import shared card s
 const EventCard = ({ event, onPress, listView = true, testID, onFavoriteUpdate }) => {
   const [isFavorited, setIsFavorited] = useState(false);
   const [isJoined, setIsJoined] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
   const { user } = useUser();
   
   useEffect(() => {
@@ -137,22 +140,33 @@ const EventCard = ({ event, onPress, listView = true, testID, onFavoriteUpdate }
     }
   };
 
-  // Conditionally render card based on list or grid view
+  // Prepare image URLs (thumb via helper)
+  const rawImage = event.image_url || null;
+  const validUrl = getValidImageUrl(rawImage, 'eventimages');
+  const thumbUrl = validUrl ? getOptimizedImageUrl(validUrl, listView ? 400 : 400, 70) : null;
+  const imageSource = useMemo(() => (
+    thumbUrl ? { uri: thumbUrl } : { uri: 'https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/eventimages/default-event.png' }
+  ), [thumbUrl]);
+
+  // Conditionally render card based on view mode
   if (listView) {
     return (
       <TouchableOpacity 
-        activeOpacity={0.8} 
-        onPress={onPress}
+        style={CardStyles.listCardContainer}
+        onPress={onPress ? () => onPress(event) : undefined}
+        activeOpacity={0.8}
         testID={testID}
-        style={styles.cardContainer}
       >
-        <View style={styles.listCard}>
-          {/* Event image with status indicators */}
-          <View style={styles.imageContainerList}>
-            <Image 
-              source={event.image_url ? { uri: event.image_url } : require('../../assets/images/placeholder.png')} 
-              style={styles.imageList} 
-              resizeMode="cover"
+        <View style={CardStyles.listCardInner}>
+          <View style={CardStyles.listImageContainer}>
+            {!imageLoaded && <View style={CardStyles.loaderContainer} />}
+            <Image
+              source={imageSource}
+              style={CardStyles.listImage}
+              contentFit="cover"
+              cachePolicy="immutable"
+              onLoad={() => setImageLoaded(true)}
+              onError={() => setImageLoaded(true)}
             />
             
             {/* Joined indicator */}
@@ -172,12 +186,12 @@ const EventCard = ({ event, onPress, listView = true, testID, onFavoriteUpdate }
               testID={`favorite-button-${event.id}`}
             >
               <View style={isFavorited ? CardStyles.iconCircleActive : CardStyles.iconCircle}>
-  <Ionicons 
-    name={isFavorited ? "heart" : "heart-outline"} 
-    size={16} 
-    style={isFavorited ? CardStyles.favoriteIconActive : CardStyles.favoriteIcon} 
-  />
-</View>
+                <Ionicons 
+                  name={isFavorited ? "heart" : "heart-outline"} 
+                  size={16} 
+                  style={isFavorited ? CardStyles.favoriteIconActive : CardStyles.favoriteIcon} 
+                />
+              </View>
             </TouchableOpacity>
             
             <TouchableOpacity 
@@ -192,19 +206,19 @@ const EventCard = ({ event, onPress, listView = true, testID, onFavoriteUpdate }
           {/* Event details */}
           <View style={styles.contentList}>
             <View style={styles.categoryContainer}>
-              <Feather name={getCategoryIcon(event.category)} size={14} color={COLORS.primary} />
+              <Feather name={getCategoryIcon(event.category)} size={14} color={COLORS.black} />
               <Text style={styles.category}>{event.category || 'Event'}</Text>
             </View>
             
-            <Text style={styles.title} numberOfLines={2}>{event.title}</Text>
+            <Text style={[styles.title, {fontWeight: 'bold'}]} numberOfLines={2}>{event.title}</Text>
             
             <View style={styles.dateContainer}>
-              <Feather name="clock" size={14} color={COLORS.darkGray} />
+              <Feather name="clock" size={14} color={COLORS.black} />
               <Text style={styles.date}>{formatEventDate(event.start_time)}</Text>
             </View>
             
             <View style={styles.locationContainer}>
-              <Feather name="map-pin" size={14} color={COLORS.darkGray} />
+              <Feather name="map-pin" size={14} color={COLORS.black} />
               <Text style={styles.location} numberOfLines={1}>
                 {event.location?.address || 'Location TBD'}
               </Text>
@@ -212,7 +226,7 @@ const EventCard = ({ event, onPress, listView = true, testID, onFavoriteUpdate }
             
             {/* Participants info */}
             <View style={styles.participantsContainer}>
-              <Feather name="users" size={14} color={COLORS.darkGray} />
+              <Feather name="users" size={14} color={COLORS.black} />
               <Text style={styles.participants}>
                 {event.participant_count || 0} joined
                 {event.max_participants ? ` · ${event.max_participants} max` : ''}
@@ -225,137 +239,57 @@ const EventCard = ({ event, onPress, listView = true, testID, onFavoriteUpdate }
   } else {
     // Grid view card
     return (
-      <TouchableOpacity 
-        activeOpacity={0.8} 
-        onPress={onPress} 
-        style={styles.gridCardContainer}
-        testID={testID}
-      >
-        <View style={styles.gridCard}>
-          <Image 
-            source={event.image_url ? { uri: event.image_url } : require('../../assets/images/placeholder.png')} 
-            style={styles.imageGrid} 
-            resizeMode="cover"
-          />
-          
-          {/* Joined indicator */}
-          {isJoined && (
-            <View style={styles.joinedBadge}>
-              <Feather name="check-circle" size={12} color={COLORS.white} />
-              <Text style={styles.joinedText}>Joined</Text>
-            </View>
-          )}
-          
-          {/* Action buttons row */}
-          <View style={styles.actionRow}>
-            <TouchableOpacity 
-              style={styles.actionButton} 
-              onPress={toggleFavorite}
-              testID={`favorite-button-${event.id}`}
-            >
-              <View style={isFavorited ? CardStyles.iconCircleActive : CardStyles.iconCircle}>
-  <Ionicons 
-    name={isFavorited ? "heart" : "heart-outline"} 
-    size={16} 
-    style={isFavorited ? CardStyles.favoriteIconActive : CardStyles.favoriteIcon} 
-  />
-</View>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.actionButton} 
-              onPress={handleShare}
-              testID={`share-button-${event.id}`}
-            >
-              <Feather name="share-2" size={18} color={COLORS.darkGray} />
-            </TouchableOpacity>
-          </View>
-          
-          {/* Event details */}
-          <View style={styles.contentGrid}>
-            <View style={styles.categoryContainer}>
-              <Feather name={getCategoryIcon(event.category)} size={14} color={COLORS.primary} />
-              <Text style={styles.category}>{event.category || 'Event'}</Text>
+      <View style={CardStyles.gridCardWrapper}>
+        <TouchableOpacity
+          style={CardStyles.gridCardContainer}
+          onPress={onPress ? () => onPress(event) : undefined}
+          activeOpacity={0.8}
+          testID={testID}
+        >
+          <View style={CardStyles.gridCardInner}>
+            <View style={CardStyles.gridImageContainer}>
+              {!imageLoaded && <View style={CardStyles.loaderContainer} />}
+              <Image
+                source={imageSource}
+                style={CardStyles.gridImage}
+                contentFit="cover"
+                cachePolicy="immutable"
+                onLoad={() => setImageLoaded(true)}
+                onError={() => setImageLoaded(true)}
+              />
+              
+              {/* Joined indicator */}
+              {isJoined && (
+                <View style={styles.joinedBadge}>
+                  <Feather name="check-circle" size={12} color={COLORS.white} />
+                  <Text style={styles.joinedText}>Joined</Text>
+                </View>
+              )}
             </View>
             
-            <Text style={styles.title} numberOfLines={2}>{event.title}</Text>
-            
-            <View style={styles.dateContainer}>
-              <Feather name="clock" size={14} color={COLORS.darkGray} />
-              <Text style={styles.date}>{formatEventDate(event.start_time)}</Text>
-            </View>
-            
-            <View style={styles.locationContainer}>
-              <Feather name="map-pin" size={14} color={COLORS.darkGray} />
-              <Text style={styles.location} numberOfLines={1}>
-                {event.location?.address || 'Location TBD'}
-              </Text>
+            <View style={{padding: 8, paddingBottom: 32}}>
+              <View style={styles.categoryContainer}>
+                <Feather name={getCategoryIcon(event.category)} size={14} color={COLORS.black} />
+                <Text style={styles.category}>{event.category || 'Event'}</Text>
+              </View>
+              <Text style={[CardStyles.title, {marginBottom:4}]} numberOfLines={2}>{event.title}</Text>
+              <View style={styles.dateContainer}>
+                <Feather name="clock" size={13} color={COLORS.black} />
+                <Text style={styles.date}>{formatEventDate(event.start_time)}</Text>
+              </View>
+              <View style={styles.locationContainer}>
+                <Feather name="map-pin" size={13} color={COLORS.black} />
+                <Text style={styles.location} numberOfLines={1}>{event.location?.address || 'Location TBD'}</Text>
+              </View>
             </View>
           </View>
-        </View>
-      </TouchableOpacity>
+        </TouchableOpacity>
+      </View>
     );
   }
 };
 
 const styles = StyleSheet.create({
-  // List View Styles
-  cardContainer: {
-    marginVertical: 8, 
-    marginHorizontal: 16,
-  },
-  listCard: {
-    flexDirection: 'row',
-    backgroundColor: COLORS.white,
-    borderRadius: 12,
-    overflow: 'hidden',
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    height: 150, // Fixed height for consistency
-  },
-  imageContainerList: {
-    width: 120,
-    position: 'relative',
-  },
-  imageList: {
-    width: 120,
-    height: '100%',
-  },
-  contentList: {
-    flex: 1,
-    padding: 12,
-    justifyContent: 'space-between',
-  },
-  
-  // Grid View Styles
-  gridCardContainer: {
-    margin: 8,
-    width: '45%', // slightly less than half to account for margins
-  },
-  gridCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: 12,
-    overflow: 'hidden',
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    height: 240, // Taller for better proportions
-  },
-  imageGrid: {
-    width: '100%',
-    height: 140,
-  },
-  contentGrid: {
-    padding: 12,
-    height: 100,
-    justifyContent: 'space-between',
-  },
-  
   // Common Styles
   categoryContainer: {
     flexDirection: 'row',
@@ -375,7 +309,7 @@ const styles = StyleSheet.create({
   },
   date: {
     fontSize: 12,
-    color: COLORS.darkGray,
+    color: COLORS.black,
     marginLeft: 6,
     fontFamily: FONTS.regular,
   },
@@ -386,7 +320,7 @@ const styles = StyleSheet.create({
   },
   location: {
     fontSize: 12,
-    color: COLORS.darkGray,
+    color: COLORS.black,
     marginLeft: 6,
     fontFamily: FONTS.regular,
   },
@@ -396,13 +330,13 @@ const styles = StyleSheet.create({
   },
   participants: {
     fontSize: 12,
-    color: COLORS.darkGray,
+    color: COLORS.black,
     marginLeft: 6,
     fontFamily: FONTS.regular,
   },
   category: {
     fontSize: 14,
-    color: COLORS.primary,
+    color: COLORS.black,
     marginLeft: 4,
     fontFamily: FONTS.medium,
   },
@@ -435,6 +369,11 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontFamily: FONTS.medium,
     marginLeft: 4,
+  },
+  contentList: {
+    flex: 1,
+    padding: 12,
+    justifyContent: 'space-between',
   },
 });
 

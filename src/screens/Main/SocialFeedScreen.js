@@ -10,7 +10,8 @@ import {
   Modal,
   Pressable,
   SafeAreaView,
-  Dimensions
+  Dimensions,
+  InteractionManager
 } from 'react-native';
 import { Image } from 'expo-image';
 import { getOptimizedImageUrl } from '../../utils/imageHelper';
@@ -24,6 +25,25 @@ import { COLORS } from '../../constants/theme';
 import PostCardFixed from '../../components/social/PostCardFixed';
 
 const { width, height } = Dimensions.get('window');
+
+// Performance tracking for diagnostics
+const performanceTracker = {
+  componentId: `SFS-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+  mountTime: null,
+  renders: 0,
+  fetchTimes: {},
+  focusEvents: 0
+};
+
+const debugTiming = (action, details = {}) => {
+  const timestamp = Date.now();
+  const elapsed = performanceTracker.mountTime ? timestamp - performanceTracker.mountTime : 0;
+  console.log(`[SOCIALFEED-TIMING][${performanceTracker.componentId}][${elapsed}ms] ${action}`, {
+    timestamp,
+    elapsed,
+    ...details
+  });
+};
 
 // Mock data for housing groups - kept for the housing modal
 const dummyHousingGroups = [
@@ -58,17 +78,85 @@ const SocialFeedScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [housingModalVisible, setHousingModalVisible] = useState(false);
   const [showCreatePostModal, setShowCreatePostModal] = useState(false);
+  
+  // Performance optimization refs
+  const fetchInProgressRef = useRef(false);
+  const cacheRef = useRef(null); // Cache for posts
+  const fetchCounterRef = useRef(0); // Track fetch order
+  const isMounted = useRef(true);
+  
+  // Track component lifecycle
+  useEffect(() => {
+    performanceTracker.mountTime = Date.now();
+    debugTiming('COMPONENT_MOUNTED', {
+      componentId: performanceTracker.componentId
+    });
+    
+    return () => {
+      isMounted.current = false;
+      debugTiming('COMPONENT_UNMOUNTING', {
+        totalFocusEvents: performanceTracker.focusEvents,
+        totalRenders: performanceTracker.renders
+      });
+    };
+  }, []);
+  
+  // Track renders
+  performanceTracker.renders++;
+  debugTiming('RENDER', {
+    renderCount: performanceTracker.renders,
+    postCount: posts.length,
+    loading,
+    hasCachedData: !!cacheRef.current
+  });
 
-  // Reset scroll position when tab is focused
+  // Reset scroll position when tab is focused with smart data fetching
   useFocusEffect(
     useCallback(() => {
+      performanceTracker.focusEvents++;
+      debugTiming('SCREEN_FOCUSED', {
+        focusCount: performanceTracker.focusEvents,
+        hasCachedData: !!cacheRef.current
+      });
+      
       // Focus effect: scrolling to top
       if (flatListRef.current) {
         flatListRef.current.scrollToOffset({ offset: 0, animated: false });
       }
       
-      // Refresh data
-      fetchPosts();
+      // Only fetch if we don't have cached data
+      if (!cacheRef.current) {
+        debugTiming('NO_CACHE_ON_FOCUS_FETCHING');
+        const interaction = InteractionManager.runAfterInteractions(() => {
+          fetchPosts();
+        });
+        return () => {
+          interaction.cancel();
+          debugTiming('SCREEN_UNFOCUSED');
+        };
+      } else {
+        // Use cached data instantly
+        debugTiming('USING_CACHED_DATA_ON_FOCUS', {
+          cachedPostCount: cacheRef.current.length
+        });
+        setPosts(cacheRef.current);
+        setLoading(false);
+        
+        // Optional: Background refresh after delay to get latest posts
+        const interaction = InteractionManager.runAfterInteractions(() => {
+          const timer = setTimeout(() => {
+            if (isMounted.current) {
+              fetchPosts(false, true); // Silent background refresh
+            }
+          }, 1000);
+          return () => clearTimeout(timer);
+        });
+        
+        return () => {
+          interaction.cancel();
+          debugTiming('SCREEN_UNFOCUSED');
+        };
+      }
     }, [])
   );
 
@@ -78,9 +166,37 @@ const SocialFeedScreen = () => {
   };
 
   // Fetch all posts for the social feed
-  const fetchPosts = async () => {
+  const fetchPosts = async (isRefreshing = false, isBackgroundRefresh = false) => {
+    // Prevent duplicate fetches
+    if (fetchInProgressRef.current && !isRefreshing) {
+      debugTiming('FETCH_PREVENTED_DUPLICATE', {
+        isRefreshing,
+        isBackgroundRefresh
+      });
+      return;
+    }
+    
+    const fetchStart = Date.now();
+    const fetchId = ++fetchCounterRef.current;
+    
+    if (!isMounted.current) return;
+    
+    fetchInProgressRef.current = true;
+    
+    debugTiming('FETCH_POSTS_START', {
+      isRefreshing,
+      isBackgroundRefresh,
+      fetchId
+    });
+    
     try {
-      setLoading(true);
+      // Only show loading on initial load or pull-to-refresh
+      if (!cacheRef.current && !isBackgroundRefresh) {
+        setLoading(true);
+      }
+      if (isRefreshing) {
+        setRefreshing(true);
+      }
       
       // Get all posts, sorted by most recent first
       const { data, error } = await supabase
@@ -94,40 +210,81 @@ const SocialFeedScreen = () => {
         `)
         .order('created_at', { ascending: false });
       
+      const fetchTime = Date.now() - fetchStart;
+      performanceTracker.fetchTimes[fetchId] = fetchTime;
+      
+      debugTiming('FETCH_POSTS_COMPLETE', {
+        postCount: data?.length || 0,
+        fetchTimeMs: fetchTime,
+        error: !!error,
+        fetchId,
+        isStale: fetchId !== fetchCounterRef.current
+      });
+      
+      if (!isMounted.current) return;
+      
+      // Ignore if a newer fetch started
+      if (fetchId !== fetchCounterRef.current) {
+        debugTiming('STALE_FETCH_IGNORED', { fetchId, currentFetchId: fetchCounterRef.current });
+        return;
+      }
+      
       if (error) throw error;
       
-      setPosts(data || []);
+      const newPosts = data || [];
+      setPosts(newPosts);
+      
+      // Update cache
+      cacheRef.current = newPosts;
+      debugTiming('CACHE_UPDATED', {
+        postCount: newPosts.length
+      });
+      
     } catch (error) {
-      // Error fetching posts
+      console.error('[SocialFeed] Error fetching posts:', error);
+      debugTiming('FETCH_ERROR', {
+        error: error.message
+      });
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (isMounted.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
+      fetchInProgressRef.current = false;
     }
   };
 
-  // Initial data fetch
-  useEffect(() => {
-    fetchPosts();
-  }, []);
+  // Note: fetchPosts is triggered in useFocusEffect after navigation interactions, avoiding duplicate calls here.
 
   // Prefetch first 12 thumbnails when posts change
   useEffect(() => {
     if (!posts || posts.length === 0) return;
+    
+    const prefetchStart = Date.now();
     const urls = posts.slice(0, 12)
       .map(p => (p.media_urls && p.media_urls.length > 0 ? getOptimizedImageUrl(p.media_urls[0], 400, 70) : null))
       .filter(Boolean);
+    
     urls.forEach(u => Image.prefetch(u));
+    
+    debugTiming('IMAGES_PREFETCHED', {
+      imageCount: urls.length,
+      timeMs: Date.now() - prefetchStart
+    });
   }, [posts]);
 
   // Refresh posts after creating a new one
   const handlePostCreated = async () => {
+    debugTiming('POST_CREATED_REFRESHING');
+    // Clear cache to force fresh fetch
+    cacheRef.current = null;
     fetchPosts();
   };
 
   // Handle refresh
   const handleRefresh = () => {
     setRefreshing(true);
-    fetchPosts();
+    fetchPosts(true);
   };
 
   // Render each post using the PostCardFixed component

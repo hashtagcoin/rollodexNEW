@@ -1,8 +1,9 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, TouchableOpacity, Image, ActivityIndicator } from 'react-native'; 
+import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native'; 
+import { Image } from 'expo-image';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { format } from 'date-fns';
-import { getValidImageUrl } from '../../utils/imageHelper';
+import { getValidImageUrl, getOptimizedImageUrl } from '../../utils/imageHelper';
 import { CardStyles } from '../../constants/CardStyles';
 import { COLORS, SIZES } from '../../constants/theme';
 
@@ -32,9 +33,12 @@ const HousingGroupCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', is
                        item.housing_listing_data.media_urls[0] : null;
   const rawImageUrl = listingImage || item.avatar_url || null;
   const imageUrl = getValidImageUrl(rawImageUrl, 'housingimages');
+  const thumbUrl = useMemo(() => (
+    imageUrl ? getOptimizedImageUrl(imageUrl, 400, 70) : null
+  ), [imageUrl]);
   const imageSource = useMemo(() => {
-    return imageUrl ? { uri: imageUrl } : { uri: 'https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/housingimages/default-housing.png' };
-  }, [imageUrl]);
+    return thumbUrl ? { uri: thumbUrl } : { uri: 'https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/housingimages/default-housing.png' };
+  }, [thumbUrl]);
 
   // Process housing group info tags
   const processInfoTags = () => {
@@ -75,9 +79,11 @@ const HousingGroupCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', is
             <Image 
               source={imageSource}
               style={CardStyles.listImage} 
+              contentFit="cover"
+              cachePolicy="immutable"
               onLoad={() => {
                 setImageLoaded(true);
-                if (typeof onImageLoaded === 'function' && imageUrl) onImageLoaded(imageUrl);
+                if (typeof onImageLoaded === 'function' && thumbUrl) onImageLoaded(thumbUrl);
               }}
               onError={(e) => console.log('Housing Group Card List Image Error:', e.nativeEvent.error)}
             />
@@ -148,9 +154,11 @@ const HousingGroupCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', is
               <Image 
                 source={imageSource}
                 style={CardStyles.gridImage} 
+                contentFit="cover"
+                cachePolicy="immutable"
                 onLoad={() => {
                   setImageLoaded(true);
-                  if (typeof onImageLoaded === 'function' && imageUrl) onImageLoaded(imageUrl);
+                  if (typeof onImageLoaded === 'function' && thumbUrl) onImageLoaded(thumbUrl);
                 }}
                 onError={(e) => console.log('Housing Group Card Image Error:', e.nativeEvent.error)}
               />

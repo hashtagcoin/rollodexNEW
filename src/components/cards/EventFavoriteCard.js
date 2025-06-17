@@ -1,10 +1,11 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { Image } from 'expo-image';
 import { format } from 'date-fns';
 import { Ionicons } from 'react-native-vector-icons';
 import { COLORS, FONTS, SIZES } from '../../constants/theme';
 import { CardStyles } from '../../constants/CardStyles';
-import { getValidImageUrl } from '../../utils/imageHelper';
+import { getValidImageUrl, getOptimizedImageUrl } from '../../utils/imageHelper';
 
 /**
  * Component for displaying favorited events in the Favorites screen
@@ -44,7 +45,8 @@ const EventFavoriteCard = ({
   const imageSource = useMemo(() => {
     const rawImageUrl = item.media_urls?.[0] || item.item_image_url;
     const imageUrl = getValidImageUrl(rawImageUrl, 'eventimages');
-    return imageUrl ? { uri: imageUrl } : require('../../assets/images/placeholder.png');
+    const thumbUrl = imageUrl ? getOptimizedImageUrl(imageUrl, 400, 70) : null;
+    return thumbUrl ? { uri: thumbUrl } : require('../../assets/images/placeholder.png');
   }, [item.media_urls, item.item_image_url]);
 
   // List View
@@ -66,6 +68,8 @@ const EventFavoriteCard = ({
             <Image 
               source={imageSource}
               style={CardStyles.listImage}
+              contentFit="cover"
+              cachePolicy="immutable"
               onLoad={() => setImageLoaded(true)}
               onError={() => console.log('Event Card Image Error')}
             />
@@ -147,6 +151,8 @@ const EventFavoriteCard = ({
             <Image 
               source={imageSource}
               style={CardStyles.gridImage}
+              contentFit="cover"
+              cachePolicy="immutable"
               onLoad={() => setImageLoaded(true)}
               onError={() => console.log('Event Card Image Error')}
             />

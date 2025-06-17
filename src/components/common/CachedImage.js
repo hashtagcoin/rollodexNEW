@@ -105,6 +105,7 @@ const CachedImage = ({
   indicatorColor = '#3A5E49',
   indicatorSize = 'small',
   skipImageDownload = false,
+  priority = 'normal', // Add priority prop
   ...props
 }) => {
   // Create a unique ID for this component instance for tracking
@@ -328,9 +329,32 @@ const CachedImage = ({
       }
     };
 
-    loadImage();
+    // Set cache policy based on priority
+    const cachePolicy = priority === 'high' ? 'disk' : 'immutable';
+    
+    imageCache.loadImage(processedUrl, { 
+      onError: handleError,
+      priority: cachePolicy
+    }).then(result => {
+      if (mountedRef.current) {
+        setImageSource(result);
+        setLoading(false);
+        hasLoaded.current[url] = true;
+        globalLoadedImages.add(url);
+        loadCompletedRef.current = true;
+      }
+    }).catch(e => {
+      console.error('Error loading image:', e);
+      if (mountedRef.current) {
+        setError(true);
+        logImage(componentId, 'IMAGE LOAD ERROR', {
+          uri: url,
+          error: e.message
+        });
+      }
+    });
 
-  }, [source, skipImageDownload, componentId]);  // Only depend on the URI, not the entire source object
+  }, [source, skipImageDownload, componentId, priority]);  // Only depend on the URI, not the entire source object
 
   const handleLoad = () => {
     if (!mountedRef.current) return; // Don't update state if component is unmounting

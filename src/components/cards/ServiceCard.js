@@ -116,7 +116,7 @@ const ServiceCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', isFavor
             <Text style={[CardStyles.subtitle, {marginVertical: 4}]} numberOfLines={2}>{description}</Text> 
             <View style={CardStyles.bottomSection}> 
               <View style={{flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 5}}> 
-                <Ionicons name="location-outline" size={16} color={COLORS.textSecondary} />
+                <Ionicons name="location-outline" size={16} color={COLORS.black} />
                 <Text style={[CardStyles.subtitle, {marginLeft: 4}]} numberOfLines={1}>{suburb}</Text> 
               </View>
               <Text style={CardStyles.price}>{price}<Text style={{fontSize: CardStyles.subtitle.fontSize, color: COLORS.textSecondary}}> /hr</Text></Text> 
@@ -187,7 +187,7 @@ const ServiceCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', isFavor
                 {renderModernRating()}
               </View>
               <View style={{flexDirection: 'row', alignItems: 'center'}}> 
-                <Ionicons name="location-outline" size={16} color={COLORS.textSecondary} />
+                <Ionicons name="location-outline" size={16} color={COLORS.black} />
                 <Text style={[CardStyles.subtitle, {marginLeft: 4}]} numberOfLines={1}>{suburb}</Text> 
               </View>
             </View>

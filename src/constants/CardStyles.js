@@ -48,6 +48,8 @@ export const CardStyles = {
     backgroundColor: COLORS.white,
     ...SHADOWS.medium,
     alignSelf: 'center',
+    borderWidth: 1,
+    borderColor: '#E6E6E6',
   },
   
   gridCardInner: {
@@ -79,6 +81,8 @@ export const CardStyles = {
     borderRadius: 8,
     ...SHADOWS.medium,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#E6E6E6',
   },
   
   listCardInner: {
@@ -134,14 +138,14 @@ export const CardStyles = {
   
   title: {
     fontSize: SIZES.h3,
-    fontWeight: '600',
-    color: COLORS.textPrimary,
+    fontWeight: 'bold',
+    color: COLORS.black,
     marginBottom: 2,
   },
   
   subtitle: {
     fontSize: SIZES.body4,
-    color: COLORS.textSecondary,
+    color: COLORS.black,
     marginBottom: 2,
   },
   
@@ -168,7 +172,7 @@ export const CardStyles = {
   labelText: {
     fontSize: SIZES.body5,
     fontWeight: '600',
-    color: LABEL_COLORS.text,
+    color: COLORS.black,
   },
   
   labelsRow: {
@@ -191,12 +195,12 @@ export const CardStyles = {
   ratingText: {
     fontSize: SIZES.body4,
     fontWeight: 'bold',
-    color: COLORS.darkGray,
+    color: COLORS.black,
     marginLeft: 4,
   },
   
   ratingStarIcon: {
-    color: '#FFD700',
+    color: COLORS.black,
   },
   
   // ===== ICON CONTAINERS =====

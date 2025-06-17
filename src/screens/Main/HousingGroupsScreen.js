@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo, useDeferredValue } from 'react';
 import { 
   View, 
   Text, 
@@ -11,6 +11,9 @@ import {
   Animated,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { Image as ExpoImage } from 'expo-image';
+import { getValidImageUrl, getOptimizedImageUrl } from '../../utils/imageHelper';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Create an animated version of FlatList
 const AnimatedFlatList = Animated.createAnimatedComponent(FlatList);
@@ -38,6 +41,8 @@ const HOUSING_FILTERS = [
   { key: 'lgbtplus', label: 'LGBT+' },
 ];
 
+const PAGE_SIZE = 15;
+
 const HousingGroupsScreen = ({ navigation }) => {
   const { reportScroll } = useScrollContext();
   // State management
@@ -49,6 +54,9 @@ const HousingGroupsScreen = ({ navigation }) => {
   const [userId, setUserId] = useState(null);
   const [activeFilters, setActiveFilters] = useState([]);
   const [userFavorites, setUserFavorites] = useState(new Set());
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [isFetchingMore, setIsFetchingMore] = useState(false);
 
   // Create refs for FlatList
   const flatListRef = useRef(null);
@@ -65,7 +73,7 @@ const HousingGroupsScreen = ({ navigation }) => {
   }, []);
 
   // Fetch housing groups data from Supabase - optimized version
-  const fetchHousingGroups = useCallback(async (isRefreshing = false) => {
+  const fetchHousingGroups = useCallback(async (pageNum = 0, isRefreshing = false) => {
     if (isRefreshing) {
       setRefreshing(true);
     } else if (!refreshing) {
@@ -79,27 +87,24 @@ const HousingGroupsScreen = ({ navigation }) => {
 
       // Single query to fetch housing groups with related listing data and membership status
       // This uses Supabase's nested selection to avoid multiple round trips
+      const start = pageNum * PAGE_SIZE;
+      const end = start + PAGE_SIZE - 1;
+
       const { data: groups, error: groupsError } = await supabase
         .from('housing_groups')
-        .select(`
-          *,
-          housing_listings:listing_id (*),
-          housing_group_members!group_id(status)
-        `)
+        .select(`*, housing_listings:listing_id (*), housing_group_members!group_id(status)`)
         .eq('is_active', true)
-        .eq('housing_group_members.user_id', user.id)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .range(start, end);
 
       if (groupsError) {
         // If the join query fails (possibly due to no member records), try basic query
         const { data: basicGroups, error: basicError } = await supabase
           .from('housing_groups')
-          .select(`
-            *,
-            housing_listings:listing_id (*)
-          `)
+          .select(`*, housing_listings:listing_id (*)`)
           .eq('is_active', true)
-          .order('created_at', { ascending: false });
+          .order('created_at', { ascending: false })
+          .range(start, end);
 
         if (basicError) throw basicError;
         
@@ -127,7 +132,20 @@ const HousingGroupsScreen = ({ navigation }) => {
           };
         });
         
-        setHousingGroups(processedGroups);
+        let updatedList;
+        if (pageNum === 0) {
+          updatedList = processedGroups;
+          setHousingGroups(updatedList);
+        } else {
+          setHousingGroups(prev => {
+            const existingIds = new Set(prev.map(g => g.id));
+            const merged = [...prev, ...processedGroups.filter(g => !existingIds.has(g.id))];
+            updatedList = merged;
+            return merged;
+          });
+        }
+        setHasMore(processedGroups.length === PAGE_SIZE);
+        setPage(pageNum);
       } else {
         // Process the joined results
         const processedGroups = groups.map(group => {
@@ -158,7 +176,20 @@ const HousingGroupsScreen = ({ navigation }) => {
           };
         });
         
-        setHousingGroups(processedGroups);
+        let updatedList;
+        if (pageNum === 0) {
+          updatedList = processedGroups;
+          setHousingGroups(updatedList);
+        } else {
+          setHousingGroups(prev => {
+            const existingIds = new Set(prev.map(g => g.id));
+            const merged = [...prev, ...processedGroups.filter(g => !existingIds.has(g.id))];
+            updatedList = merged;
+            return merged;
+          });
+        }
+        setHasMore(processedGroups.length === PAGE_SIZE);
+        setPage(pageNum);
       }
 
       // Optional: If we absolutely need application status and can't modify the UI,
@@ -201,20 +232,45 @@ const HousingGroupsScreen = ({ navigation }) => {
     } finally {
       setLoading(false);
       setRefreshing(false);
+      setIsFetchingMore(false);
+
+      // cache to AsyncStorage on initial page or after merge complete
+      try {
+        const toCache = pageNum === 0 ? updatedList : await AsyncStorage.getItem('cachedHousingGroups');
+        if (Array.isArray(updatedList)) {
+          await AsyncStorage.setItem('cachedHousingGroups', JSON.stringify(updatedList));
+        }
+      } catch (err) {}
     }
   }, [refreshing]);
 
   // Only fetch on focus, not on both mount and focus
   useFocusEffect(
     useCallback(() => {
-      fetchHousingGroups();
+      const loadCache = async () => {
+        try {
+          const cached = await AsyncStorage.getItem('cachedHousingGroups');
+          if (cached) setHousingGroups(JSON.parse(cached));
+        } catch (err) {}
+        fetchHousingGroups(0);
+      };
+      loadCache();
     }, [fetchHousingGroups])
   );
 
   // Handle pull-to-refresh
   const onRefresh = useCallback(() => {
-    fetchHousingGroups(true);
+    setHasMore(true);
+    setPage(0);
+    fetchHousingGroups(0, true);
   }, [fetchHousingGroups]);
+
+  const handleLoadMore = () => {
+    if (hasMore && !isFetchingMore && !loading) {
+      setIsFetchingMore(true);
+      fetchHousingGroups(page + 1);
+    }
+  };
 
   // Toggle a filter
   const toggleFilter = (key) => {
@@ -224,14 +280,15 @@ const HousingGroupsScreen = ({ navigation }) => {
   };
 
   // Filter groups based on search term and active filters - optimized with useMemo
+  const deferredSearch = useDeferredValue(searchTerm);
   const filteredGroups = useMemo(() => {
     // If 'all' is selected or no filters active, don't filter by features
     const shouldApplyFeatureFilters = activeFilters.length > 0 && !activeFilters.includes('all');
     
     return housingGroups.filter(group => {
       // First, apply search term filter
-      if (searchTerm) {
-        const lowerSearchTerm = searchTerm.toLowerCase();
+      if (deferredSearch) {
+        const lowerSearchTerm = deferredSearch.toLowerCase();
         const matchesSearch = 
           group.name?.toLowerCase().includes(lowerSearchTerm) ||
           (group.description && group.description.toLowerCase().includes(lowerSearchTerm)) ||
@@ -270,7 +327,7 @@ const HousingGroupsScreen = ({ navigation }) => {
       // If no filters or 'all' filter is active, include the group
       return true;
     });
-  }, [housingGroups, searchTerm, activeFilters]); // Only recalculate when these dependencies change
+  }, [housingGroups, deferredSearch, activeFilters]);
 
   // Toggle Favorite Function
   const toggleFavorite = useCallback(async (itemId, itemType) => {
@@ -369,6 +426,19 @@ const HousingGroupsScreen = ({ navigation }) => {
       };
     }, [refreshUserFavorites])
   );
+
+  // Prefetch first batch of thumbnails when housingGroups changes
+  useEffect(() => {
+    if (housingGroups.length === 0) return;
+    const prefetchCount = viewMode === 'Grid' ? 9 : 4;
+    const urls = housingGroups.slice(0, prefetchCount).map(group => {
+      const listingImage = group.housing_listing_data?.media_urls?.[0] || group.avatar_url || null;
+      const validUrl = getValidImageUrl(listingImage, 'housingimages');
+      return validUrl ? getOptimizedImageUrl(validUrl, 256, 60) : null;
+    }).filter(Boolean);
+
+    urls.forEach(url => ExpoImage.prefetch(url));
+  }, [housingGroups, viewMode]);
 
   // Handle creating a new housing group
   const handleCreateGroup = () => {
@@ -567,6 +637,9 @@ const HousingGroupsScreen = ({ navigation }) => {
             columnWrapperStyle={{justifyContent: 'space-between'}}
             contentContainerStyle={{paddingHorizontal: 10, paddingBottom: 20}}
             showsVerticalScrollIndicator={false}
+            initialNumToRender={4}
+            maxToRenderPerBatch={6}
+            windowSize={7}
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}
@@ -576,6 +649,8 @@ const HousingGroupsScreen = ({ navigation }) => {
             }
             onScroll={reportScroll}
             scrollEventThrottle={16}
+            onEndReached={handleLoadMore}
+            onEndReachedThreshold={0.4}
           />
         ) : (
           <FlatList
@@ -586,6 +661,9 @@ const HousingGroupsScreen = ({ navigation }) => {
             contentContainerStyle={{paddingHorizontal: 10, paddingBottom: 20}}
             showsVerticalScrollIndicator={false}
             ItemSeparatorComponent={() => <View style={{height: 10}} />}
+            initialNumToRender={4}
+            maxToRenderPerBatch={6}
+            windowSize={7}
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}
@@ -595,6 +673,8 @@ const HousingGroupsScreen = ({ navigation }) => {
             }
             onScroll={reportScroll}
             scrollEventThrottle={16}
+            onEndReached={handleLoadMore}
+            onEndReachedThreshold={0.4}
           />
         )}
       </View>
