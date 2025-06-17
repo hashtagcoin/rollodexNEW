@@ -24,7 +24,23 @@ const WalletScreen = () => {
   const [allUserClaims, setAllUserClaims] = useState([]);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
+
+  // Performance optimization refs for caching and fetch control
+  const cacheRef = useRef({
+    wallet: null,
+    claims: null,
+    timestamp: null
+  });
+  const fetchInProgressRef = useRef(false);
   
+  // Cache timeout (5 minutes)
+  const CACHE_TIMEOUT = 5 * 60 * 1000;
+
+  const debugTiming = (operation, startTime) => {
+    const duration = Date.now() - startTime;
+    console.log(`[Wallet] ${operation}: ${duration}ms`);
+  };
+
   // Reset scroll position when tab is focused
   useFocusEffect(
     useCallback(() => {
@@ -33,8 +49,21 @@ const WalletScreen = () => {
         scrollViewRef.current.scrollTo({ y: 0, animated: false });
       }
       
-      // Refresh data
-      fetchWalletAndClaims();
+      // Check cache for instant loading on focus
+      const cache = cacheRef.current;
+      const cacheValid = cache.timestamp && Date.now() - cache.timestamp < CACHE_TIMEOUT;
+      
+      if (cache.wallet && cache.claims && cacheValid) {
+        console.log('[Wallet] Using cached data for instant loading');
+        setWallet(cache.wallet);
+        setAllUserClaims(cache.claims);
+        setLoading(false);
+        setActiveTab('overview');
+      } else {
+        // Only fetch if no valid cache
+        fetchWalletAndClaims();
+      }
+      
       setActiveTab('overview');
     }, [])
   );
@@ -46,6 +75,25 @@ const WalletScreen = () => {
   };
 
   const fetchWalletAndClaims = useCallback(async () => {
+    const startTime = Date.now();
+    if (fetchInProgressRef.current) {
+      console.log('[Wallet] Skipping fetch due to ongoing request');
+      return;
+    }
+    fetchInProgressRef.current = true;
+
+    // Check cache
+    if (cacheRef.current.timestamp && Date.now() - cacheRef.current.timestamp < CACHE_TIMEOUT) {
+      console.log('[Wallet] Loading from cache');
+      setWallet(cacheRef.current.wallet);
+      setAllUserClaims(cacheRef.current.claims);
+      setLoading(false);
+      setRefreshing(false);
+      fetchInProgressRef.current = false;
+      debugTiming('Cache load', startTime);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
@@ -83,11 +131,18 @@ const WalletScreen = () => {
       const claimsData = await getUserClaims();
       setAllUserClaims(claimsData || []);
 
+      // Update cache
+      cacheRef.current.wallet = walletData;
+      cacheRef.current.claims = claimsData;
+      cacheRef.current.timestamp = Date.now();
+
     } catch (err) {
       setError(err.message || 'Failed to load wallet info');
     } finally {
       setLoading(false);
       setRefreshing(false);
+      fetchInProgressRef.current = false;
+      debugTiming('Fetch and cache update', startTime);
     }
   }, []);
 

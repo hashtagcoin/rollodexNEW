@@ -150,13 +150,6 @@ const SwipeCard = memo(({
           style={styles.gradientOverlay}
         />
         
-        {/* Back arrow button - replaces category badge */}
-        {onBackPress && (
-          <TouchableOpacity style={styles.backButton} onPress={onBackPress}>
-            <Ionicons name="arrow-back" size={24} color="white" />
-          </TouchableOpacity>
-        )}
-
         {/* Bottom info overlay - Airbnb style */}
         <View style={styles.infoOverlay}>
           {/* Title */}
@@ -365,15 +358,6 @@ const styles = StyleSheet.create({
     right: 0,
     height: '40%', // Adjusted for better visibility
     zIndex: 5, // Ensure overlay is on top
-  },
-  backButton: {
-    position: 'absolute',
-    top: 20,
-    left: 20,
-    zIndex: 10, // Ensure button is on top
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderRadius: 20,
-    padding: 8,
   },
   infoOverlay: {
     position: 'absolute',

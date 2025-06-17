@@ -39,7 +39,7 @@ export const CardStyles = {
   gridCardWrapper: {
     width: '50%',
     marginBottom: 12,
-    paddingHorizontal: 7, // Equal padding for consistent spacing between cards
+    paddingHorizontal: 3.5, // Halved from 7 to reduce gap between cards
   },
   
   gridCardContainer: {

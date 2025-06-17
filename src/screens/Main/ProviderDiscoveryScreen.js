@@ -30,6 +30,8 @@ import {
   ICON_COLOR_DARK, 
   ICON_COLOR_LIGHT 
 } from '../../constants/theme';
+import { getValidImageUrl, getOptimizedImageUrl } from '../../utils/imageHelper';
+import { preloadImages } from '../../utils/imagePreloader';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
@@ -228,8 +230,20 @@ const ProviderDiscoveryScreen = ({ route }) => {
       const tableName = isHousing ? 'housing_listings' : 'services';
       const itemTypeForFavorites = isHousing ? 'housing_listing' : 'service_provider';
       
-      let query = supabase.from(tableName).select('*')
-        .eq('available', true); // Only show available listings
+      let query = supabase.from(tableName);
+      
+      // For housing, select only essential fields first to load cards quickly
+      if (isHousing) {
+        query = query.select(`
+          id, title, property_type, suburb, 
+          weekly_rent, bedrooms, bathrooms, media_urls, available,
+          description, created_at, updated_at, has_group_match
+        `);
+      } else {
+        query = query.select('*');
+      }
+      
+      query = query.eq('available', true); // Only show available listings
       
       if (!isHousing) {
         query = query.ilike('category', `%${selectedCategory}%`);
@@ -484,6 +498,79 @@ const ProviderDiscoveryScreen = ({ route }) => {
     }, [selectedCategory])
   );
 
+  // Preload images for each category on app startup
+  useEffect(() => {
+    const preloadImagesForCategories = async () => {
+      console.log('[ProviderDiscovery] Starting image preloading for all categories...');
+      
+      for (const category of CATEGORIES) {
+        try {
+          const isHousing = category === 'Housing';
+          
+          if (isHousing) {
+            // Housing data from housing_listings table
+            const { data, error } = await supabase
+              .from('housing_listings')
+              .select('media_urls')
+              .limit(4);
+              
+            if (!error && data?.length > 0) {
+              const imageUrls = data
+                .map(item => {
+                  const rawUrl = item.media_urls?.[0];
+                  if (!rawUrl) return null;
+                  const validUrl = getValidImageUrl(rawUrl, 'housingimages');
+                  return getOptimizedImageUrl(validUrl, 400, 70);
+                })
+                .filter(Boolean);
+                
+              if (imageUrls.length > 0) {
+                console.log(`[ProviderDiscovery] Preloading ${imageUrls.length} housing images...`);
+                await preloadImages(imageUrls, `Housing-${category}`);
+              }
+            }
+          } else {
+            // Service data from services table  
+            const { data, error } = await supabase
+              .from('services')
+              .select('media_urls')
+              .eq('category', category)
+              .limit(4);
+              
+            if (!error && data?.length > 0) {
+              const imageUrls = data
+                .map(item => {
+                  const rawUrl = item.media_urls?.[0];
+                  if (!rawUrl) return null;
+                  const validUrl = getValidImageUrl(rawUrl, 'providerimages');
+                  return getOptimizedImageUrl(validUrl, 400, 70);
+                })
+                .filter(Boolean);
+                
+              if (imageUrls.length > 0) {
+                console.log(`[ProviderDiscovery] Preloading ${imageUrls.length} images for ${category}...`);
+                await preloadImages(imageUrls, `Service-${category}`);
+              }
+            }
+          }
+          
+          // Add small delay between categories to prevent overwhelming the system
+          await new Promise(resolve => setTimeout(resolve, 200));
+          
+        } catch (error) {
+          console.error(`[ProviderDiscovery] Error preloading images for ${category}:`, error);
+        }
+      }
+      
+      console.log('[ProviderDiscovery] Image preloading completed for all categories');
+    };
+
+    // Run preloading in background without blocking UI
+    setTimeout(() => {
+      preloadImagesForCategories();
+    }, 1000); // Wait 1 second after component mount to let initial render complete
+  }, []);
+
   // Render main content 
   const renderContent = () => {
     // Loading state
@@ -529,7 +616,7 @@ const ProviderDiscoveryScreen = ({ route }) => {
           updateCellsBatchingPeriod={50}
           windowSize={7}
           removeClippedSubviews={true}
-          extraData={userFavorites}
+          extraData={[userFavorites]}
           onEndReached={handleLoadMore}
           onEndReachedThreshold={0.5}
           refreshControl={
@@ -582,7 +669,7 @@ const ProviderDiscoveryScreen = ({ route }) => {
           legacyImplementation={false}
           onViewableItemsChanged={null} 
           viewabilityConfig={null}
-          extraData={userFavorites}
+          extraData={[userFavorites]}
           onEndReached={handleLoadMore}
           onEndReachedThreshold={0.3}
           refreshControl={
@@ -603,14 +690,18 @@ const ProviderDiscoveryScreen = ({ route }) => {
       return (
         <SwipeCardDeck
           data={filteredItems}
-          renderCard={(item) => (
-            <SwipeCard 
-              item={item} 
-              isHousing={selectedCategory === 'Housing'} 
-              onPress={() => handleSwipeCardPress(item)}
-              onBackPress={() => setViewMode('Grid')}
-            />
-          )}
+          renderCard={(item) => {
+            const isHousing = selectedCategory === 'Housing';
+            
+            return (
+              <SwipeCard 
+                item={item} 
+                isHousing={isHousing} 
+                onPress={() => handleSwipeCardPress(item)}
+                onBackPress={() => setViewMode('Grid')}
+              />
+            );
+          }}
           onSwipeLeft={(item) => handleCardSwipe('left', item)}
           onSwipeRight={(item) => handleCardSwipe('right', item)}
           cardIndex={0}

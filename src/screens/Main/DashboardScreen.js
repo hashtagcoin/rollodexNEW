@@ -30,7 +30,25 @@ const DashboardScreen = () => {
     recommendations: true
   });
   const [error, setError] = useState(null);
-  
+
+  // Performance optimization refs for caching and fetch control
+  const cacheRef = useRef({
+    wallet: null,
+    bookings: null,
+    recommendations: null,
+    timestamp: null
+  });
+  const fetchInProgressRef = useRef(false);
+  const lastFetchUserRef = useRef(null);
+
+  // Cache timeout (5 minutes)
+  const CACHE_TIMEOUT = 5 * 60 * 1000;
+
+  const debugTiming = (operation, startTime) => {
+    const duration = Date.now() - startTime;
+    console.log(`[Dashboard] ${operation}: ${duration}ms`);
+  };
+
   // Use useFocusEffect to scroll to top when screen comes into focus
   useFocusEffect(
     React.useCallback(() => {
@@ -38,8 +56,26 @@ const DashboardScreen = () => {
       if (scrollViewRef.current) {
         scrollViewRef.current.scrollTo({ x: 0, y: 0, animated: true });
       }
+
+      // Check cache for instant loading on focus
+      const cache = cacheRef.current;
+      const userChanged = lastFetchUserRef.current !== profile?.id;
+      const cacheExpired = cache.timestamp && Date.now() - cache.timestamp > CACHE_TIMEOUT;
+      
+      if (cache.wallet && cache.bookings && cache.recommendations && !userChanged && !cacheExpired) {
+        console.log('[Dashboard] Using cached data for instant loading');
+        setWallet(cache.wallet);
+        setUpcomingBookings(cache.bookings);
+        setRecommendations(cache.recommendations);
+        setLoading({
+          wallet: false,
+          bookings: false,
+          recommendations: false
+        });
+      }
+      
       return () => {};
-    }, [])
+    }, [profile?.id])
   );
   
   // Fetch wallet data
@@ -78,6 +114,10 @@ const DashboardScreen = () => {
       }
       
       setWallet(walletData);
+      
+      // Update cache
+      cacheRef.current.wallet = walletData;
+      
     } catch (err) {
       console.error('Error fetching wallet data:', err);
       setError('Failed to load wallet information');
@@ -85,7 +125,7 @@ const DashboardScreen = () => {
       setLoading(prevState => ({ ...prevState, wallet: false }));
     }
   }, [profile]);
-  
+
   // Fetch upcoming bookings
   const fetchUpcomingBookings = useCallback(async () => {
     if (!profile?.id) return;
@@ -106,6 +146,10 @@ const DashboardScreen = () => {
       if (error) throw error;
       
       setUpcomingBookings(data || []);
+      
+      // Update cache
+      cacheRef.current.bookings = data || [];
+      
     } catch (err) {
       console.error('Error fetching upcoming bookings:', err);
       setError('Failed to load upcoming bookings');
@@ -113,7 +157,7 @@ const DashboardScreen = () => {
       setLoading(prevState => ({ ...prevState, bookings: false }));
     }
   }, [profile]);
-  
+
   // Fetch recommendations based on user's bookings and interests
   const fetchRecommendations = useCallback(async () => {
     if (!profile?.id) return;
@@ -145,6 +189,10 @@ const DashboardScreen = () => {
           
         if (servicesError) throw servicesError;
         setRecommendations(popularServices || []);
+        
+        // Update cache
+        cacheRef.current.recommendations = popularServices || [];
+        
       } else {
         // Get services in the same categories the user has booked before
         const { data: similarServices, error: servicesError } = await supabase
@@ -157,6 +205,10 @@ const DashboardScreen = () => {
           
         if (servicesError) throw servicesError;
         setRecommendations(similarServices || []);
+        
+        // Update cache
+        cacheRef.current.recommendations = similarServices || [];
+        
       }
     } catch (err) {
       console.error('Error fetching recommendations:', err);
@@ -178,11 +230,58 @@ const DashboardScreen = () => {
   // Fetch all data when component mounts or profile changes
   useEffect(() => {
     if (profile?.id && !isProviderMode) {
-      fetchWalletData();
-      fetchUpcomingBookings();
-      fetchRecommendations();
+      const fetchAllData = async () => {
+        const startTime = Date.now();
+        
+        // Prevent duplicate fetches
+        if (fetchInProgressRef.current) {
+          console.log('[Dashboard] Fetch already in progress, skipping');
+          return;
+        }
+        fetchInProgressRef.current = true;
+
+        try {
+          // Check cache first
+          const cache = cacheRef.current;
+          const userChanged = lastFetchUserRef.current !== profile.id;
+          const cacheExpired = !cache.timestamp || Date.now() - cache.timestamp > CACHE_TIMEOUT;
+          
+          if (cache.wallet && cache.bookings && cache.recommendations && !userChanged && !cacheExpired) {
+            console.log('[Dashboard] Using cached data');
+            setWallet(cache.wallet);
+            setUpcomingBookings(cache.bookings);
+            setRecommendations(cache.recommendations);
+            setLoading({
+              wallet: false,
+              bookings: false,
+              recommendations: false
+            });
+            debugTiming('Cache hit', startTime);
+          } else {
+            console.log('[Dashboard] Fetching fresh data');
+            
+            // Fetch all data in parallel - the individual functions will update cache
+            await Promise.all([
+              fetchWalletData(),
+              fetchUpcomingBookings(), 
+              fetchRecommendations()
+            ]);
+
+            // Update cache timestamp after successful fetch
+            cacheRef.current.timestamp = Date.now();
+            lastFetchUserRef.current = profile.id;
+            debugTiming('Fresh fetch completed', startTime);
+          }
+        } catch (error) {
+          console.error('[Dashboard] Error in fetchAllData:', error);
+        } finally {
+          fetchInProgressRef.current = false;
+        }
+      };
+
+      fetchAllData();
     }
-  }, [profile, isProviderMode, fetchWalletData, fetchUpcomingBookings, fetchRecommendations]);
+  }, [profile?.id, isProviderMode, fetchWalletData, fetchUpcomingBookings, fetchRecommendations]);
   
   // Helper function to format dates for upcoming bookings
   const formatBookingDate = (dateString) => {

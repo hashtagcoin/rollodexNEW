@@ -1,7 +1,6 @@
 import React, { useState, useMemo } from 'react';
 // Corrected import: Added StyleSheet, removed unused useEffect and SIZES
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'; 
-import { Image } from 'expo-image';
+import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native'; 
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { getValidImageUrl, getOptimizedImageUrl } from '../../utils/imageHelper';
 import { CardStyles } from '../../constants/CardStyles'; // Import CardStyles
@@ -73,11 +72,11 @@ const ServiceCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', isFavor
         activeOpacity={0.8}
       >
         <View style={CardStyles.listCardInner}> 
-          <View style={CardStyles.listImageContainer}> 
+          <View style={[CardStyles.listImageContainer, {overflow: 'hidden'}]}> 
             {!imageLoaded && <View style={CardStyles.loaderContainer} />}
             <Image 
               source={imageError ? require('../../assets/images/default-service.png') : { uri: thumbUrl }}
-              style={CardStyles.listImage} 
+              style={[CardStyles.listImage, {resizeMode: 'cover'}]} 
               onLoad={() => {
                 setImageLoaded(true);
                 if (typeof onImageLoaded === 'function' && imageUrl && !imageError) onImageLoaded(imageUrl);
@@ -146,11 +145,11 @@ const ServiceCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', isFavor
           activeOpacity={0.8}
         >
           <View style={CardStyles.gridCardInner}> 
-            <View style={CardStyles.gridImageContainer}> 
+            <View style={[CardStyles.gridImageContainer, {overflow: 'hidden'}]}> 
               {!imageLoaded && <View style={CardStyles.loaderContainer} />}
               <Image 
                 source={imageError ? require('../../assets/images/default-service.png') : { uri: thumbUrl }}
-                style={CardStyles.gridImage} 
+                style={[CardStyles.gridImage, {resizeMode: 'cover'}]} 
                 onLoad={() => {
                   setImageLoaded(true);
                   if (typeof onImageLoaded === 'function' && imageUrl && !imageError) onImageLoaded(imageUrl);
