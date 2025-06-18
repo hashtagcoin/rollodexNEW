@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Image,
   ActivityIndicator,
   Alert,
   Modal,
@@ -15,6 +14,8 @@ import {
   Share,
   Dimensions
 } from 'react-native';
+import { Image as RNImage } from 'react-native';
+import { Image } from 'expo-image';
 import AppHeader from '../../components/layout/AppHeader';
 import { useRoute } from '@react-navigation/native';
 import { format, parseISO, formatDistance, addDays, differenceInSeconds } from 'date-fns';
@@ -22,12 +23,73 @@ import { Ionicons, MaterialIcons, MaterialCommunityIcons, FontAwesome5 } from '@
 import { supabase } from '../../lib/supabaseClient';
 import { COLORS } from '../../constants/theme';
 import { useUser } from '../../context/UserContext';
-// Temporarily commenting out Mapbox import until we resolve the dependency issue
-// import MapboxGL from '@rnmapbox/maps';
+// Using Location API without MapboxGL due to dependency issues
 import * as Location from 'expo-location';
 
-// Initialize Mapbox with API key - temporarily commented out
-// MapboxGL.setAccessToken('pk.eyJ1IjoiYm9yZWRiYXNoIiwiYSI6ImNtNng5NzA2NDByczIyanE4NjJtNWJ6ejYifQ.yxMTi_KA9gOE87hZpJyDmA');
+// Mapbox token for static images API
+const MAPBOX_TOKEN = 'pk.eyJ1IjoiYm9yZWRiYXNoIiwiYSI6ImNtNng5NzA2NDByczIyanE4NjJtNWJ6ejYifQ.yxMTi_KA9gOE87hZpJyDmA';
+
+
+// Helper function to generate static map image URL from Mapbox
+const getStaticMapImageUrl = (currentLocation, startLocation, endLocation) => {
+  try {
+    const width = 600;
+    const height = 400;
+    const zoom = 15;
+    
+    // Use the most relevant location for centering
+    let centerLng = currentLocation?.longitude || startLocation?.longitude || endLocation?.longitude || 144.9631;
+    let centerLat = currentLocation?.latitude || startLocation?.latitude || endLocation?.latitude || -37.8136;
+    
+    // Build markers array for Mapbox
+    let markers = [];
+    
+    if (currentLocation && currentLocation.longitude && currentLocation.latitude) {
+      markers.push(`pin-s+007AFF(${currentLocation.longitude},${currentLocation.latitude})`);
+    }
+    
+    if (startLocation && startLocation.longitude && startLocation.latitude) {
+      markers.push(`pin-s+4CD964(${startLocation.longitude},${startLocation.latitude})`);
+    }
+    
+    if (endLocation && endLocation.longitude && endLocation.latitude) {
+      markers.push(`pin-s+FF3B30(${endLocation.longitude},${endLocation.latitude})`);
+    }
+    
+    // Build Mapbox URL
+    let url;
+    if (markers.length > 0) {
+      url = `https://api.mapbox.com/styles/v1/mapbox/streets-v11/static/${markers.join(',')}/${centerLng},${centerLat},${zoom}/${width}x${height}?access_token=${MAPBOX_TOKEN}`;
+    } else {
+      url = `https://api.mapbox.com/styles/v1/mapbox/streets-v11/static/${centerLng},${centerLat},${zoom}/${width}x${height}?access_token=${MAPBOX_TOKEN}`;
+    }
+    
+    console.log('Generated Mapbox URL:', url);
+    return url;
+    
+  } catch (error) {
+    console.error('Error generating map URL:', error);
+    return null;
+  }
+};
+
+// Helper function to calculate marker position on static map image
+const getMarkerPosition = (location, refLocation1, refLocation2) => {
+  // This is a simplified approach - in a real app, you would need to calculate
+  // the pixel position based on the map bounds and projection
+  const { width, height } = Dimensions.get('window');
+  const mapWidth = width - 40; // Accounting for padding
+  
+  // For this simplified version, we'll just return a position
+  // In a real implementation, you would calculate this based on 
+  // the location's coordinates relative to the map bounds
+  return {
+    position: 'absolute',
+    left: '50%',
+    top: '50%',
+    transform: [{ translateX: -12 }, { translateY: -12 }]
+  };
+};
 
 const BookingDetailScreen = ({ navigation }) => {
   const route = useRoute();
@@ -70,6 +132,7 @@ const BookingDetailScreen = ({ navigation }) => {
   const [sessionDuration, setSessionDuration] = useState(0);
   const [pathCoordinates, setPathCoordinates] = useState([]);
   const [trackingLoading, setTrackingLoading] = useState(false);
+  const [mapError, setMapError] = useState(false);
   
   // Fetch booking details and history
   useEffect(() => {
@@ -425,16 +488,49 @@ const BookingDetailScreen = ({ navigation }) => {
       setSessionStarted(true);
       setPathCoordinates([{longitude: location.longitude, latitude: location.latitude}]);
       
+      // Start the duration counter
+      startDurationCounter();
+      
       // Note: Map centering removed as we're using simplified UI without Mapbox
     } catch (error) {
       console.error('Error starting session:', error);
       Alert.alert('Error', 'Failed to start tracking session. Please try again.');
     }
   };
+  
+  // Add duration counter interval
+  const intervalRef = useRef(null);
+  
+  const startDurationCounter = () => {
+    intervalRef.current = setInterval(() => {
+      if (sessionStartTime) {
+        const now = new Date();
+        const durationSeconds = differenceInSeconds(now, sessionStartTime);
+        setSessionDuration(durationSeconds);
+      }
+    }, 1000);
+  };
+  
+  const stopDurationCounter = () => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+  };
+  
+  // Clean up interval on unmount
+  useEffect(() => {
+    return () => {
+      stopDurationCounter();
+    };
+  }, []);
 
   // End tracking session
   const endSession = async () => {
     try {
+      // Stop the duration counter
+      stopDurationCounter();
+      
       const location = await getCurrentLocation();
       const address = await getAddressFromCoordinates(location.latitude, location.longitude);
       
@@ -564,9 +660,10 @@ const BookingDetailScreen = ({ navigation }) => {
           {/* Service Image (if available) */}
           {booking.service_media_urls && booking.service_media_urls.length > 0 && (
             <Image
-              source={{ uri: booking.service_media_urls[0] }}
+              source={booking.service_media_urls[0]}
               style={styles.serviceImage}
-              resizeMode="cover"
+              contentFit="cover"
+              transition={200}
             />
           )}
 
@@ -670,8 +767,18 @@ const BookingDetailScreen = ({ navigation }) => {
               style={[styles.actionButton, styles.historyButton]}
               onPress={() => setShowHistory(!showHistory)}
             >
-              <MaterialIcons name="history" size={20} color="#fff" />
-              <Text numberOfLines={1} style={styles.actionButtonText}>{showHistory ? 'Hide' : 'History'}</Text>
+              <View style={styles.historyButtonContent}>
+                <MaterialIcons name="history" size={22} color="#fff" />
+                <Text numberOfLines={1} style={styles.actionButtonText}>
+                  {showHistory ? 'Hide History' : 'View History'}
+                </Text>
+                <Ionicons 
+                  name={showHistory ? "chevron-up" : "chevron-down"} 
+                  size={18} 
+                  color="#fff" 
+                  style={styles.historyChevron}
+                />
+              </View>
             </TouchableOpacity>
           </View>
         </>
@@ -749,19 +856,31 @@ const BookingDetailScreen = ({ navigation }) => {
         </View>
       )}
 
-      {/* Start Booking Button - Only show for confirmed bookings that are not completed or cancelled */}
+      {/* Start Booking and Video Buttons - Only show for confirmed bookings that are not completed or cancelled */}
       {booking && ['confirmed', 'pending'].includes(booking.booking_status?.toLowerCase()) && (
         <View style={styles.startBookingButtonContainer}>
           <TouchableOpacity 
             style={styles.startBookingButton}
-            onPress={() => {
+            onPress={async () => {
               setTrackingModalVisible(true);
-              // Get current location when modal opens
-              getCurrentLocation();
+              // Immediately start the session when modal opens
+              setTimeout(async () => {
+                await startSession();
+              }, 500); // Small delay to allow modal to render
             }}
           >
             <FontAwesome5 name="map-marker-alt" size={18} color="#fff" style={styles.buttonIcon} />
             <Text style={styles.startBookingButtonText}>Start Booking</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={[styles.startBookingButton, styles.videoButton]}
+            onPress={() => {
+              navigation.navigate('VideoScreen', { bookingId: booking.booking_id });
+            }}
+          >
+            <Ionicons name="videocam" size={20} color="#fff" style={styles.buttonIcon} />
+            <Text style={styles.startBookingButtonText}>Start Video</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -1010,145 +1129,169 @@ const BookingDetailScreen = ({ navigation }) => {
           }
         }}
       >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>
-              {sessionStarted ? (sessionEnded ? 'Session Complete' : 'Session in Progress') : 'Start Tracking Session'}
-            </Text>
-            <TouchableOpacity 
-              onPress={() => {
-                if (sessionStarted && !sessionEnded) {
-                  Alert.alert(
-                    'Session in Progress',
-                    'Do you want to end the current tracking session?',
-                    [
-                      { text: 'Cancel', style: 'cancel' },
-                      { 
-                        text: 'End Session', 
-                        onPress: async () => {
-                          await endSession();
-                        } 
-                      },
-                    ]
-                  );
-                } else {
-                  setTrackingModalVisible(false);
-                  if (sessionEnded) {
-                    resetSession();
-                  }
+        <View style={styles.trackingModalContainer}>
+          {/* Use AppHeader for consistency */}
+          <AppHeader 
+            title={!sessionStarted ? 'Start Tracking' : 
+              (!sessionEnded ? 'Tracking in Progress' : 'Tracking Complete')}
+            onBackPressOverride={() => {
+              if (sessionStarted && !sessionEnded) {
+                Alert.alert(
+                  'Session in Progress',
+                  'Do you want to end the current tracking session?',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { 
+                      text: 'End Session', 
+                      onPress: async () => {
+                        await endSession();
+                        setTrackingModalVisible(false);
+                        resetSession();
+                      } 
+                    },
+                  ],
+                );
+              } else {
+                setTrackingModalVisible(false);
+                if (sessionEnded) {
+                  resetSession();
                 }
-              }}
-              style={styles.closeButton}
-              >
-                <Ionicons name="close" size={28} color="#333" />
-              </TouchableOpacity>
+              }
+            }}
+          />
+          
+          <ScrollView 
+            style={styles.trackingScrollView} 
+            contentContainerStyle={styles.trackingScrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.mapContainer}>
+            {trackingLoading || (!currentLocation && !startLocation) ? (
+              <View style={styles.loadingMapContainer}>
+                <ActivityIndicator size="large" color={COLORS.primary} />
+                <Text style={styles.loadingMapText}>Loading map...</Text>
+              </View>
+            ) : mapError ? (
+              <View style={styles.loadingMapContainer}>
+                <Ionicons name="alert-circle-outline" size={48} color="#999" />
+                <Text style={styles.loadingMapText}>Unable to load map</Text>
+              </View>
+            ) : (
+              <RNImage 
+                source={{ uri: getStaticMapImageUrl(currentLocation, startLocation, endLocation) }}
+                style={styles.staticMapImage}
+                resizeMode="cover"
+                onError={(e) => {
+                  console.log('Map load error:', e.nativeEvent);
+                  // Try OpenStreetMap as fallback
+                  setMapError(true);
+                }}
+                onLoad={() => {
+                  console.log('Map loaded successfully');
+                  setMapError(false);
+                }}
+              />
+            )}
+            
+            {startLocation && (
+              <View style={[styles.mapMarker, styles.startMarker, getMarkerPosition(startLocation, currentLocation, endLocation)]}>
+                <Ionicons name="location" size={18} color="#fff" />
+              </View>
+            )}
+            
+            {endLocation && (
+              <View style={[styles.mapMarker, styles.endMarker, getMarkerPosition(endLocation, startLocation, currentLocation)]}>
+                <Ionicons name="flag" size={18} color="#fff" />
+              </View>
+            )}
+            
+            {currentLocation && (
+              <View style={[styles.mapMarker, styles.currentMarker, getMarkerPosition(currentLocation, startLocation, endLocation)]}>
+                <View style={styles.currentLocationDot} />
+              </View>
+            )}
+            
+            <View style={styles.statusBadgeContainer}>
+              <View style={[styles.statusBadge, 
+                !sessionStarted ? styles.readyBadge : 
+                  (!sessionEnded ? styles.activeBadge : styles.completedBadge)
+              ]}>
+                <Text style={[styles.statusBadgeText, !sessionStarted && {color: '#333'}]}>
+                  {!sessionStarted ? 'Ready' : 
+                    (!sessionEnded ? 'Active' : 'Completed')}
+                </Text>
+              </View>
+            </View>
+          </View>
+          
+          {/* Compact Info Panel - No scrolling needed */}
+          <View style={styles.compactInfoPanel}>
+            {/* Progress Timeline */}
+            <View style={styles.progressContainer}>
+              <View style={styles.progressItem}>
+                <View style={[styles.progressDot, styles.progressActive]} />
+                <Text style={styles.progressLabel}>Ready</Text>
+              </View>
+              
+              <View style={styles.progressLine} />
+              
+              <View style={styles.progressItem}>
+                <View style={[styles.progressDot, sessionStarted ? styles.progressActive : styles.progressInactive]} />
+                <Text style={styles.progressLabel}>Started</Text>
+              </View>
+              
+              <View style={styles.progressLine} />
+              
+              <View style={styles.progressItem}>
+                <View style={[styles.progressDot, sessionEnded ? styles.progressActive : styles.progressInactive]} />
+                <Text style={styles.progressLabel}>Completed</Text>
+              </View>
             </View>
             
-            {/* Location Information - Simplified UI (Map temporarily disabled) */}
-            <View style={styles.mapContainer}>
-              {trackingLoading ? (
-                <View style={styles.loadingMapContainer}>
-                  <ActivityIndicator size="large" color={COLORS.primary} />
-                  <Text style={{ marginTop: 10 }}>Getting location...</Text>
-                </View>
-              ) : currentLocation ? (
-                <View style={styles.simplifiedMapContainer}>
-                  <View style={styles.locationInfoBox}>
-                    <FontAwesome5 name="map-marker-alt" size={24} color={COLORS.primary} style={styles.locationIcon} />
-                    <Text style={styles.locationCoordinates}>
-                      Lat: {currentLocation.latitude.toFixed(6)}{"\n"}
-                      Long: {currentLocation.longitude.toFixed(6)}
+            {/* Location Information - Compact */}
+            <View style={styles.locationInfo}>
+              {sessionStarted && (
+                <>
+                  <View style={styles.locationRow}>
+                    <FontAwesome5 name="map-marker-alt" size={18} color={COLORS.primary} />
+                    <Text style={styles.locationText} numberOfLines={1} ellipsizeMode="tail">
+                      <Text style={{fontWeight: '600'}}>Start: </Text>
+                      {startAddress || 'Fetching address...'}
                     </Text>
                   </View>
                   
-                  {/* Location Status Indicators */}
-                  <View style={styles.locationStatusContainer}>
-                    {!sessionStarted && (
-                      <View style={styles.statusBox}>
-                        <View style={[styles.statusIndicator, styles.readyIndicator]} />
-                        <Text style={styles.statusText}>Ready to Start</Text>
-                      </View>
-                    )}
-                    
-                    {sessionStarted && !sessionEnded && (
-                      <View style={styles.statusBox}>
-                        <View style={[styles.statusIndicator, styles.activeIndicator]} />
-                        <Text style={styles.statusText}>Session Active</Text>
-                      </View>
-                    )}
-                    
-                    {sessionStarted && sessionEnded && (
-                      <View style={styles.statusBox}>
-                        <View style={[styles.statusIndicator, styles.completedIndicator]} />
-                        <Text style={styles.statusText}>Session Complete</Text>
-                      </View>
-                    )}
-                  </View>
-                  
-                  {/* Start and End Points */}
-                  {startLocation && (
-                    <View style={styles.locationPointContainer}>
-                      <View style={styles.locationPoint}>
-                        <FontAwesome5 name="flag" size={16} color="#4CD964" />
-                        <Text style={styles.locationPointLabel}>Start Point</Text>
-                      </View>
-                      <Text style={styles.locationPointCoords}>
-                        {startLocation.latitude.toFixed(6)}, {startLocation.longitude.toFixed(6)}
+                  {sessionEnded && (
+                    <View style={styles.locationRow}>
+                      <FontAwesome5 name="flag-checkered" size={18} color={COLORS.primary} />
+                      <Text style={styles.locationText} numberOfLines={1} ellipsizeMode="tail">
+                        <Text style={{fontWeight: '600'}}>End: </Text>
+                        {endAddress || 'Fetching address...'}
                       </Text>
                     </View>
                   )}
-                  
-                  {endLocation && (
-                    <View style={styles.locationPointContainer}>
-                      <View style={styles.locationPoint}>
-                        <FontAwesome5 name="flag-checkered" size={16} color="#FF3B30" />
-                        <Text style={styles.locationPointLabel}>End Point</Text>
-                      </View>
-                      <Text style={styles.locationPointCoords}>
-                        {endLocation.latitude.toFixed(6)}, {endLocation.longitude.toFixed(6)}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              ) : (
-                <View style={styles.loadingMapContainer}>
-                  <FontAwesome5 name="exclamation-triangle" size={24} color="#FF9500" />
-                  <Text style={{ marginTop: 10 }}>Location unavailable</Text>
+                </>
+              )}
+              
+              {!sessionStarted && (
+                <View style={styles.locationRow}>
+                  <FontAwesome5 name="info-circle" size={18} color={COLORS.primary} />
+                  <Text style={styles.locationText}>Ready to start tracking your session</Text>
                 </View>
               )}
             </View>
             
-            {/* Session Information */}
-            <View style={styles.sessionInfoContainer}>
+            {/* Duration - Compact - Show live counter when session is active */}
             {sessionStarted && (
-              <View style={styles.sessionCard}>
-                <View style={styles.cardHeader}>
-                  <FontAwesome5 name="map-marker-alt" size={16} color={COLORS.primary} />
-                  <Text style={styles.cardTitle}>Session Information</Text>
-                </View>
-                
-                <View style={styles.cardRow}>
-                  <Text style={styles.cardLabel}>Start Location:</Text>
-                  <Text style={styles.cardValue}>{startAddress}</Text>
-                </View>
-                
-                {sessionEnded && (
-                  <>
-                    <View style={styles.cardRow}>
-                      <Text style={styles.cardLabel}>End Location:</Text>
-                      <Text style={styles.cardValue}>{endAddress}</Text>
-                    </View>
-                    
-                    <View style={styles.durationRow}>
-                      <Text style={styles.durationLabel}>Session Duration:</Text>
-                      <Text style={styles.durationText}>{formatDuration(sessionDuration)}</Text>
-                    </View>
-                  </>
-                )}
+              <View style={styles.durationInfo}>
+                <Ionicons name="time-outline" size={20} color={COLORS.primary} />
+                <Text style={styles.durationValue}>{formatDuration(sessionDuration || 0)}</Text>
               </View>
             )}
-            
-            {/* Action Button */}
+          </View>
+          </ScrollView>
+          
+          {/* Action Button - Fixed at bottom */}
+          <View style={styles.trackingActionButtonContainer}>
             <TouchableOpacity
               style={[styles.actionButton, 
                 sessionStarted ? 
@@ -1170,28 +1313,334 @@ const BookingDetailScreen = ({ navigation }) => {
               {trackingLoading ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
-                <>
-                  <Text style={styles.actionButtonText}>
-                    {!sessionStarted ? 'Start Session' : 
-                      (!sessionEnded ? 'End Session' : 'Done')}
-                  </Text>
-                </>
+                <Text style={styles.actionButtonText}>
+                  {!sessionStarted ? 'Start Session' : 
+                    (!sessionEnded ? 'End Session' : 'Done')}
+                </Text>
               )}
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
-    </View> // <-- FIX 3: Changed closing tag from </ScrollView> to </View>
+    </View> // <-- Changed closing tag from </ScrollView> to </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F8F8',
+    backgroundColor: '#F5F5F5',
+  },
+  // Modern tracking modal styles
+  trackingModalContainer: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  trackingScrollView: {
+    flex: 1,
+  },
+  trackingScrollContent: {
+    paddingBottom: 100, // Add padding to ensure button isn't clipped
+  },
+  // Map styles
+  mapContainer: {
+    width: '100%',
+    height: 200, // Further reduced for more compact view
+    position: 'relative',
+    backgroundColor: '#f5f5f5',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  mapViewContainer: {
+    width: '100%',
+    height: '100%',
+    position: 'relative',
+  },
+  staticMapContainer: {
+    height: '100%',
+    width: '100%',
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  staticMapImage: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#f0f0f0',
+  },
+  mapMarker: {
+    position: 'absolute',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  startMarker: {
+    backgroundColor: '#00aa00',
+  },
+  endMarker: {
+    backgroundColor: '#aa0000',
+  },
+  currentMarker: {
+    backgroundColor: 'transparent',
+  },
+  currentLocationDot: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#0080ff',
+    borderWidth: 2,
+    borderColor: '#ffffff',
+  },
+  // Status badge styles
+  statusBadgeContainer: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    zIndex: 10,
+  },
+  statusBadge: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 3,
+  },
+  readyBadge: {
+    backgroundColor: '#fff',
+  },
+  activeBadge: {
+    backgroundColor: COLORS.primary,
+  },
+  completedBadge: {
+    backgroundColor: '#4CD964',
+  },
+  statusBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  // Card styles
+  trackingCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  trackingCardTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 12,
+  },
+  progressContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 10, // Further reduced
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    marginBottom: 8, // Reduced to bring elements closer
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  progressItem: {
+    alignItems: 'center',
+    width: 80,
+  },
+  progressDot: {
+    width: 16, // Reduced from 20px
+    height: 16, // Reduced from 20px
+    borderRadius: 8,
+    marginBottom: 6, // Reduced from 8px
+    borderWidth: 2, // Reduced from 3px
+    borderColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  progressActive: {
+    backgroundColor: COLORS.primary,
+  },
+  progressInactive: {
+    backgroundColor: '#e0e0e0',
+  },
+  progressLabel: {
+    fontSize: 15, // Increased for better readability
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 2,
+  },
+  progressTime: {
+    fontSize: 12,
+    color: '#666',
+  },
+  progressLine: {
+    flex: 1,
+    height: 3,
+    backgroundColor: '#e0e0e0',
+    marginHorizontal: -10,
+    zIndex: -1,
+  },
+  locationCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  locationCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  locationCardTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginLeft: 8,
+  },
+  locationAddress: {
+    fontSize: 14,
+    color: '#333',
+    marginBottom: 8,
+    lineHeight: 20,
+  },
+  coordinatesText: {
+    fontSize: 12,
+    color: '#666',
+  },
+  durationCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  durationCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  durationCardTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginLeft: 8,
+  },
+  durationValue: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: COLORS.primary,
+    textAlign: 'center',
+  },
+  // Compact info panel styles
+  compactInfoPanel: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 0, // Remove bottom padding to bring content up
+    flex: 1,
+    backgroundColor: '#fafafa',
+  },
+  locationInfo: {
+    marginTop: 8,
+    marginBottom: 8,
+    backgroundColor: '#fff',
+    padding: 12,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8, // Reduced from 12px
+  },
+  locationText: {
+    fontSize: 16, // Increased for better readability
+    color: '#333',
+    marginLeft: 10,
+    flex: 1,
+    lineHeight: 22,
+  },
+  durationInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+    marginBottom: 0, // Remove bottom margin
+    padding: 12,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  durationValue: {
+    fontSize: 28, // Large font for timer
+    fontWeight: '700',
+    color: COLORS.primary,
+    marginLeft: 8,
+  },
+  // Action button styles
+  actionButtonContainer: {
+    padding: 12, // Reduced from 16px
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  trackingActionButtonContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#fff',
+    padding: 16,
+    paddingBottom: 30, // Extra padding for home indicator
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 5,
   },
   contentContainer: {
-    paddingBottom: 100, // Increased to accommodate the Start Booking button
+    paddingBottom: 180, // Increased to accommodate both Start Booking and Video buttons
   },
   loadingContainer: {
     flex: 1,
@@ -1375,7 +1824,19 @@ const styles = StyleSheet.create({
     backgroundColor: '#FF3B30',
   },
   historyButton: {
-    backgroundColor: '#8E8E93',
+    backgroundColor: '#5856D6', // Modern purple color
+    width: '100%',
+    marginHorizontal: 0,
+    marginTop: 12,
+  },
+  historyButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+  },
+  historyChevron: {
+    marginLeft: 8,
   },
   actionButtonText: {
     color: '#fff',
@@ -1396,6 +1857,139 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 20,
     padding: 20,
     paddingBottom: Platform.OS === 'ios' ? 40 : 20,
+  },
+  // Map styles
+  mapContainer: {
+    width: '100%',
+    height: 350,
+    marginBottom: 16,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  mapViewContainer: {
+    flex: 1,
+    position: 'relative',
+  },
+  map: {
+    flex: 1,
+  },
+  loadingMapContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+    borderRadius: 12,
+  },
+  loadingMapText: {
+    marginTop: 10,
+    fontSize: 14,
+    color: '#666',
+  },
+  locationStatusContainer: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    right: 10,
+    zIndex: 10,
+    flexDirection: 'row',
+    justifyContent: 'center',
+  },
+  statusBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  statusIndicator: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: 6,
+  },
+  readyIndicator: {
+    backgroundColor: '#007AFF',
+  },
+  activeIndicator: {
+    backgroundColor: '#4CD964',
+  },
+  completedIndicator: {
+    backgroundColor: '#FF9500',
+  },
+  statusText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+  },
+  currentLocationMarker: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#007AFF',
+    borderWidth: 3,
+    borderColor: '#fff',
+  },
+  startLocationMarker: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#4CD964',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  endLocationMarker: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#FF3B30',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  locationInfoOverlay: {
+    position: 'absolute',
+    bottom: 10,
+    left: 10,
+    right: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: 12,
+    padding: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  locationPointContainer: {
+    marginBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+    paddingBottom: 8,
+  },
+  locationPoint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  locationPointLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 8,
+    color: '#333',
+  },
+  locationPointAddress: {
+    fontSize: 12,
+    color: '#666',
+    paddingLeft: 24,
   },
   modalOverlay: {
     flex: 1,
@@ -1502,23 +2096,27 @@ const styles = StyleSheet.create({
     bottom: 20,
     left: 0,
     right: 0,
-    alignItems: 'center',
     paddingHorizontal: 20,
   },
   startBookingButton: {
     backgroundColor: COLORS.primary,
     paddingVertical: 15,
     paddingHorizontal: 30,
-    borderRadius: 10,
+    borderRadius: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     width: '100%',
+    marginBottom: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 3,
     elevation: 5,
+  },
+  videoButton: {
+    backgroundColor: '#007AFF', // iOS blue for video
+    marginBottom: 0,
   },
   startBookingButtonText: {
     color: '#fff',
@@ -1688,11 +2286,16 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
   },
   actionButton: {
-    marginTop: 20,
-    paddingVertical: 15,
-    borderRadius: 10,
+    marginTop: 0, // Remove top margin to eliminate black space
+    paddingVertical: 16,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 4,
   },
   startButton: {
     backgroundColor: '#4CD964',
@@ -1705,8 +2308,9 @@ const styles = StyleSheet.create({
   },
   actionButtonText: {
     color: '#fff',
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 20, // Increased for better readability
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
   // History styles
   historyContainer: {
