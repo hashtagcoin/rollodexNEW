@@ -60,6 +60,13 @@ const GroupsListScreen = () => {
   const fetchCounterRef = useRef(0);
   const isMounted = useRef(true);
 
+  // Add cache timeout (5 minutes like other screens)
+  const CACHE_TIMEOUT = 5 * 60 * 1000;
+  const globalCacheRef = useRef({
+    groups: null,
+    timestamp: null
+  });
+
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const scrollY = useRef(new Animated.Value(0)).current;
   const [isScrolling, setIsScrolling] = useState(false);

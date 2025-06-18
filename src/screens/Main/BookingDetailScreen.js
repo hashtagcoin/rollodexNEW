@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,15 +12,22 @@ import {
   TextInput,
   Platform,
   KeyboardAvoidingView,
-  Share // <-- FIX 1: Added missing Share import
+  Share,
+  Dimensions
 } from 'react-native';
 import AppHeader from '../../components/layout/AppHeader';
 import { useRoute } from '@react-navigation/native';
-import { format, parseISO, formatDistance, addDays } from 'date-fns';
-import { Ionicons, MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { format, parseISO, formatDistance, addDays, differenceInSeconds } from 'date-fns';
+import { Ionicons, MaterialIcons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabaseClient';
 import { COLORS } from '../../constants/theme';
 import { useUser } from '../../context/UserContext';
+// Temporarily commenting out Mapbox import until we resolve the dependency issue
+// import MapboxGL from '@rnmapbox/maps';
+import * as Location from 'expo-location';
+
+// Initialize Mapbox with API key - temporarily commented out
+// MapboxGL.setAccessToken('pk.eyJ1IjoiYm9yZWRiYXNoIiwiYSI6ImNtNng5NzA2NDByczIyanE4NjJtNWJ6ejYifQ.yxMTi_KA9gOE87hZpJyDmA');
 
 const BookingDetailScreen = ({ navigation }) => {
   const route = useRoute();
@@ -48,7 +55,22 @@ const BookingDetailScreen = ({ navigation }) => {
   // Booking history state
   const [bookingHistory, setBookingHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
-
+  
+  // Session tracking state
+  const [trackingModalVisible, setTrackingModalVisible] = useState(false);
+  const [sessionStarted, setSessionStarted] = useState(false);
+  const [sessionEnded, setSessionEnded] = useState(false);
+  const [currentLocation, setCurrentLocation] = useState(null);
+  const [startLocation, setStartLocation] = useState(null);
+  const [endLocation, setEndLocation] = useState(null);
+  const [startAddress, setStartAddress] = useState('');
+  const [endAddress, setEndAddress] = useState('');
+  const [sessionStartTime, setSessionStartTime] = useState(null);
+  const [sessionEndTime, setSessionEndTime] = useState(null);
+  const [sessionDuration, setSessionDuration] = useState(0);
+  const [pathCoordinates, setPathCoordinates] = useState([]);
+  const [trackingLoading, setTrackingLoading] = useState(false);
+  
   // Fetch booking details and history
   useEffect(() => {
     const fetchBookingDetails = async () => {
@@ -91,6 +113,9 @@ const BookingDetailScreen = ({ navigation }) => {
 
     fetchBookingDetails();
   }, [bookingId]);
+
+  
+
 
   // Show reschedule modal
   const showRescheduleModal = () => {
@@ -334,6 +359,163 @@ const BookingDetailScreen = ({ navigation }) => {
 
   // Get status color for the booking
   const statusColor = booking ? getStatusColor(booking.booking_status) : '#8E8E93';
+  
+  // Get current location using Expo Location API
+  const getCurrentLocation = async () => {
+    try {
+      setTrackingLoading(true);
+      
+      // Request location permissions
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      
+      if (status !== 'granted') {
+        setTrackingLoading(false);
+        Alert.alert('Permission Denied', 'Location permission is required for tracking sessions.');
+        throw new Error('Location permission not granted');
+      }
+      
+      // Get current position
+      const position = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High
+      });
+      
+      const { latitude, longitude } = position.coords;
+      const location = { latitude, longitude };
+      
+      setCurrentLocation(location);
+      setTrackingLoading(false);
+      return location;
+    } catch (error) {
+      console.error('Error getting location:', error);
+      setTrackingLoading(false);
+      Alert.alert('Location Error', 'Unable to get your current location. Please check your device settings.');
+      throw error;
+    }
+  };
+
+  // Reverse geocode to get address from coordinates - simplified version without Mapbox
+  const getAddressFromCoordinates = async (latitude, longitude) => {
+    try {
+      // Using a hardcoded Mapbox token since MapboxGL is temporarily disabled
+      const mapboxToken = 'pk.eyJ1IjoiYm9yZWRiYXNoIiwiYSI6ImNtNng5NzA2NDByczIyanE4NjJtNWJ6ejYifQ.yxMTi_KA9gOE87hZpJyDmA';
+      const response = await fetch(
+        `https://api.mapbox.com/geocoding/v5/mapbox.places/${longitude},${latitude}.json?access_token=${mapboxToken}`
+      );
+      const data = await response.json();
+      if (data.features && data.features.length > 0) {
+        return data.features[0].place_name;
+      }
+      return 'Unknown location';
+    } catch (error) {
+      console.error('Error getting address:', error);
+      return 'Address lookup failed';
+    }
+  };
+
+  // Start tracking session
+  const startSession = async () => {
+    try {
+      const location = await getCurrentLocation();
+      const address = await getAddressFromCoordinates(location.latitude, location.longitude);
+      
+      const startTime = new Date();
+      setSessionStartTime(startTime);
+      setStartLocation(location);
+      setStartAddress(address);
+      setSessionStarted(true);
+      setPathCoordinates([{longitude: location.longitude, latitude: location.latitude}]);
+      
+      // Note: Map centering removed as we're using simplified UI without Mapbox
+    } catch (error) {
+      console.error('Error starting session:', error);
+      Alert.alert('Error', 'Failed to start tracking session. Please try again.');
+    }
+  };
+
+  // End tracking session
+  const endSession = async () => {
+    try {
+      const location = await getCurrentLocation();
+      const address = await getAddressFromCoordinates(location.latitude, location.longitude);
+      
+      const endTime = new Date();
+      setSessionEndTime(endTime);
+      setEndLocation(location);
+      setEndAddress(address);
+      setSessionEnded(true);
+      
+      // Update path coordinates with end location
+      setPathCoordinates(prev => [...prev, {longitude: location.longitude, latitude: location.latitude}]);
+      
+      // Calculate session duration
+      const durationSeconds = differenceInSeconds(endTime, sessionStartTime);
+      setSessionDuration(durationSeconds);
+      
+      // Save session data to Supabase
+      await saveSessionData(durationSeconds, location, address);
+    } catch (error) {
+      console.error('Error ending session:', error);
+      Alert.alert('Error', 'Failed to end tracking session. Please try again.');
+    }
+  };
+
+  // Save session data to Supabase
+  const saveSessionData = async (durationSeconds, endLoc, endAddr) => {
+    if (!booking || !profile?.id || !startLocation) return;
+    
+    try {
+      const { error } = await supabase.from('tracking').insert({
+        booking_id: booking.booking_id,
+        user_id: profile.id,
+        session_start_time: sessionStartTime.toISOString(),
+        session_end_time: new Date().toISOString(),
+        session_duration_seconds: durationSeconds,
+        start_latitude: startLocation.latitude,
+        start_longitude: startLocation.longitude,
+        start_address: startAddress,
+        end_latitude: endLoc.latitude,
+        end_longitude: endLoc.longitude,
+        end_address: endAddr,
+        path_coordinates: JSON.stringify(pathCoordinates)
+      });
+
+      if (error) throw error;
+      
+      Alert.alert('Success', 'Session tracking data saved successfully.');
+    } catch (err) {
+      console.error('Error saving tracking data:', err);
+      Alert.alert('Error', 'Failed to save tracking data. Please try again.');
+    }
+  };
+
+  // Reset tracking session
+  const resetSession = () => {
+    setSessionStarted(false);
+    setSessionEnded(false);
+    setSessionStartTime(null);
+    setSessionEndTime(null);
+    setSessionDuration(null);
+    setStartLocation(null);
+    setEndLocation(null);
+    setStartAddress('');
+    setEndAddress('');
+    setPathCoordinates([]);
+  };
+
+  // Format duration in hours, minutes, seconds
+  const formatDuration = (seconds) => {
+    if (!seconds) return '00:00:00';
+    
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    
+    return [
+      hours.toString().padStart(2, '0'),
+      minutes.toString().padStart(2, '0'),
+      secs.toString().padStart(2, '0')
+    ].join(':');
+  };
 
   return (
     <View style={styles.container}>
@@ -566,6 +748,23 @@ const BookingDetailScreen = ({ navigation }) => {
           )}
         </View>
       )}
+
+      {/* Start Booking Button - Only show for confirmed bookings that are not completed or cancelled */}
+      {booking && ['confirmed', 'pending'].includes(booking.booking_status?.toLowerCase()) && (
+        <View style={styles.startBookingButtonContainer}>
+          <TouchableOpacity 
+            style={styles.startBookingButton}
+            onPress={() => {
+              setTrackingModalVisible(true);
+              // Get current location when modal opens
+              getCurrentLocation();
+            }}
+          >
+            <FontAwesome5 name="map-marker-alt" size={18} color="#fff" style={styles.buttonIcon} />
+            <Text style={styles.startBookingButtonText}>Start Booking</Text>
+          </TouchableOpacity>
+        </View>
+      )}
       </ScrollView>
 
       {/* --- Modals are placed outside the ScrollView but inside the main View --- */}
@@ -782,6 +981,206 @@ const BookingDetailScreen = ({ navigation }) => {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* Tracking Modal with Map */}
+      <Modal
+        visible={trackingModalVisible}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={() => {
+          if (sessionStarted && !sessionEnded) {
+            Alert.alert(
+              'Session in Progress',
+              'Do you want to end the current tracking session?',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                { 
+                  text: 'End Session', 
+                  onPress: async () => {
+                    await endSession();
+                  } 
+                },
+              ]
+            );
+          } else {
+            setTrackingModalVisible(false);
+            if (sessionEnded) {
+              resetSession();
+            }
+          }
+        }}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>
+              {sessionStarted ? (sessionEnded ? 'Session Complete' : 'Session in Progress') : 'Start Tracking Session'}
+            </Text>
+            <TouchableOpacity 
+              onPress={() => {
+                if (sessionStarted && !sessionEnded) {
+                  Alert.alert(
+                    'Session in Progress',
+                    'Do you want to end the current tracking session?',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      { 
+                        text: 'End Session', 
+                        onPress: async () => {
+                          await endSession();
+                        } 
+                      },
+                    ]
+                  );
+                } else {
+                  setTrackingModalVisible(false);
+                  if (sessionEnded) {
+                    resetSession();
+                  }
+                }
+              }}
+              style={styles.closeButton}
+              >
+                <Ionicons name="close" size={28} color="#333" />
+              </TouchableOpacity>
+            </View>
+            
+            {/* Location Information - Simplified UI (Map temporarily disabled) */}
+            <View style={styles.mapContainer}>
+              {trackingLoading ? (
+                <View style={styles.loadingMapContainer}>
+                  <ActivityIndicator size="large" color={COLORS.primary} />
+                  <Text style={{ marginTop: 10 }}>Getting location...</Text>
+                </View>
+              ) : currentLocation ? (
+                <View style={styles.simplifiedMapContainer}>
+                  <View style={styles.locationInfoBox}>
+                    <FontAwesome5 name="map-marker-alt" size={24} color={COLORS.primary} style={styles.locationIcon} />
+                    <Text style={styles.locationCoordinates}>
+                      Lat: {currentLocation.latitude.toFixed(6)}{"\n"}
+                      Long: {currentLocation.longitude.toFixed(6)}
+                    </Text>
+                  </View>
+                  
+                  {/* Location Status Indicators */}
+                  <View style={styles.locationStatusContainer}>
+                    {!sessionStarted && (
+                      <View style={styles.statusBox}>
+                        <View style={[styles.statusIndicator, styles.readyIndicator]} />
+                        <Text style={styles.statusText}>Ready to Start</Text>
+                      </View>
+                    )}
+                    
+                    {sessionStarted && !sessionEnded && (
+                      <View style={styles.statusBox}>
+                        <View style={[styles.statusIndicator, styles.activeIndicator]} />
+                        <Text style={styles.statusText}>Session Active</Text>
+                      </View>
+                    )}
+                    
+                    {sessionStarted && sessionEnded && (
+                      <View style={styles.statusBox}>
+                        <View style={[styles.statusIndicator, styles.completedIndicator]} />
+                        <Text style={styles.statusText}>Session Complete</Text>
+                      </View>
+                    )}
+                  </View>
+                  
+                  {/* Start and End Points */}
+                  {startLocation && (
+                    <View style={styles.locationPointContainer}>
+                      <View style={styles.locationPoint}>
+                        <FontAwesome5 name="flag" size={16} color="#4CD964" />
+                        <Text style={styles.locationPointLabel}>Start Point</Text>
+                      </View>
+                      <Text style={styles.locationPointCoords}>
+                        {startLocation.latitude.toFixed(6)}, {startLocation.longitude.toFixed(6)}
+                      </Text>
+                    </View>
+                  )}
+                  
+                  {endLocation && (
+                    <View style={styles.locationPointContainer}>
+                      <View style={styles.locationPoint}>
+                        <FontAwesome5 name="flag-checkered" size={16} color="#FF3B30" />
+                        <Text style={styles.locationPointLabel}>End Point</Text>
+                      </View>
+                      <Text style={styles.locationPointCoords}>
+                        {endLocation.latitude.toFixed(6)}, {endLocation.longitude.toFixed(6)}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              ) : (
+                <View style={styles.loadingMapContainer}>
+                  <FontAwesome5 name="exclamation-triangle" size={24} color="#FF9500" />
+                  <Text style={{ marginTop: 10 }}>Location unavailable</Text>
+                </View>
+              )}
+            </View>
+            
+            {/* Session Information */}
+            <View style={styles.sessionInfoContainer}>
+            {sessionStarted && (
+              <View style={styles.sessionCard}>
+                <View style={styles.cardHeader}>
+                  <FontAwesome5 name="map-marker-alt" size={16} color={COLORS.primary} />
+                  <Text style={styles.cardTitle}>Session Information</Text>
+                </View>
+                
+                <View style={styles.cardRow}>
+                  <Text style={styles.cardLabel}>Start Location:</Text>
+                  <Text style={styles.cardValue}>{startAddress}</Text>
+                </View>
+                
+                {sessionEnded && (
+                  <>
+                    <View style={styles.cardRow}>
+                      <Text style={styles.cardLabel}>End Location:</Text>
+                      <Text style={styles.cardValue}>{endAddress}</Text>
+                    </View>
+                    
+                    <View style={styles.durationRow}>
+                      <Text style={styles.durationLabel}>Session Duration:</Text>
+                      <Text style={styles.durationText}>{formatDuration(sessionDuration)}</Text>
+                    </View>
+                  </>
+                )}
+              </View>
+            )}
+            
+            {/* Action Button */}
+            <TouchableOpacity
+              style={[styles.actionButton, 
+                sessionStarted ? 
+                  (sessionEnded ? styles.doneButton : styles.endButton) : 
+                  styles.startButton
+              ]}
+              onPress={async () => {
+                if (!sessionStarted) {
+                  await startSession();
+                } else if (!sessionEnded) {
+                  await endSession();
+                } else {
+                  setTrackingModalVisible(false);
+                  resetSession();
+                }
+              }}
+              disabled={trackingLoading}
+            >
+              {trackingLoading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Text style={styles.actionButtonText}>
+                    {!sessionStarted ? 'Start Session' : 
+                      (!sessionEnded ? 'End Session' : 'Done')}
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View> // <-- FIX 3: Changed closing tag from </ScrollView> to </View>
   );
 };
@@ -792,7 +1191,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8F8F8',
   },
   contentContainer: {
-    paddingBottom: 40,
+    paddingBottom: 100, // Increased to accommodate the Start Booking button
   },
   loadingContainer: {
     flex: 1,
@@ -1092,9 +1491,222 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
   },
   modalSubmitButtonText: {
-    color: 'white',
-    fontWeight: '600',
+    color: '#fff',
     fontSize: 16,
+    fontWeight: '600',
+  },
+  
+  // Start Booking Button Styles
+  startBookingButtonContainer: {
+    position: 'absolute',
+    bottom: 20,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  startBookingButton: {
+    backgroundColor: COLORS.primary,
+    paddingVertical: 15,
+    paddingHorizontal: 30,
+    borderRadius: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 5,
+  },
+  startBookingButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+    marginLeft: 10,
+  },
+  buttonIcon: {
+    marginRight: 8,
+  },
+  
+  // Tracking Modal Styles
+  mapContainer: {
+    height: Dimensions.get('window').height * 0.4,
+    width: '100%',
+    borderRadius: 10,
+    overflow: 'hidden',
+    marginBottom: 15,
+  },
+  map: {
+    flex: 1,
+  },
+  loadingMapContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+    borderRadius: 10,
+  },
+  simplifiedMapContainer: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 10,
+    padding: 16,
+  },
+  locationInfoBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  locationIcon: {
+    marginRight: 12,
+  },
+  locationCoordinates: {
+    fontSize: 16,
+    color: '#333',
+    fontWeight: '500',
+    lineHeight: 24,
+  },
+  locationStatusContainer: {
+    marginBottom: 16,
+  },
+  statusBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  statusIndicator: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginRight: 8,
+  },
+  readyIndicator: {
+    backgroundColor: '#007AFF',
+  },
+  activeIndicator: {
+    backgroundColor: '#4CD964',
+  },
+  completedIndicator: {
+    backgroundColor: '#FF3B30',
+  },
+  statusText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#333',
+  },
+  locationPointContainer: {
+    backgroundColor: '#fff',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  locationPoint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  locationPointLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#333',
+    marginLeft: 8,
+  },
+  locationPointCoords: {
+    fontSize: 14,
+    color: '#666',
+    paddingLeft: 24,
+  },
+  currentMarker: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#007AFF',
+    borderWidth: 3,
+    borderColor: '#fff',
+  },
+  startMarker: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#4CD964',
+    borderWidth: 3,
+    borderColor: '#fff',
+  },
+  endMarker: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#FF3B30',
+    borderWidth: 3,
+    borderColor: '#fff',
+  },
+  sessionInfoContainer: {
+    padding: 15,
+    backgroundColor: '#fff',
+    borderRadius: 10,
+  },
+  sessionCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  durationRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    marginTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  durationLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 5,
+  },
+  durationText: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: COLORS.primary,
+  },
+  actionButton: {
+    marginTop: 20,
+    paddingVertical: 15,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  startButton: {
+    backgroundColor: '#4CD964',
+  },
+  endButton: {
+    backgroundColor: '#FF3B30',
+  },
+  doneButton: {
+    backgroundColor: COLORS.primary,
+  },
+  actionButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
   },
   // History styles
   historyContainer: {
