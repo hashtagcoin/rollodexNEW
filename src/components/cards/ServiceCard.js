@@ -1,12 +1,16 @@
 import React, { useState, useMemo } from 'react';
 // Corrected import: Added StyleSheet, removed unused useEffect and SIZES
-import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native'; 
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { Image } from 'expo-image'; 
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { getValidImageUrl, getOptimizedImageUrl } from '../../utils/imageHelper';
 import { CardStyles } from '../../constants/CardStyles'; // Import CardStyles
 import { COLORS } from '../../constants/theme'; // Removed SIZES as it was unused
 
 // Main component
+// Pre-load placeholder image
+const placeholderImage = { uri: 'https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/providerimages/default-service.png' };
+
 const ServiceCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', isFavorited, onToggleFavorite, onSharePress }) => { 
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
@@ -75,7 +79,7 @@ const ServiceCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', isFavor
           <View style={[CardStyles.listImageContainer, {overflow: 'hidden'}]}> 
             {!imageLoaded && <View style={CardStyles.loaderContainer} />}
             <Image 
-              source={imageError ? require('../../assets/images/default-service.png') : { uri: thumbUrl }}
+              source={{ uri: imageError ? 'https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/providerimages/default-service.png' : thumbUrl }}
               style={[CardStyles.listImage, {resizeMode: 'cover'}]} 
               onLoad={() => {
                 setImageLoaded(true);
@@ -83,7 +87,9 @@ const ServiceCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', isFavor
               }}
               onError={handleImageError}
               contentFit="cover"
-              cachePolicy="immutable"
+              cachePolicy="memory-disk"
+              placeholder={placeholderImage}
+              placeholderContentFit="cover"
             />
             <TouchableOpacity 
               style={CardStyles.iconContainer} 
@@ -148,7 +154,7 @@ const ServiceCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', isFavor
             <View style={[CardStyles.gridImageContainer, {overflow: 'hidden'}]}> 
               {!imageLoaded && <View style={CardStyles.loaderContainer} />}
               <Image 
-                source={imageError ? require('../../assets/images/default-service.png') : { uri: thumbUrl }}
+                source={{ uri: imageError ? 'https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/providerimages/default-service.png' : thumbUrl }}
                 style={[CardStyles.gridImage, {resizeMode: 'cover'}]} 
                 onLoad={() => {
                   setImageLoaded(true);

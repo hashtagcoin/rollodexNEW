@@ -73,11 +73,23 @@ const dummyHousingGroups = [
 const SocialFeedScreen = () => {
   const navigation = useNavigation();
   const flatListRef = useRef(null);
+  
+  // Consolidated state management to reduce re-renders
+  const [uiState, setUIState] = useState({
+    loading: true,
+    refreshing: false,
+    housingModalVisible: false,
+    showCreatePostModal: false
+  });
+  
+  const { loading, refreshing, housingModalVisible, showCreatePostModal } = uiState;
+  
+  // Helper to update UI state without causing multiple re-renders
+  const updateUIState = useCallback((updates) => {
+    setUIState(prev => ({ ...prev, ...updates }));
+  }, []);
+  
   const [posts, setPosts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [housingModalVisible, setHousingModalVisible] = useState(false);
-  const [showCreatePostModal, setShowCreatePostModal] = useState(false);
   
   // Performance optimization refs
   const fetchInProgressRef = useRef(false);
@@ -140,7 +152,7 @@ const SocialFeedScreen = () => {
           cachedPostCount: cacheRef.current.length
         });
         setPosts(cacheRef.current);
-        setLoading(false);
+        updateUIState({ loading: false });
         
         // Optional: Background refresh after delay to get latest posts
         const interaction = InteractionManager.runAfterInteractions(() => {
@@ -192,10 +204,10 @@ const SocialFeedScreen = () => {
     try {
       // Only show loading on initial load or pull-to-refresh
       if (!cacheRef.current && !isBackgroundRefresh) {
-        setLoading(true);
+        updateUIState({ loading: true });
       }
       if (isRefreshing) {
-        setRefreshing(true);
+        updateUIState({ refreshing: true });
       }
       
       // Get all posts, sorted by most recent first
@@ -247,8 +259,10 @@ const SocialFeedScreen = () => {
       });
     } finally {
       if (isMounted.current) {
-        setLoading(false);
-        setRefreshing(false);
+        updateUIState({
+          loading: false,
+          refreshing: false
+        });
       }
       fetchInProgressRef.current = false;
     }
@@ -283,18 +297,18 @@ const SocialFeedScreen = () => {
 
   // Handle refresh
   const handleRefresh = () => {
-    setRefreshing(true);
+    updateUIState({ refreshing: true });
     fetchPosts(true);
   };
 
-  // Render each post using the PostCardFixed component
-  const renderPost = ({ item }) => (
+  // Render each post using the PostCardFixed component - memoized
+  const renderPost = useCallback(({ item }) => (
     <PostCardFixed 
       post={item} 
       onPress={() => navigation.navigate('PostDetailScreen', { post: item })}
       showActions={true}
     />
-  );
+  ), [navigation]);
 
   const renderHousingGroup = ({ item }) => {
     const thumbUrl = getOptimizedImageUrl(item.image, 400, 70);
@@ -383,13 +397,13 @@ const SocialFeedScreen = () => {
       <Modal
         visible={housingModalVisible}
         transparent={true}
-        onRequestClose={() => setHousingModalVisible(false)}
+        onRequestClose={() => updateUIState({ housingModalVisible: false })}
       >
-        <Pressable style={styles.modalOverlay} onPress={() => setHousingModalVisible(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => updateUIState({ housingModalVisible: false })}>
           <SafeAreaView style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Housing Groups</Text>
-              <Pressable style={styles.closeBtn} onPress={() => setHousingModalVisible(false)}>
+              <Pressable style={styles.closeBtn} onPress={() => updateUIState({ housingModalVisible: false })}>
                 <Feather name="x" size={24} color="#333" />
               </Pressable>
             </View>
@@ -406,7 +420,7 @@ const SocialFeedScreen = () => {
       
       {/* Action button for creating new post - positioned absolutely like in ProfileScreen */}
       <ActionButton
-        onPress={() => setShowCreatePostModal(true)}
+        onPress={() => updateUIState({ showCreatePostModal: true })}
         iconName="add"
         color="#007AFF"
         size={56}
@@ -415,7 +429,7 @@ const SocialFeedScreen = () => {
       {/* Create Post Modal */}
       <CreatePostModal
         visible={showCreatePostModal}
-        onClose={() => setShowCreatePostModal(false)}
+        onClose={() => updateUIState({ showCreatePostModal: false })}
         onPostCreated={handlePostCreated}
       />
     </View>

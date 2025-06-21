@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { View } from 'react-native';
-import ProviderDiscoveryScreen from './ProviderDiscoveryScreen';
+import ProviderDiscoveryScreen from './ProviderDiscoveryScreen.old';
 import { useAppState } from '../../context/AppStateContext';
 import { useFocusEffect } from '@react-navigation/native';
 

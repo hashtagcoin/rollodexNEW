@@ -37,7 +37,7 @@ const HousingGroupCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', is
     imageUrl ? getOptimizedImageUrl(imageUrl, 400, 70) : null
   ), [imageUrl]);
   const imageSource = useMemo(() => {
-    return thumbUrl ? { uri: thumbUrl } : { uri: 'https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/housingimages/default-housing.png' };
+    return thumbUrl ? { uri: thumbUrl } : { uri: 'https://via.placeholder.com/400x300/E6F2FF/003366?text=Housing' };
   }, [thumbUrl]);
 
   // Process housing group info tags

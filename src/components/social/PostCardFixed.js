@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, memo } from 'react';
 import {
   View,
   Text,
@@ -892,4 +892,16 @@ const styles = StyleSheet.create({
   },
 });
 
-export default PostCard;
+const PostCardMemoized = memo(PostCard, (prevProps, nextProps) => {
+  // Custom comparison to prevent unnecessary re-renders
+  return (
+    prevProps.post?.post_id === nextProps.post?.post_id &&
+    prevProps.post?.caption === nextProps.post?.caption &&
+    prevProps.post?.media_urls?.length === nextProps.post?.media_urls?.length &&
+    prevProps.showActions === nextProps.showActions
+  );
+});
+
+PostCardMemoized.displayName = 'PostCard';
+
+export default PostCardMemoized;

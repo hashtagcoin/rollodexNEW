@@ -50,6 +50,7 @@
     "expo-web-browser": "^14.1.6",
     "lodash": "^4.17.21",
     "lucide-react-native": "^0.511.0",
+    "node-fetch": "^3.3.2",
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "react-native": "0.79.2",

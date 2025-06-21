@@ -6,13 +6,14 @@ const SUPABASE_URL = 'https://smtckdlpdfvdycocwoip.supabase.co';
 const DEBUG_ENABLED = true;
 
 // Define default image paths for fallbacks
+// Using placeholder.com as a fallback since Supabase buckets are not configured
 const DEFAULT_IMAGES = {
-  service: 'providerimages/default-service.png',
-  housing: 'providerimages/default-housing.png',
-  user: 'providerimages/default-avatar.png',
-  post: 'providerimages/default-post.png',
-  event: 'providerimages/default-event.png',
-  group: 'providerimages/default-group.png',
+  service: 'https://via.placeholder.com/400x300/E6F2FF/003366?text=Service',
+  housing: 'https://via.placeholder.com/400x300/E6F2FF/003366?text=Housing',
+  user: 'https://via.placeholder.com/150x150/E6F2FF/003366?text=User',
+  post: 'https://via.placeholder.com/400x300/E6F2FF/003366?text=Post',
+  event: 'https://via.placeholder.com/400x300/E6F2FF/003366?text=Event',
+  group: 'https://via.placeholder.com/400x300/E6F2FF/003366?text=Group',
 };
 
 /**
@@ -41,7 +42,7 @@ export const getValidImageUrl = (url, bucket = 'postsimages', source = 'unknown'
   try {
     // Handle null/undefined/empty URLs
     if (!url || url === 'null' || url === 'undefined') {
-      const fallbackUrl = `${SUPABASE_URL}/storage/v1/object/public/${DEFAULT_IMAGES[type] || DEFAULT_IMAGES.service}`;
+      const fallbackUrl = DEFAULT_IMAGES[type] || DEFAULT_IMAGES.service;
       logImageProcessing(source, url, fallbackUrl, true);
       return fallbackUrl;
     }
@@ -99,7 +100,7 @@ export const getValidImageUrl = (url, bucket = 'postsimages', source = 'unknown'
     logImageProcessing(source, url, result);
     return result;
   } catch (error) {
-    const fallbackUrl = `${SUPABASE_URL}/storage/v1/object/public/${DEFAULT_IMAGES[type] || DEFAULT_IMAGES.service}`;
+    const fallbackUrl = DEFAULT_IMAGES[type] || DEFAULT_IMAGES.service;
     logImageProcessing(source, url, fallbackUrl, true);
     console.error(`[IMAGE_ERROR][${source}] Error processing URL: ${error.message}`);
     return fallbackUrl;
@@ -165,7 +166,7 @@ export const standardizeServiceImageUrls = (urls, userId = null, source = 'unkno
           return result;
         } catch (itemError) {
           // If processing of an individual URL fails, use default
-          const fallbackUrl = `${SUPABASE_URL}/storage/v1/object/public/${DEFAULT_IMAGES.service}`;
+          const fallbackUrl = DEFAULT_IMAGES.service;
           logImageProcessing(source, url, fallbackUrl, true);
           console.error(`[IMAGE_ERROR][${source}] Error processing URL item: ${itemError.message}`);
           return fallbackUrl;
@@ -174,7 +175,7 @@ export const standardizeServiceImageUrls = (urls, userId = null, source = 'unkno
       
     // If no valid URLs were found, return a default
     if (standardizedUrls.length === 0) {
-      const fallbackUrl = `${SUPABASE_URL}/storage/v1/object/public/${DEFAULT_IMAGES.service}`;
+      const fallbackUrl = DEFAULT_IMAGES.service;
       return [fallbackUrl];
     }
     
@@ -182,7 +183,7 @@ export const standardizeServiceImageUrls = (urls, userId = null, source = 'unkno
   } catch (error) {
     // If the whole function fails, return at least one default image
     console.error(`[IMAGE_ERROR][${source}] Failed to standardize URLs: ${error.message}`);
-    return [`${SUPABASE_URL}/storage/v1/object/public/${DEFAULT_IMAGES.service}`];
+    return [DEFAULT_IMAGES.service];
   }
 };
 
@@ -194,12 +195,12 @@ export const standardizeServiceImageUrls = (urls, userId = null, source = 'unkno
 export const getDefaultImage = (type) => {
   try {
     // Use DEFAULT_IMAGES constants for consistency
-    const imagePath = DEFAULT_IMAGES[type] || DEFAULT_IMAGES.post;
-    return { uri: `${SUPABASE_URL}/storage/v1/object/public/${imagePath}` };
+    const imageUrl = DEFAULT_IMAGES[type] || DEFAULT_IMAGES.post;
+    return { uri: imageUrl };
   } catch (error) {
     console.error(`[IMAGE_ERROR][getDefaultImage] Error getting default image: ${error.message}`);
     // Ultimate fallback - hardcoded default
-    return { uri: `${SUPABASE_URL}/storage/v1/object/public/providerimages/default-post.png` };
+    return { uri: DEFAULT_IMAGES.post };
   }
 };
 
@@ -220,9 +221,20 @@ export const getOptimizedImageUrl = (url, width = 400, quality = 70) => {
     if (!url || typeof url !== 'string') return url;
 
     // Skip if a transformation is already applied (presence of ?width or format)
-    if (url.includes('?width=')) return url;
+    if (url.includes('?width=') || url.includes('?quality=')) return url;
 
-    const params = `?width=${width}&quality=${quality}&format=webp`;
+    // Use different quality settings based on width
+    const finalQuality = width <= 200 ? 60 : width <= 400 ? quality : 85;
+    
+    // For Supabase Storage v2, append transformation parameters
+    if (url.includes('supabase.co/storage/v1/object/public/')) {
+      // Append transformation parameters to the original URL
+      const params = `?width=${width}&quality=${finalQuality}`;
+      return `${url}${params}`;
+    }
+    
+    // For other URLs, append standard query params
+    const params = `?width=${width}&quality=${finalQuality}`;
     return `${url}${params}`;
   } catch (err) {
     // On error just return original

@@ -14,6 +14,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Image as ExpoImage } from 'expo-image';
 import { getValidImageUrl, getOptimizedImageUrl } from '../../utils/imageHelper';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useHousingImageCache } from '../../hooks/useHousingImageCache';
 
 // Create an animated version of FlatList
 const AnimatedFlatList = Animated.createAnimatedComponent(FlatList);
@@ -45,6 +46,7 @@ const PAGE_SIZE = 15;
 
 const HousingGroupsScreen = ({ navigation }) => {
   const { reportScroll } = useScrollContext();
+  const { preloadHousingImages, getCachedUrl, getCacheStats } = useHousingImageCache();
   // State management
   const [housingGroups, setHousingGroups] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -427,18 +429,27 @@ const HousingGroupsScreen = ({ navigation }) => {
     }, [refreshUserFavorites])
   );
 
-  // Prefetch first batch of thumbnails when housingGroups changes
+  // Prefetch housing images using optimized cache
   useEffect(() => {
     if (housingGroups.length === 0) return;
-    const prefetchCount = viewMode === 'Grid' ? 9 : 4;
-    const urls = housingGroups.slice(0, prefetchCount).map(group => {
-      const listingImage = group.housing_listing_data?.media_urls?.[0] || group.avatar_url || null;
-      const validUrl = getValidImageUrl(listingImage, 'housingimages');
-      return validUrl ? getOptimizedImageUrl(validUrl, 256, 60) : null;
-    }).filter(Boolean);
-
-    urls.forEach(url => ExpoImage.prefetch(url));
-  }, [housingGroups, viewMode]);
+    
+    // Prepare items for preloading
+    const itemsToPreload = housingGroups.map(group => ({
+      id: group.id,
+      media_urls: group.housing_listing_data?.media_urls?.length > 0 
+        ? group.housing_listing_data.media_urls 
+        : group.avatar_url ? [group.avatar_url] : []
+    }));
+    
+    // Preload images with proper caching
+    preloadHousingImages(itemsToPreload);
+    
+    // Log cache stats in development
+    if (__DEV__) {
+      const stats = getCacheStats();
+      console.log('[HousingGroups] Cache stats:', stats);
+    }
+  }, [housingGroups, preloadHousingImages, getCacheStats]);
 
   // Handle creating a new housing group
   const handleCreateGroup = () => {

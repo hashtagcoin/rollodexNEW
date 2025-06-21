@@ -35,7 +35,7 @@ const getStaticMapImageUrl = (currentLocation, startLocation, endLocation) => {
   try {
     const width = 600;
     const height = 400;
-    const zoom = 15;
+    const zoom = 14; // Slightly zoomed out for better context
     
     // Use the most relevant location for centering
     let centerLng = currentLocation?.longitude || startLocation?.longitude || endLocation?.longitude || 144.9631;
@@ -56,15 +56,15 @@ const getStaticMapImageUrl = (currentLocation, startLocation, endLocation) => {
       markers.push(`pin-s+FF3B30(${endLocation.longitude},${endLocation.latitude})`);
     }
     
-    // Build Mapbox URL
+    // Build Mapbox URL with retina support
     let url;
     if (markers.length > 0) {
-      url = `https://api.mapbox.com/styles/v1/mapbox/streets-v11/static/${markers.join(',')}/${centerLng},${centerLat},${zoom}/${width}x${height}?access_token=${MAPBOX_TOKEN}`;
+      url = `https://api.mapbox.com/styles/v1/mapbox/streets-v11/static/${markers.join(',')}/${centerLng},${centerLat},${zoom}/${width}x${height}@2x?access_token=${MAPBOX_TOKEN}`;
     } else {
-      url = `https://api.mapbox.com/styles/v1/mapbox/streets-v11/static/${centerLng},${centerLat},${zoom}/${width}x${height}?access_token=${MAPBOX_TOKEN}`;
+      // Show default location map while waiting for actual location
+      url = `https://api.mapbox.com/styles/v1/mapbox/streets-v11/static/${centerLng},${centerLat},${zoom}/${width}x${height}@2x?access_token=${MAPBOX_TOKEN}`;
     }
     
-    console.log('Generated Mapbox URL:', url);
     return url;
     
   } catch (error) {
@@ -118,6 +118,10 @@ const BookingDetailScreen = ({ navigation }) => {
   const [bookingHistory, setBookingHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
   
+  // Tracking history state
+  const [trackingHistory, setTrackingHistory] = useState([]);
+  const [showTrackingHistory, setShowTrackingHistory] = useState(false);
+  
   // Session tracking state
   const [trackingModalVisible, setTrackingModalVisible] = useState(false);
   const [sessionStarted, setSessionStarted] = useState(false);
@@ -133,6 +137,7 @@ const BookingDetailScreen = ({ navigation }) => {
   const [pathCoordinates, setPathCoordinates] = useState([]);
   const [trackingLoading, setTrackingLoading] = useState(false);
   const [mapError, setMapError] = useState(false);
+  const [mapUrl, setMapUrl] = useState(null);
   
   // Fetch booking details and history
   useEffect(() => {
@@ -165,6 +170,33 @@ const BookingDetailScreen = ({ navigation }) => {
 
         if (!historyError && historyData) {
           setBookingHistory(historyData);
+        }
+        
+        // Fetch tracking history with specific columns
+        const { data: trackingData, error: trackingError } = await supabase
+          .from('tracking')
+          .select(`
+            id,
+            booking_id,
+            user_id,
+            session_start_time,
+            session_end_time,
+            session_duration_seconds,
+            start_latitude,
+            start_longitude,
+            start_address,
+            end_latitude,
+            end_longitude,
+            end_address,
+            path_coordinates,
+            notes,
+            created_at
+          `)
+          .eq('booking_id', bookingId)
+          .order('session_start_time', { ascending: false });
+          
+        if (!trackingError && trackingData) {
+          setTrackingHistory(trackingData);
         }
       } catch (err) {
         console.error('Error fetching booking details:', err);
@@ -488,8 +520,8 @@ const BookingDetailScreen = ({ navigation }) => {
       setSessionStarted(true);
       setPathCoordinates([{longitude: location.longitude, latitude: location.latitude}]);
       
-      // Start the duration counter
-      startDurationCounter();
+      // Start the duration counter with the start time
+      startDurationCounter(startTime);
       
       // Note: Map centering removed as we're using simplified UI without Mapbox
     } catch (error) {
@@ -501,15 +533,22 @@ const BookingDetailScreen = ({ navigation }) => {
   // Add duration counter interval
   const intervalRef = useRef(null);
   
-  const startDurationCounter = () => {
-    intervalRef.current = setInterval(() => {
-      if (sessionStartTime) {
-        const now = new Date();
-        const durationSeconds = differenceInSeconds(now, sessionStartTime);
-        setSessionDuration(durationSeconds);
-      }
-    }, 1000);
-  };
+  const startDurationCounter = useCallback((startTime) => {
+    // Clear any existing interval first
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+    }
+    
+    // Update immediately, then every second
+    const updateDuration = () => {
+      const now = new Date();
+      const durationSeconds = differenceInSeconds(now, startTime);
+      setSessionDuration(durationSeconds);
+    };
+    
+    updateDuration(); // Update immediately
+    intervalRef.current = setInterval(updateDuration, 1000);
+  }, []);
   
   const stopDurationCounter = () => {
     if (intervalRef.current) {
@@ -525,11 +564,27 @@ const BookingDetailScreen = ({ navigation }) => {
     };
   }, []);
 
+  // Auto-start session when modal opens
+  useEffect(() => {
+    if (trackingModalVisible && !sessionStarted && !sessionEnded) {
+      // Generate a default map URL immediately
+      if (!mapUrl) {
+        const defaultUrl = getStaticMapImageUrl(null, null, null);
+        setMapUrl(defaultUrl);
+      }
+      startSession();
+    }
+  }, [trackingModalVisible]);
+
+  // Update map URL whenever locations change
+  useEffect(() => {
+    const url = getStaticMapImageUrl(currentLocation, startLocation, endLocation);
+    setMapUrl(url);
+  }, [currentLocation, startLocation, endLocation]);
+
   // End tracking session
   const endSession = async () => {
     try {
-      // Stop the duration counter
-      stopDurationCounter();
       
       const location = await getCurrentLocation();
       const address = await getAddressFromCoordinates(location.latitude, location.longitude);
@@ -543,12 +598,18 @@ const BookingDetailScreen = ({ navigation }) => {
       // Update path coordinates with end location
       setPathCoordinates(prev => [...prev, {longitude: location.longitude, latitude: location.latitude}]);
       
-      // Calculate session duration
+      // Calculate final session duration and stop the counter
       const durationSeconds = differenceInSeconds(endTime, sessionStartTime);
       setSessionDuration(durationSeconds);
+      stopDurationCounter();
       
       // Save session data to Supabase
-      await saveSessionData(durationSeconds, location, address);
+      const savedSession = await saveSessionData(durationSeconds, location, address);
+      
+      // Refresh tracking history if save was successful
+      if (savedSession) {
+        setTrackingHistory(prev => [savedSession, ...prev]);
+      }
     } catch (error) {
       console.error('Error ending session:', error);
       Alert.alert('Error', 'Failed to end tracking session. Please try again.');
@@ -560,7 +621,12 @@ const BookingDetailScreen = ({ navigation }) => {
     if (!booking || !profile?.id || !startLocation) return;
     
     try {
-      const { error } = await supabase.from('tracking').insert({
+      // For now, we'll just use the Mapbox static URL directly
+      // since the trackingmaps bucket has permission issues
+      let mapImageUrl = mapUrl;
+      
+      // Save tracking data without map_image_url for now
+      const trackingData = {
         booking_id: booking.booking_id,
         user_id: profile.id,
         session_start_time: sessionStartTime.toISOString(),
@@ -573,29 +639,62 @@ const BookingDetailScreen = ({ navigation }) => {
         end_longitude: endLoc.longitude,
         end_address: endAddr,
         path_coordinates: JSON.stringify(pathCoordinates)
-      });
+      };
+      
+      // Only add map_image_url if it exists and the column is available
+      if (mapImageUrl) {
+        // Store the map URL in the notes field temporarily
+        trackingData.notes = `Map URL: ${mapImageUrl}`;
+      }
+      
+      const { data, error } = await supabase
+        .from('tracking')
+        .insert(trackingData)
+        .select(`
+          id,
+          booking_id,
+          user_id,
+          session_start_time,
+          session_end_time,
+          session_duration_seconds,
+          start_latitude,
+          start_longitude,
+          start_address,
+          end_latitude,
+          end_longitude,
+          end_address,
+          path_coordinates,
+          notes,
+          created_at
+        `);
 
       if (error) throw error;
       
       Alert.alert('Success', 'Session tracking data saved successfully.');
+      
+      // Return the saved tracking record
+      return data?.[0];
     } catch (err) {
       console.error('Error saving tracking data:', err);
       Alert.alert('Error', 'Failed to save tracking data. Please try again.');
+      return null;
     }
   };
 
   // Reset tracking session
   const resetSession = () => {
+    stopDurationCounter(); // Make sure to stop the counter
     setSessionStarted(false);
     setSessionEnded(false);
     setSessionStartTime(null);
     setSessionEndTime(null);
-    setSessionDuration(null);
+    setSessionDuration(0); // Reset to 0 instead of null
     setStartLocation(null);
     setEndLocation(null);
     setStartAddress('');
     setEndAddress('');
     setPathCoordinates([]);
+    setMapUrl(null); // Reset map URL
   };
 
   // Format duration in hours, minutes, seconds
@@ -780,6 +879,27 @@ const BookingDetailScreen = ({ navigation }) => {
                 />
               </View>
             </TouchableOpacity>
+            
+            {/* Tracking History Button - Only show if there are tracking records */}
+            {trackingHistory.length > 0 && (
+              <TouchableOpacity
+                style={[styles.actionButton, styles.trackingHistoryButton]}
+                onPress={() => setShowTrackingHistory(!showTrackingHistory)}
+              >
+                <View style={styles.historyButtonContent}>
+                  <FontAwesome5 name="route" size={20} color="#fff" />
+                  <Text numberOfLines={1} style={styles.actionButtonText}>
+                    {showTrackingHistory ? 'Hide Tracking' : 'View Tracking'}
+                  </Text>
+                  <Ionicons 
+                    name={showTrackingHistory ? "chevron-up" : "chevron-down"} 
+                    size={18} 
+                    color="#fff" 
+                    style={styles.historyChevron}
+                  />
+                </View>
+              </TouchableOpacity>
+            )}
           </View>
         </>
       ) : (
@@ -856,17 +976,105 @@ const BookingDetailScreen = ({ navigation }) => {
         </View>
       )}
 
+      {/* Tracking History Section (conditionally shown) */}
+      {showTrackingHistory && booking && (
+        <View style={styles.trackingHistoryContainer}>
+          <View style={styles.historyHeader}>
+            <Text style={styles.historyTitle}>Tracking History</Text>
+            <TouchableOpacity onPress={() => setShowTrackingHistory(false)}>
+              <Ionicons name="close" size={24} color="#666" />
+            </TouchableOpacity>
+          </View>
+
+          {trackingHistory.length > 0 ? (
+            <ScrollView style={styles.trackingHistoryList}>
+              {trackingHistory.map((session) => (
+                <View key={session.id} style={styles.trackingSessionCard}>
+                  <View style={styles.trackingSessionHeader}>
+                    <View style={styles.trackingSessionInfo}>
+                      <Text style={styles.trackingSessionDate}>
+                        {format(parseISO(session.session_start_time), 'PPP')}
+                      </Text>
+                      <Text style={styles.trackingSessionTime}>
+                        {format(parseISO(session.session_start_time), 'p')} - {format(parseISO(session.session_end_time), 'p')}
+                      </Text>
+                    </View>
+                    <View style={styles.trackingDurationBadge}>
+                      <Ionicons name="time-outline" size={16} color="#fff" />
+                      <Text style={styles.trackingDurationText}>
+                        {formatDuration(session.session_duration_seconds)}
+                      </Text>
+                    </View>
+                  </View>
+                  
+                  {/* Map Image */}
+                  {(() => {
+                    // Try to get map URL from map_image_url or extract from notes
+                    let mapUrl = session.map_image_url;
+                    if (!mapUrl && session.notes && session.notes.includes('Map URL: ')) {
+                      const match = session.notes.match(/Map URL: (https?:\/\/[^\s]+)/);
+                      if (match) {
+                        mapUrl = match[1];
+                      }
+                    }
+                    
+                    return mapUrl ? (
+                      <View style={styles.trackingMapContainer}>
+                        <Image
+                          source={{ uri: mapUrl }}
+                          style={styles.trackingMapImage}
+                          contentFit="cover"
+                          transition={200}
+                        />
+                      </View>
+                    ) : null;
+                  })()}
+                  
+                  {/* Location Details */}
+                  <View style={styles.trackingLocationDetails}>
+                    <View style={styles.trackingLocationRow}>
+                      <View style={styles.trackingLocationIcon}>
+                        <FontAwesome5 name="map-marker-alt" size={14} color="#4CD964" />
+                      </View>
+                      <View style={styles.trackingLocationInfo}>
+                        <Text style={styles.trackingLocationLabel}>Start Location</Text>
+                        <Text style={styles.trackingLocationAddress} numberOfLines={2}>
+                          {session.start_address || 'Location not available'}
+                        </Text>
+                      </View>
+                    </View>
+                    
+                    <View style={styles.trackingLocationRow}>
+                      <View style={styles.trackingLocationIcon}>
+                        <FontAwesome5 name="flag-checkered" size={14} color="#FF3B30" />
+                      </View>
+                      <View style={styles.trackingLocationInfo}>
+                        <Text style={styles.trackingLocationLabel}>End Location</Text>
+                        <Text style={styles.trackingLocationAddress} numberOfLines={2}>
+                          {session.end_address || 'Location not available'}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+          ) : (
+            <View style={styles.emptyHistoryContainer}>
+              <FontAwesome5 name="route" size={40} color="#ddd" />
+              <Text style={styles.emptyHistoryText}>No tracking sessions yet</Text>
+            </View>
+          )}
+        </View>
+      )}
+
       {/* Start Booking and Video Buttons - Only show for confirmed bookings that are not completed or cancelled */}
       {booking && ['confirmed', 'pending'].includes(booking.booking_status?.toLowerCase()) && (
         <View style={styles.startBookingButtonContainer}>
           <TouchableOpacity 
             style={styles.startBookingButton}
-            onPress={async () => {
+            onPress={() => {
               setTrackingModalVisible(true);
-              // Immediately start the session when modal opens
-              setTimeout(async () => {
-                await startSession();
-              }, 500); // Small delay to allow modal to render
             }}
           >
             <FontAwesome5 name="map-marker-alt" size={18} color="#fff" style={styles.buttonIcon} />
@@ -1166,31 +1374,29 @@ const BookingDetailScreen = ({ navigation }) => {
             showsVerticalScrollIndicator={false}
           >
             <View style={styles.mapContainer}>
-            {trackingLoading || (!currentLocation && !startLocation) ? (
-              <View style={styles.loadingMapContainer}>
-                <ActivityIndicator size="large" color={COLORS.primary} />
-                <Text style={styles.loadingMapText}>Loading map...</Text>
-              </View>
-            ) : mapError ? (
+            {mapError ? (
               <View style={styles.loadingMapContainer}>
                 <Ionicons name="alert-circle-outline" size={48} color="#999" />
                 <Text style={styles.loadingMapText}>Unable to load map</Text>
               </View>
-            ) : (
+            ) : mapUrl ? (
               <RNImage 
-                source={{ uri: getStaticMapImageUrl(currentLocation, startLocation, endLocation) }}
+                source={{ uri: mapUrl }}
                 style={styles.staticMapImage}
                 resizeMode="cover"
                 onError={(e) => {
                   console.log('Map load error:', e.nativeEvent);
-                  // Try OpenStreetMap as fallback
                   setMapError(true);
                 }}
                 onLoad={() => {
-                  console.log('Map loaded successfully');
                   setMapError(false);
                 }}
               />
+            ) : (
+              <View style={styles.loadingMapContainer}>
+                <ActivityIndicator size="large" color={COLORS.primary} />
+                <Text style={styles.loadingMapText}>Loading map...</Text>
+              </View>
             )}
             
             {startLocation && (
@@ -2382,6 +2588,114 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#999',
     marginTop: 10,
+  },
+  // Tracking History Button
+  trackingHistoryButton: {
+    backgroundColor: '#007AFF', // iOS blue color
+    width: '100%',
+    marginHorizontal: 0,
+    marginTop: 12,
+  },
+  // Tracking History Container
+  trackingHistoryContainer: {
+    backgroundColor: '#fff',
+    margin: 16,
+    marginTop: 0,
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  trackingHistoryList: {
+    maxHeight: 400,
+  },
+  trackingSessionCard: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  trackingSessionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    paddingBottom: 12,
+  },
+  trackingSessionInfo: {
+    flex: 1,
+  },
+  trackingSessionDate: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  trackingSessionTime: {
+    fontSize: 14,
+    color: '#666',
+  },
+  trackingDurationBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  trackingDurationText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  trackingMapContainer: {
+    height: 200,
+    backgroundColor: '#f0f0f0',
+  },
+  trackingMapImage: {
+    width: '100%',
+    height: '100%',
+  },
+  trackingLocationDetails: {
+    padding: 16,
+    paddingTop: 12,
+  },
+  trackingLocationRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  trackingLocationIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#f0f0f0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  trackingLocationInfo: {
+    flex: 1,
+  },
+  trackingLocationLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 2,
+  },
+  trackingLocationAddress: {
+    fontSize: 14,
+    color: '#333',
+    lineHeight: 20,
   },
   // <-- FIX 4: Removed duplicate and unused styles from here
 });
