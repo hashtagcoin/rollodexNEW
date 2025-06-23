@@ -189,7 +189,7 @@ const BookingDetailScreen = ({ navigation }) => {
             end_longitude,
             end_address,
             path_coordinates,
-            notes,
+            map_image_url,
             created_at
           `)
           .eq('booking_id', bookingId)
@@ -616,14 +616,59 @@ const BookingDetailScreen = ({ navigation }) => {
     }
   };
 
+  // Upload map image to Supabase storage
+  const uploadMapImageToSupabase = async (mapboxUrl) => {
+    try {
+      // Fetch the image from Mapbox
+      const response = await fetch(mapboxUrl);
+      const blob = await response.blob();
+      
+      // Generate a unique filename
+      const timestamp = Date.now();
+      const fileName = `${profile.id}/${booking.booking_id}_${timestamp}.png`;
+      
+      // Upload to trackingmaps bucket
+      const { data, error } = await supabase.storage
+        .from('trackingmaps')
+        .upload(fileName, blob, {
+          contentType: 'image/png',
+          upsert: true
+        });
+      
+      if (error) {
+        console.error('Error uploading map image:', error);
+        // Fall back to using Mapbox URL directly if upload fails
+        return mapboxUrl;
+      }
+      
+      // Get the public URL
+      const { data: publicUrlData } = supabase.storage
+        .from('trackingmaps')
+        .getPublicUrl(fileName);
+      
+      if (!publicUrlData || !publicUrlData.publicUrl) {
+        console.error('Could not get public URL for map image');
+        return mapboxUrl;
+      }
+      
+      return publicUrlData.publicUrl;
+    } catch (error) {
+      console.error('Error in uploadMapImageToSupabase:', error);
+      // Fall back to using Mapbox URL directly if anything fails
+      return mapboxUrl;
+    }
+  };
+
   // Save session data to Supabase
   const saveSessionData = async (durationSeconds, endLoc, endAddr) => {
     if (!booking || !profile?.id || !startLocation) return;
     
     try {
-      // For now, we'll just use the Mapbox static URL directly
-      // since the trackingmaps bucket has permission issues
-      let mapImageUrl = mapUrl;
+      // Upload map image to Supabase storage
+      let mapImageUrl = null;
+      if (mapUrl) {
+        mapImageUrl = await uploadMapImageToSupabase(mapUrl);
+      }
       
       // Save tracking data without map_image_url for now
       const trackingData = {
@@ -641,10 +686,9 @@ const BookingDetailScreen = ({ navigation }) => {
         path_coordinates: JSON.stringify(pathCoordinates)
       };
       
-      // Only add map_image_url if it exists and the column is available
+      // Add map_image_url if it exists
       if (mapImageUrl) {
-        // Store the map URL in the notes field temporarily
-        trackingData.notes = `Map URL: ${mapImageUrl}`;
+        trackingData.map_image_url = mapImageUrl;
       }
       
       const { data, error } = await supabase
@@ -664,7 +708,7 @@ const BookingDetailScreen = ({ navigation }) => {
           end_longitude,
           end_address,
           path_coordinates,
-          notes,
+          map_image_url,
           created_at
         `);
 

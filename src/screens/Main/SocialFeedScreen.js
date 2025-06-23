@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import { 
   View, 
@@ -11,7 +11,8 @@ import {
   Pressable,
   SafeAreaView,
   Dimensions,
-  InteractionManager
+  InteractionManager,
+  Platform
 } from 'react-native';
 import { Image } from 'expo-image';
 import { getOptimizedImageUrl } from '../../utils/imageHelper';
@@ -22,30 +23,54 @@ import AppHeader from '../../components/layout/AppHeader';
 import { Feather } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabaseClient';
 import { COLORS } from '../../constants/theme';
-import PostCardFixed from '../../components/social/PostCardFixed';
+import PostCardOptimized from '../../components/social/PostCardOptimized';
 
 const { width, height } = Dimensions.get('window');
 
-// Performance tracking for diagnostics
-const performanceTracker = {
-  componentId: `SFS-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-  mountTime: null,
-  renders: 0,
-  fetchTimes: {},
-  focusEvents: 0
-};
+// Memoized housing group item
+const HousingGroupItem = memo(({ item }) => {
+  const thumbUrl = getOptimizedImageUrl(item.image, 400, 70);
+  return (
+    <View style={styles.housingCard}>
+      <Image 
+        source={{ uri: thumbUrl }} 
+        style={styles.housingCardImage} 
+        contentFit="cover"
+        cachePolicy="memory-disk"
+        transition={200}
+      />
+      <View style={styles.housingCardContent}>
+        <Text style={styles.housingCardTitle}>{item.name}</Text>
+        <Text style={styles.housingCardDesc}>{item.desc}</Text>
+        <Text style={styles.housingCardMembers}>{item.members} members</Text>
+      </View>
+    </View>
+  );
+});
 
-const debugTiming = (action, details = {}) => {
-  const timestamp = Date.now();
-  const elapsed = performanceTracker.mountTime ? timestamp - performanceTracker.mountTime : 0;
-  console.log(`[SOCIALFEED-TIMING][${performanceTracker.componentId}][${elapsed}ms] ${action}`, {
-    timestamp,
-    elapsed,
-    ...details
-  });
-};
+// Memoized header component
+const HeaderComponent = memo(({ navigation }) => (
+  <View style={styles.stickyHeader}>
+    <TouchableOpacity style={styles.stickerBtn} onPress={() => navigation.navigate('GroupsList')}>
+      <Feather name="users" size={20} color="#000" />
+      <Text style={styles.stickerBtnText}>Groups</Text>
+    </TouchableOpacity>
+    <TouchableOpacity style={styles.stickerBtn} onPress={() => navigation.navigate('HousingGroupsScreen')}>
+      <Feather name="home" size={20} color="#000" />
+      <Text style={styles.stickerBtnText}>Housing</Text>
+    </TouchableOpacity>
+    <TouchableOpacity style={styles.stickerBtn} onPress={() => navigation.navigate('EventsListScreen')}>
+      <Feather name="calendar" size={20} color="#000" />
+      <Text style={styles.stickerBtnText}>Events</Text>
+    </TouchableOpacity>
+    <TouchableOpacity style={styles.stickerBtn} onPress={() => navigation.navigate('BookmarksScreen')}>
+      <Feather name="bookmark" size={20} color="#000" />
+      <Text style={styles.stickerBtnText}>Saved</Text>
+    </TouchableOpacity>
+  </View>
+));
 
-// Mock data for housing groups - kept for the housing modal
+// Mock data for housing groups
 const dummyHousingGroups = [
   {
     id: 'h1',
@@ -93,113 +118,64 @@ const SocialFeedScreen = () => {
   
   // Performance optimization refs
   const fetchInProgressRef = useRef(false);
-  const cacheRef = useRef(null); // Cache for posts
-  const fetchCounterRef = useRef(0); // Track fetch order
+  const cacheRef = useRef(null);
+  const fetchCounterRef = useRef(0);
   const isMounted = useRef(true);
+  const lastFetchTime = useRef(0);
   
-  // Track component lifecycle
   useEffect(() => {
-    performanceTracker.mountTime = Date.now();
-    debugTiming('COMPONENT_MOUNTED', {
-      componentId: performanceTracker.componentId
-    });
-    
+    isMounted.current = true;
     return () => {
       isMounted.current = false;
-      debugTiming('COMPONENT_UNMOUNTING', {
-        totalFocusEvents: performanceTracker.focusEvents,
-        totalRenders: performanceTracker.renders
-      });
     };
   }, []);
-  
-  // Track renders
-  performanceTracker.renders++;
-  debugTiming('RENDER', {
-    renderCount: performanceTracker.renders,
-    postCount: posts.length,
-    loading,
-    hasCachedData: !!cacheRef.current
-  });
 
-  // Reset scroll position when tab is focused with smart data fetching
+  // Optimized focus effect with debouncing
   useFocusEffect(
     useCallback(() => {
-      performanceTracker.focusEvents++;
-      debugTiming('SCREEN_FOCUSED', {
-        focusCount: performanceTracker.focusEvents,
-        hasCachedData: !!cacheRef.current
-      });
-      
-      // Focus effect: scrolling to top
+      // Reset scroll position instantly
       if (flatListRef.current) {
         flatListRef.current.scrollToOffset({ offset: 0, animated: false });
       }
       
-      // Only fetch if we don't have cached data
-      if (!cacheRef.current) {
-        debugTiming('NO_CACHE_ON_FOCUS_FETCHING');
-        const interaction = InteractionManager.runAfterInteractions(() => {
-          fetchPosts();
-        });
-        return () => {
-          interaction.cancel();
-          debugTiming('SCREEN_UNFOCUSED');
-        };
-      } else {
-        // Use cached data instantly
-        debugTiming('USING_CACHED_DATA_ON_FOCUS', {
-          cachedPostCount: cacheRef.current.length
-        });
+      // Use cached data if available and fresh (less than 30 seconds old)
+      const now = Date.now();
+      const cacheAge = now - lastFetchTime.current;
+      const cacheIsFresh = cacheAge < 30000; // 30 seconds
+      
+      if (cacheRef.current && cacheIsFresh) {
         setPosts(cacheRef.current);
         updateUIState({ loading: false });
         
-        // Optional: Background refresh after delay to get latest posts
-        const interaction = InteractionManager.runAfterInteractions(() => {
-          const timer = setTimeout(() => {
-            if (isMounted.current) {
-              fetchPosts(false, true); // Silent background refresh
-            }
-          }, 1000);
-          return () => clearTimeout(timer);
-        });
+        // Optional background refresh after 2 seconds
+        const timer = setTimeout(() => {
+          if (isMounted.current) {
+            fetchPosts(false, true);
+          }
+        }, 2000);
         
-        return () => {
-          interaction.cancel();
-          debugTiming('SCREEN_UNFOCUSED');
-        };
+        return () => clearTimeout(timer);
+      } else {
+        // Fetch immediately if no fresh cache
+        InteractionManager.runAfterInteractions(() => {
+          fetchPosts();
+        });
       }
     }, [])
   );
 
-  // Navigate back to dashboard
-  const handleBackToDashboard = () => {
-    navigation.navigate('DashboardScreen');
-  };
-
-  // Fetch all posts for the social feed
-  const fetchPosts = async (isRefreshing = false, isBackgroundRefresh = false) => {
+  // Optimized fetch with better error handling and caching
+  const fetchPosts = useCallback(async (isRefreshing = false, isBackgroundRefresh = false) => {
     // Prevent duplicate fetches
     if (fetchInProgressRef.current && !isRefreshing) {
-      debugTiming('FETCH_PREVENTED_DUPLICATE', {
-        isRefreshing,
-        isBackgroundRefresh
-      });
       return;
     }
     
-    const fetchStart = Date.now();
     const fetchId = ++fetchCounterRef.current;
     
     if (!isMounted.current) return;
     
     fetchInProgressRef.current = true;
-    
-    debugTiming('FETCH_POSTS_START', {
-      isRefreshing,
-      isBackgroundRefresh,
-      fetchId
-    });
     
     try {
       // Only show loading on initial load or pull-to-refresh
@@ -210,7 +186,7 @@ const SocialFeedScreen = () => {
         updateUIState({ refreshing: true });
       }
       
-      // Get all posts, sorted by most recent first
+      // Optimized query with only needed fields
       const { data, error } = await supabase
         .from('posts')
         .select(`
@@ -220,43 +196,33 @@ const SocialFeedScreen = () => {
           media_urls,
           created_at
         `)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(50); // Limit to prevent loading too many posts
       
-      const fetchTime = Date.now() - fetchStart;
-      performanceTracker.fetchTimes[fetchId] = fetchTime;
-      
-      debugTiming('FETCH_POSTS_COMPLETE', {
-        postCount: data?.length || 0,
-        fetchTimeMs: fetchTime,
-        error: !!error,
-        fetchId,
-        isStale: fetchId !== fetchCounterRef.current
-      });
-      
-      if (!isMounted.current) return;
-      
-      // Ignore if a newer fetch started
-      if (fetchId !== fetchCounterRef.current) {
-        debugTiming('STALE_FETCH_IGNORED', { fetchId, currentFetchId: fetchCounterRef.current });
-        return;
-      }
+      if (!isMounted.current || fetchId !== fetchCounterRef.current) return;
       
       if (error) throw error;
       
       const newPosts = data || [];
-      setPosts(newPosts);
       
-      // Update cache
+      // Update state and cache
+      setPosts(newPosts);
       cacheRef.current = newPosts;
-      debugTiming('CACHE_UPDATED', {
-        postCount: newPosts.length
-      });
+      lastFetchTime.current = Date.now();
+      
+      // Prefetch images for first 10 posts
+      if (newPosts.length > 0) {
+        const imagesToPrefetch = newPosts
+          .slice(0, 10)
+          .filter(p => p.media_urls && p.media_urls.length > 0)
+          .map(p => getOptimizedImageUrl(p.media_urls[0], 400, 70));
+        
+        // Batch prefetch images
+        Promise.all(imagesToPrefetch.map(url => Image.prefetch(url)));
+      }
       
     } catch (error) {
       console.error('[SocialFeed] Error fetching posts:', error);
-      debugTiming('FETCH_ERROR', {
-        error: error.message
-      });
     } finally {
       if (isMounted.current) {
         updateUIState({
@@ -266,90 +232,67 @@ const SocialFeedScreen = () => {
       }
       fetchInProgressRef.current = false;
     }
-  };
+  }, [updateUIState]);
 
-  // Note: fetchPosts is triggered in useFocusEffect after navigation interactions, avoiding duplicate calls here.
+  // Navigate back to dashboard
+  const handleBackToDashboard = useCallback(() => {
+    navigation.navigate('DashboardScreen');
+  }, [navigation]);
 
-  // Prefetch first 12 thumbnails when posts change
-  useEffect(() => {
-    if (!posts || posts.length === 0) return;
-    
-    const prefetchStart = Date.now();
-    const urls = posts.slice(0, 12)
-      .map(p => (p.media_urls && p.media_urls.length > 0 ? getOptimizedImageUrl(p.media_urls[0], 400, 70) : null))
-      .filter(Boolean);
-    
-    urls.forEach(u => Image.prefetch(u));
-    
-    debugTiming('IMAGES_PREFETCHED', {
-      imageCount: urls.length,
-      timeMs: Date.now() - prefetchStart
-    });
-  }, [posts]);
-
-  // Refresh posts after creating a new one
-  const handlePostCreated = async () => {
-    debugTiming('POST_CREATED_REFRESHING');
-    // Clear cache to force fresh fetch
+  // Handle post created
+  const handlePostCreated = useCallback(async () => {
     cacheRef.current = null;
+    lastFetchTime.current = 0;
     fetchPosts();
-  };
+  }, [fetchPosts]);
 
   // Handle refresh
-  const handleRefresh = () => {
-    updateUIState({ refreshing: true });
+  const handleRefresh = useCallback(() => {
     fetchPosts(true);
-  };
+  }, [fetchPosts]);
 
-  // Render each post using the PostCardFixed component - memoized
+  // Optimized render post with navigation
   const renderPost = useCallback(({ item }) => (
-    <PostCardFixed 
+    <PostCardOptimized 
       post={item} 
       onPress={() => navigation.navigate('PostDetailScreen', { post: item })}
       showActions={true}
     />
   ), [navigation]);
 
-  const renderHousingGroup = ({ item }) => {
-    const thumbUrl = getOptimizedImageUrl(item.image, 400, 70);
-    return (
-      <View style={styles.housingCard}>
-        <Image 
-          source={{ uri: thumbUrl }} 
-          style={styles.housingCardImage} 
-          contentFit="cover"
-          cachePolicy="immutable"
-        />
-        <View style={styles.housingCardContent}>
-          <Text style={styles.housingCardTitle}>{item.name}</Text>
-          <Text style={styles.housingCardDesc}>{item.desc}</Text>
-          <Text style={styles.housingCardMembers}>{item.members} members</Text>
-        </View>
-      </View>
-    );
-  };
+  // Key extractor
+  const keyExtractor = useCallback((item) => item.post_id, []);
 
-  // Header component with sticky navigation buttons
-  const HeaderComponent = () => (
-    <View style={styles.stickyHeader}>
-      <TouchableOpacity style={styles.stickerBtn} onPress={() => navigation.navigate('GroupsList')}>
-        <Feather name="users" size={20} color="#000" />
-        <Text style={styles.stickerBtnText}>Groups</Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.stickerBtn} onPress={() => navigation.navigate('HousingGroupsScreen')}>
-        <Feather name="home" size={20} color="#000" />
-        <Text style={styles.stickerBtnText}>Housing</Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.stickerBtn} onPress={() => navigation.navigate('EventsListScreen')}>
-        <Feather name="calendar" size={20} color="#000" />
-        <Text style={styles.stickerBtnText}>Events</Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.stickerBtn} onPress={() => navigation.navigate('BookmarksScreen')}>
-        <Feather name="bookmark" size={20} color="#000" />
-        <Text style={styles.stickerBtnText}>Saved</Text>
+  // Get item layout for better performance
+  const getItemLayout = useCallback((data, index) => ({
+    length: 500, // Approximate height of each post card
+    offset: 500 * index,
+    index,
+  }), []);
+
+  // List header
+  const ListHeader = useCallback(() => (
+    <HeaderComponent navigation={navigation} />
+  ), [navigation]);
+
+  // Empty component
+  const EmptyComponent = useCallback(() => (
+    <View style={styles.emptyContainer}>
+      <Text style={styles.emptyText}>No posts yet.</Text>
+      <TouchableOpacity 
+        style={styles.createPostButton}
+        onPress={() => navigation.navigate('CreatePostScreen')}
+      >
+        <Text style={styles.createPostButtonText}>Create your first post</Text>
       </TouchableOpacity>
     </View>
-  );
+  ), [navigation]);
+
+  // Footer component for loading
+  const ListFooter = useCallback(() => {
+    if (!loading && posts.length > 0) return null;
+    return null;
+  }, [loading, posts.length]);
 
   return (
     <View style={styles.screenContainer}>
@@ -360,43 +303,54 @@ const SocialFeedScreen = () => {
         onBackPressOverride={handleBackToDashboard}
       />
       
-      {loading && !refreshing ? (
+      {loading && !refreshing && posts.length === 0 ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
         </View>
-      ) : posts.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>No posts yet.</Text>
-          <TouchableOpacity 
-            style={styles.createPostButton}
-            onPress={() => navigation.navigate('CreatePostScreen')}
-          >
-            <Text style={styles.createPostButtonText}>Create your first post</Text>
-          </TouchableOpacity>
-        </View>
       ) : (
         <FlatList
-          listKey="social-feed"
           ref={flatListRef}
           data={posts}
           renderItem={renderPost}
-          keyExtractor={item => item.post_id}
+          keyExtractor={keyExtractor}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.feedList}
           onRefresh={handleRefresh}
           refreshing={refreshing}
-          ListHeaderComponent={<HeaderComponent />}
+          ListHeaderComponent={ListHeader}
+          ListEmptyComponent={EmptyComponent}
+          ListFooterComponent={ListFooter}
           stickyHeaderIndices={[0]}
-          initialNumToRender={6}
-          windowSize={5}
-          maxToRenderPerBatch={10}
-          removeClippedSubviews
+          
+          // Performance optimizations
+          removeClippedSubviews={Platform.OS === 'android'}
+          initialNumToRender={5}
+          maxToRenderPerBatch={5}
+          updateCellsBatchingPeriod={50}
+          windowSize={10}
+          getItemLayout={getItemLayout}
+          
+          // Additional optimizations
+          maintainVisibleContentPosition={{
+            minIndexForVisible: 0,
+          }}
+          scrollEventThrottle={16}
+          directionalLockEnabled={true}
+          disableVirtualization={false}
+          
+          // Optimization for images
+          viewabilityConfig={{
+            minimumViewTime: 100,
+            itemVisiblePercentThreshold: 20,
+            waitForInteraction: true,
+          }}
         />
       )}
 
       <Modal
         visible={housingModalVisible}
         transparent={true}
+        animationType="slide"
         onRequestClose={() => updateUIState({ housingModalVisible: false })}
       >
         <Pressable style={styles.modalOverlay} onPress={() => updateUIState({ housingModalVisible: false })}>
@@ -409,7 +363,7 @@ const SocialFeedScreen = () => {
             </View>
             <FlatList
               data={dummyHousingGroups}
-              renderItem={renderHousingGroup}
+              renderItem={({ item }) => <HousingGroupItem item={item} />}
               keyExtractor={item => item.id}
               showsVerticalScrollIndicator={false}
               contentContainerStyle={{ paddingVertical: 12 }}
@@ -418,7 +372,6 @@ const SocialFeedScreen = () => {
         </Pressable>
       </Modal>
       
-      {/* Action button for creating new post - positioned absolutely like in ProfileScreen */}
       <ActionButton
         onPress={() => updateUIState({ showCreatePostModal: true })}
         iconName="add"
@@ -426,7 +379,6 @@ const SocialFeedScreen = () => {
         size={56}
       />
       
-      {/* Create Post Modal */}
       <CreatePostModal
         visible={showCreatePostModal}
         onClose={() => updateUIState({ showCreatePostModal: false })}
@@ -437,13 +389,6 @@ const SocialFeedScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  // Style for the fixed ActionButton
-  actionButton: {
-    position: 'absolute',
-    bottom: 20,
-    right: 20,
-    zIndex: 999,
-  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
@@ -480,7 +425,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5f5f5',
   },
   feedList: {
-    paddingBottom: 20,
+    paddingBottom: 100,
   },
   loadingContainer: {
     flex: 1,
@@ -543,6 +488,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: 'hidden',
     marginBottom: 12,
+    marginHorizontal: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,

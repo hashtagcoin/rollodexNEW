@@ -239,12 +239,14 @@ const ProviderDiscoveryScreen = ({ route }) => {
       }
     } finally {
       if (isMounted.current) {
-        updateUIState({ loading: false });
-        setRefreshing(false);
-        setLoadingMore(false);
+        updateUIState({ 
+          loading: false,
+          refreshing: false,
+          loadingMore: false
+        });
       }
     }
-  }, [selectedCategory, searchTerm]);
+  }, [selectedCategory, searchTerm, updateUIState, preloadHousingItems]);
 
   // Handle category change
   useEffect(() => {
@@ -316,16 +318,16 @@ const ProviderDiscoveryScreen = ({ route }) => {
 
   // Refresh handler
   const onRefresh = useCallback(() => {
-    setRefreshing(true);
+    updateUIState({ refreshing: true });
     fetchData(true, 0, false);
-  }, [fetchData]);
+  }, [fetchData, updateUIState]);
 
   // Load more handler
   const handleLoadMore = useCallback(() => {
     if (!hasMore || loadingMore || loading) return;
-    setLoadingMore(true);
+    updateUIState({ loadingMore: true });
     fetchData(false, currentPage + 1, true);
-  }, [hasMore, loadingMore, loading, currentPage, fetchData]);
+  }, [hasMore, loadingMore, loading, currentPage, fetchData, updateUIState]);
 
   // Render item - memoized
   const renderItem = useCallback(({ item }) => {
