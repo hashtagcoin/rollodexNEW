@@ -83,16 +83,18 @@ const VideoScreen = ({ navigation }) => {
       try {
         const photo = await cameraRef.current.takePictureAsync({
           quality: 0.5,
-          base64: false,
+          base64: false, // We don't need base64 since we can upload using URI
           skipProcessing: true,
+          width: 480, // Smaller size for thumbnails
         });
         
         const timestamp = new Date();
         const screenshotData = {
           uri: photo.uri,
-          timestamp: timestamp,
+          timestamp: timestamp.toISOString(),
           timeString: format(timestamp, 'HH:mm:ss'),
-          dateString: format(timestamp, 'MMM dd, yyyy')
+          dateString: format(timestamp, 'MMM dd, yyyy'),
+          relativeTime: formatDuration(recordingDuration)
         };
         
         setScreenshots(prev => [...prev, screenshotData]);
@@ -126,8 +128,13 @@ const VideoScreen = ({ navigation }) => {
           maxFileSize: 100 * 1024 * 1024, // 100MB max
         });
         
-        setVideoUri(video.uri);
-        setSavedVideoUri(video.uri);
+        if (video && video.uri) {
+          setVideoUri(video.uri);
+          setSavedVideoUri(video.uri);
+          console.log('Video recorded successfully:', video.uri);
+        } else {
+          console.warn('No video URI returned from recording');
+        }
       } catch (error) {
         console.error('Error recording video:', error);
         if (error.message !== 'Recording was stopped') {
@@ -161,51 +168,144 @@ const VideoScreen = ({ navigation }) => {
     }
   };
 
-  // Save video to device and database
-  const saveVideo = async (uri) => {
+  // Process and upload screenshots to Supabase
+  const processScreenshots = async () => {
+    const processedScreenshots = [];
+    const sessionId = Date.now().toString();
+    
+    console.log(`Processing ${screenshots.length} screenshots for upload...`);
+    
+    for (let i = 0; i < screenshots.length; i++) {
+      const screenshot = screenshots[i];
+      
+      try {
+        // Create file path
+        const fileName = `screenshot_${i + 1}.jpg`;
+        const filePath = `${bookingId}/${sessionId}/${fileName}`;
+        
+        console.log(`Uploading screenshot ${i + 1} to path: ${filePath}`);
+        
+        // For React Native, upload using the URI directly
+        // Supabase handles the image upload when given a URI object
+        // Using avatars bucket with subfolder since it has working permissions
+        const { data, error } = await supabase.storage
+          .from('avatars')
+          .upload(`booking-screenshots/${filePath}`, {
+            uri: screenshot.uri  // Use the local URI from the screenshot
+          }, {
+            contentType: 'image/jpeg',
+            upsert: true
+          });
+        
+        if (error) {
+          console.error(`Error uploading screenshot ${i}:`, error);
+          processedScreenshots.push({
+            index: i,
+            timestamp: screenshot.timestamp,
+            relative_time: screenshot.relativeTime,
+            thumbnail_url: screenshot.uri, // Fallback to local URI
+            error: true,
+            error_message: error.message
+          });
+        } else {
+          // Get public URL for the uploaded image
+          const { data: urlData } = supabase.storage
+            .from('avatars')
+            .getPublicUrl(`booking-screenshots/${filePath}`);
+          
+          console.log(`Screenshot ${i + 1} uploaded successfully`);
+          
+          processedScreenshots.push({
+            index: i,
+            timestamp: screenshot.timestamp,
+            relative_time: screenshot.relativeTime,
+            thumbnail_url: urlData.publicUrl,
+            width: 480,
+            height: 360
+          });
+        }
+      } catch (error) {
+        console.error(`Error processing screenshot ${i}:`, error);
+        processedScreenshots.push({
+          index: i,
+          timestamp: screenshot.timestamp,
+          relative_time: screenshot.relativeTime,
+          thumbnail_url: screenshot.uri, // Fallback to local URI
+          error: true,
+          error_message: error.message
+        });
+      }
+    }
+    
+    console.log(`Processed ${processedScreenshots.length} screenshots`);
+    return { sessionId, screenshots: processedScreenshots };
+  };
+
+  // Save session data without video file
+  const saveVideoSession = async () => {
     setIsProcessing(true);
     
     try {
-      // Save video to device gallery
-      const asset = await MediaLibrary.createAssetAsync(uri);
+      console.log('Saving session with', screenshots.length, 'screenshots');
+      console.log('Booking ID:', bookingId);
+      console.log('User profile:', profile);
       
-      // Save screenshots to gallery as well
-      const screenshotAssets = [];
-      for (const screenshot of screenshots) {
-        try {
-          const screenshotAsset = await MediaLibrary.createAssetAsync(screenshot.uri);
-          screenshotAssets.push(screenshotAsset);
-        } catch (err) {
-          console.error('Error saving screenshot:', err);
-        }
+      if (!bookingId) {
+        throw new Error('No booking ID provided');
       }
       
-      // Upload to Supabase storage
-      const fileName = `booking_${bookingId}_${Date.now()}.mp4`;
-      const formData = new FormData();
-      formData.append('file', {
-        uri,
-        type: 'video/mp4',
-        name: fileName,
-      });
+      if (!profile?.id) {
+        throw new Error('No user profile found');
+      }
       
-      // Save video reference in database
-      const { error } = await supabase
+      // Process and upload screenshots
+      const { sessionId, screenshots: screenshotsData } = await processScreenshots();
+      
+      // Prepare the data to insert
+      const dataToInsert = {
+        booking_id: bookingId,
+        user_id: profile?.id,
+        session_start_time: sessionStartTime?.toISOString(),
+        session_end_time: sessionEndTime?.toISOString(),
+        duration_seconds: recordingDuration,
+        screenshot_count: screenshots.length,
+        screenshots_data: JSON.stringify(screenshotsData), // Convert to JSON string
+        video_url: `session_${sessionId}`, // Just a reference ID, not actual video
+        // Remove created_at as it might be auto-generated
+      };
+      
+      console.log('Data to insert:', JSON.stringify(dataToInsert, null, 2));
+      console.log('Screenshots data type:', typeof screenshotsData);
+      console.log('Screenshots data length:', screenshotsData?.length);
+      
+      // Save session metadata only (no video file)
+      const { data: insertedData, error } = await supabase
         .from('booking_videos')
-        .insert({
-          booking_id: bookingId,
-          user_id: profile?.id,
-          video_url: fileName,
-          duration_seconds: recordingDuration,
-          screenshot_count: screenshots.length,
-          created_at: new Date().toISOString(),
-        });
+        .insert(dataToInsert)
+        .select();
       
-      if (error) throw error;
+      if (error) {
+        console.error('Database error:', JSON.stringify(error, null, 2));
+        console.error('Error details:', error.message, error.code, error.details, error.hint);
+        console.error('Full error object properties:', Object.keys(error));
+        
+        // Try to provide more specific error information
+        if (error.code === '23505') {
+          throw new Error('A video session already exists for this booking');
+        } else if (error.code === '23503') {
+          throw new Error('Invalid booking ID or user ID');
+        } else if (error.code === '22P02') {
+          throw new Error('Invalid data format for one of the fields');
+        }
+        
+        throw error;
+      }
+      
+      console.log('Successfully saved video session:', insertedData);
       
       Alert.alert(
         'Success',
-        `Video and ${screenshots.length} screenshots saved successfully!`,
+        `Session recorded! ${screenshots.length} proof-of-service images saved.`,
         [
           {
             text: 'OK',
@@ -214,12 +314,16 @@ const VideoScreen = ({ navigation }) => {
         ]
       );
     } catch (error) {
-      console.error('Error saving video:', error);
-      Alert.alert('Error', 'Failed to save video');
+      console.error('Error saving session:', JSON.stringify(error, null, 2));
+      console.error('Full error object:', error);
+      console.error('Error message:', error?.message);
+      console.error('Error code:', error?.code);
+      Alert.alert('Error', `Failed to save session: ${error?.message || error?.code || 'Unknown error'}`);
     } finally {
       setIsProcessing(false);
     }
   };
+
 
   // Toggle camera facing
   const toggleCameraFacing = () => {
@@ -304,12 +408,15 @@ const VideoScreen = ({ navigation }) => {
     <View style={styles.container}>
       <AppHeader title="Video Recording" onBackPressOverride={() => navigation.goBack()} />
       
-      <CameraView 
-        ref={cameraRef}
-        style={styles.camera} 
-        facing={cameraFacing}
-        mode="video"
-      >
+      <View style={styles.cameraContainer}>
+        <CameraView 
+          ref={cameraRef}
+          style={styles.camera} 
+          facing={cameraFacing}
+          mode="video"
+        />
+        
+        {/* Camera Overlay - positioned absolutely over the camera */}
         <View style={styles.cameraOverlay}>
           {/* Picture in Picture - Remote User */}
           <TouchableOpacity 
@@ -397,7 +504,7 @@ const VideoScreen = ({ navigation }) => {
             </TouchableOpacity>
           </View>
         </View>
-      </CameraView>
+      </View>
       
       {isProcessing && (
         <View style={styles.processingOverlay}>
@@ -465,16 +572,20 @@ const VideoScreen = ({ navigation }) => {
                   </Text>
                 </View>
                 
-                {/* Video Info */}
+                {/* Session Info */}
                 <View style={styles.videoInfoSection}>
-                  <Text style={styles.videoInfoTitle}>Video Details</Text>
+                  <Text style={styles.videoInfoTitle}>Session Details</Text>
                   <View style={styles.videoInfoRow}>
-                    <Text style={styles.videoInfoLabel}>Quality:</Text>
-                    <Text style={styles.videoInfoValue}>HD</Text>
+                    <Text style={styles.videoInfoLabel}>Type:</Text>
+                    <Text style={styles.videoInfoValue}>Proof of Service</Text>
                   </View>
                   <View style={styles.videoInfoRow}>
-                    <Text style={styles.videoInfoLabel}>Status:</Text>
-                    <Text style={styles.videoInfoValue}>Saved to Gallery</Text>
+                    <Text style={styles.videoInfoLabel}>Screenshots:</Text>
+                    <Text style={styles.videoInfoValue}>{screenshots.length} captured</Text>
+                  </View>
+                  <View style={styles.noteRow}>
+                    <Feather name="info" size={16} color="#FF9500" />
+                    <Text style={styles.noteText}>Only screenshots will be saved (no video file)</Text>
                   </View>
                 </View>
                 
@@ -511,12 +622,10 @@ const VideoScreen = ({ navigation }) => {
                 style={styles.modalPrimaryButton}
                 onPress={() => {
                   setShowSummaryModal(false);
-                  if (savedVideoUri) {
-                    saveVideo(savedVideoUri);
-                  }
+                  saveVideoSession(); // Save only session data and screenshots
                 }}
               >
-                <Text style={styles.modalPrimaryButtonText}>Save & Continue</Text>
+                <Text style={styles.modalPrimaryButtonText}>Save Session</Text>
               </TouchableOpacity>
               
               <TouchableOpacity
@@ -611,11 +720,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  cameraContainer: {
+    flex: 1,
+    position: 'relative',
+  },
   camera: {
     flex: 1,
   },
   cameraOverlay: {
-    flex: 1,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     backgroundColor: 'transparent',
     justifyContent: 'space-between',
   },
@@ -901,6 +1018,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#333',
     fontWeight: '500',
+  },
+  noteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  noteText: {
+    fontSize: 13,
+    color: '#FF9500',
+    marginLeft: 6,
+    fontStyle: 'italic',
   },
   modalButtonContainer: {
     padding: 20,

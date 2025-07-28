@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONTS } from '../../constants/theme';
-import { BUBBLE_COLORS, EMPTY_STATES, LOADING_STATES, ERROR_MESSAGES } from '../../constants/chatConstants';
+import { BUBBLE_COLORS, EMPTY_STATES, LOADING_STATES, ERROR_MESSAGES, CHAT_TYPE, CHAT_ROOM_TOPICS } from '../../constants/chatConstants';
 import { useUser } from '../../context/UserContext';
 import useChat from '../../hooks/useChat';
 import { format } from 'date-fns';
@@ -132,6 +132,31 @@ const ChatDetail = ({ conversation, onBack }) => {
   );
 
   const renderParticipants = () => {
+    // For chat rooms, show room information
+    if (conversation?.room_name) {
+      const topic = CHAT_ROOM_TOPICS.find(t => t.id === conversation.room_topic_id);
+      
+      return (
+        <View style={styles.roomInfoContainer}>
+          <View style={styles.roomHeader}>
+            <Text style={styles.roomIcon}>{topic?.icon || '💬'}</Text>
+            <View style={styles.roomDetails}>
+              <Text style={styles.roomName}>{conversation.room_name}</Text>
+              {conversation.room_description && (
+                <Text style={styles.roomDescription}>{conversation.room_description}</Text>
+              )}
+              <View style={styles.roomStats}>
+                <Ionicons name="people-outline" size={16} color="#666" />
+                <Text style={styles.roomStatsText}>
+                  {conversation.participants?.length || 0} members
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+      );
+    }
+    
     // Only show participant avatars if this is a group chat
     if (!conversation?.is_group_chat || !conversation?.participants) return null;
 
@@ -413,6 +438,45 @@ const styles = StyleSheet.create({
   },
   sendButtonDisabled: {
     backgroundColor: COLORS.lightGray,
+  },
+  roomInfoContainer: {
+    backgroundColor: '#f8f8f8',
+    margin: 10,
+    padding: 16,
+    borderRadius: 12,
+  },
+  roomHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  roomIcon: {
+    fontSize: 40,
+    marginRight: 12,
+  },
+  roomDetails: {
+    flex: 1,
+  },
+  roomName: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: COLORS.black,
+    marginBottom: 4,
+  },
+  roomDescription: {
+    fontSize: 14,
+    color: COLORS.darkGray,
+    marginBottom: 8,
+    lineHeight: 20,
+  },
+  roomStats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  roomStatsText: {
+    fontSize: 14,
+    color: '#666',
+    marginLeft: 6,
   },
 });
 

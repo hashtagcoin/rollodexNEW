@@ -19,6 +19,8 @@ import { COLORS, FONTS } from '../../constants/theme';
 import ChatList from './ChatList';
 import ChatDetail from './ChatDetail';
 import NewConversation from './NewConversation';
+import ChatRoomsList from './ChatRoomsList';
+import CreateChatRoom from './CreateChatRoom';
 import useChat from '../../hooks/useChat';
 
 const { height } = Dimensions.get('window');
@@ -27,7 +29,8 @@ const ChatModal = ({ visible, onClose, initialUser = null }) => {
   const insets = useSafeAreaInsets();
   const slideAnim = useRef(new Animated.Value(height)).current;
   const [isKeyboardVisible, setKeyboardVisible] = useState(false);
-  const [activeView, setActiveView] = useState('list'); // 'list', 'detail', 'new'
+  const [activeView, setActiveView] = useState('list'); // 'list', 'detail', 'new', 'rooms', 'createRoom'
+  const [activeTab, setActiveTab] = useState('chats'); // 'chats' or 'rooms'
   const [selectedConversation, setSelectedConversation] = useState(null);
   const [newConversationUsers, setNewConversationUsers] = useState([]);
   const [isCreatingConversation, setIsCreatingConversation] = useState(false);
@@ -131,6 +134,7 @@ const ChatModal = ({ visible, onClose, initialUser = null }) => {
     }).start(() => {
       onClose();
       setActiveView('list'); // Reset to list view when closing
+      setActiveTab('chats'); // Reset to chats tab
       setSelectedConversation(null);
     });
   };
@@ -149,6 +153,25 @@ const ChatModal = ({ visible, onClose, initialUser = null }) => {
     setActiveView('new');
   };
 
+  const handleSelectRoom = (room) => {
+    setSelectedConversation(room);
+    setActiveView('detail');
+  };
+
+  const handleCreateRoom = () => {
+    setActiveView('createRoom');
+  };
+
+  const handleRoomCreated = async (roomId) => {
+    // Fetch conversations to get the new room
+    await fetchConversations();
+    const newRoom = conversations.find(conv => conv.id === roomId);
+    if (newRoom) {
+      setSelectedConversation(newRoom);
+      setActiveView('detail');
+    }
+  };
+
   const handleCreateConversation = (conversation) => {
     // Handle a newly created conversation from NewConversation component
     if (conversation) {
@@ -164,17 +187,45 @@ const ChatModal = ({ visible, onClose, initialUser = null }) => {
   const renderHeader = () => {
     switch (activeView) {
       case 'list':
+      case 'rooms':
         return (
-          <View style={styles.header}>
-            <View style={styles.headerTitle}>
-              <MaterialIcons name="chat" size={22} color={COLORS.black} />
-              <View style={styles.titleContainer}>
-                <Text style={styles.title}>Chats</Text>
+          <View>
+            <View style={styles.header}>
+              <View style={styles.headerTitle}>
+                <MaterialIcons name="chat" size={22} color={COLORS.black} />
+                <View style={styles.titleContainer}>
+                  <Text style={styles.title}>Messages</Text>
+                </View>
               </View>
+              <TouchableOpacity onPress={handleClose} style={styles.headerButton}>
+                <Ionicons name="close" size={22} color={COLORS.darkGray} />
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity onPress={handleClose} style={styles.headerButton}>
-              <Ionicons name="close" size={22} color={COLORS.darkGray} />
-            </TouchableOpacity>
+            {/* Tabs */}
+            <View style={styles.tabsContainer}>
+              <TouchableOpacity
+                style={[styles.tab, activeTab === 'chats' && styles.activeTab]}
+                onPress={() => {
+                  setActiveTab('chats');
+                  setActiveView('list');
+                }}
+              >
+                <Text style={[styles.tabText, activeTab === 'chats' && styles.activeTabText]}>
+                  Private Chats
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.tab, activeTab === 'rooms' && styles.activeTab]}
+                onPress={() => {
+                  setActiveTab('rooms');
+                  setActiveView('rooms');
+                }}
+              >
+                <Text style={[styles.tabText, activeTab === 'rooms' && styles.activeTabText]}>
+                  Chat Rooms
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
         );
       case 'detail':
@@ -184,7 +235,9 @@ const ChatModal = ({ visible, onClose, initialUser = null }) => {
               <Ionicons name="arrow-back" size={24} color={COLORS.primary} />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>
-              {selectedConversation?.is_group_chat 
+              {selectedConversation?.room_name 
+                ? selectedConversation?.room_name
+                : selectedConversation?.is_group_chat 
                 ? 'Group Chat' 
                 : selectedConversation?.participant_name || 'Chat'}
             </Text>
@@ -200,6 +253,18 @@ const ChatModal = ({ visible, onClose, initialUser = null }) => {
               <Ionicons name="arrow-back" size={24} color={COLORS.primary} />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>New Message</Text>
+            <TouchableOpacity onPress={handleClose} style={styles.headerButton}>
+              <Ionicons name="close" size={24} color={COLORS.darkGray} />
+            </TouchableOpacity>
+          </View>
+        );
+      case 'createRoom':
+        return (
+          <View style={styles.header}>
+            <TouchableOpacity onPress={() => setActiveView('rooms')} style={styles.headerBackButton}>
+              <Ionicons name="arrow-back" size={24} color={COLORS.primary} />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Create Chat Room</Text>
             <TouchableOpacity onPress={handleClose} style={styles.headerButton}>
               <Ionicons name="close" size={24} color={COLORS.darkGray} />
             </TouchableOpacity>
@@ -238,6 +303,20 @@ const ChatModal = ({ visible, onClose, initialUser = null }) => {
         return (
           <NewConversation 
             onCreateConversation={handleCreateConversation}
+          />
+        );
+      case 'rooms':
+        return (
+          <ChatRoomsList
+            onSelectRoom={handleSelectRoom}
+            onCreateRoom={handleCreateRoom}
+          />
+        );
+      case 'createRoom':
+        return (
+          <CreateChatRoom
+            onClose={() => setActiveView('rooms')}
+            onRoomCreated={handleRoomCreated}
           />
         );
     }
@@ -327,6 +406,31 @@ const styles = StyleSheet.create({
   },
   headerButton: {
     padding: 6, // Reduced padding
+  },
+  tabsContainer: {
+    flexDirection: 'row',
+    backgroundColor: 'white',
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEE',
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  activeTab: {
+    borderBottomColor: COLORS.primary,
+  },
+  tabText: {
+    fontSize: 16,
+    color: COLORS.darkGray,
+    fontWeight: '500',
+  },
+  activeTabText: {
+    color: COLORS.primary,
+    fontWeight: '600',
   },
 });
 

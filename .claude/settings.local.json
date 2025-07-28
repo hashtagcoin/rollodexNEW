@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir:*)",
+      "Bash(ls:*)",
+      "Bash(rg:*)",
+      "Bash(npx expo start:*)",
+      "Bash(npx react-native:*)",
+      "Bash(node:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(awk:*)"
+    ],
+    "deny": []
+  }
+}

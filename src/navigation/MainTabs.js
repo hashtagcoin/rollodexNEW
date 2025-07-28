@@ -4,6 +4,7 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { Feather, Entypo, AntDesign, Octicons } from '@expo/vector-icons';
 import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
 import { useUser } from '../context/UserContext';
+import ChatButtonOverlay from '../components/chat/ChatButtonOverlay';
 
 // Import screens
 import DashboardScreen from '../screens/Main/DashboardScreen';
@@ -132,40 +133,42 @@ const TabNavigator = () => {
 };
 
 const MainTabs = () => (
-  <Stack.Navigator screenOptions={{ headerShown: false }}>
-    <Stack.Screen name="MainTabs" component={TabNavigator} />
-    {/* Removed GroupsListScreen from Stack, now handled by SocialStackNavigator in TabNavigator */}
-    <Stack.Screen 
-      name="CreateGroupPostScreen" 
-      component={CreateGroupPostScreen}
-      options={{ presentation: 'modal' }}
-    />
-    <Stack.Screen 
-      name="BookingConfirmationScreen" 
-      component={BookingConfirmationScreen} 
-      options={{ headerShown: false }}
-    />
-    <Stack.Screen 
-      name="BookingsScreen" 
-      component={BookingsScreen} 
-      options={{ headerShown: false }}
-    />
-    <Stack.Screen 
-      name="BookingDetailScreen" 
-      component={BookingDetailScreen} 
-      options={{ headerShown: false }}
-    />
-    <Stack.Screen 
-      name="ServiceAgreementScreen" 
-      component={ServiceAgreementScreen} 
-      options={{ headerShown: false }}
-    />
-    <Stack.Screen 
-      name="TabManageListings" 
-      component={TabManageListingsScreen} 
-      options={{ headerShown: false }}
-    />
-  </Stack.Navigator>
+  <ChatButtonOverlay>
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="MainTabs" component={TabNavigator} />
+      {/* Removed GroupsListScreen from Stack, now handled by SocialStackNavigator in TabNavigator */}
+      <Stack.Screen 
+        name="CreateGroupPostScreen" 
+        component={CreateGroupPostScreen}
+        options={{ presentation: 'modal' }}
+      />
+      <Stack.Screen 
+        name="BookingConfirmationScreen" 
+        component={BookingConfirmationScreen} 
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen 
+        name="BookingsScreen" 
+        component={BookingsScreen} 
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen 
+        name="BookingDetailScreen" 
+        component={BookingDetailScreen} 
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen 
+        name="ServiceAgreementScreen" 
+        component={ServiceAgreementScreen} 
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen 
+        name="TabManageListings" 
+        component={TabManageListingsScreen} 
+        options={{ headerShown: false }}
+      />
+    </Stack.Navigator>
+  </ChatButtonOverlay>
 );
 
 export default MainTabs;

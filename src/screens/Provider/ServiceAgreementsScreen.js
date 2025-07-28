@@ -34,7 +34,7 @@ const ServiceAgreementsScreen = ({ navigation }) => {
       // Get service agreements provided by this user
       let query = supabase
         .from('service_agreements')
-        .select('*, service:service_id(*), client:client_id(*)')
+        .select('*, services(title), user_profiles!service_agreements_client_id_fkey(full_name)')
         .eq('provider_id', profile.id);
       
       if (activeTab === 'active') {
@@ -50,7 +50,7 @@ const ServiceAgreementsScreen = ({ navigation }) => {
       setAgreements(data || []);
     } catch (err) {
       console.error('Error fetching service agreements:', err);
-      Alert.alert('Error', 'Failed to load your service agreements');
+      // Silent error handling - no alert when agreements fail to load
     } finally {
       setLoading(false);
     }
@@ -166,8 +166,8 @@ const ServiceAgreementsScreen = ({ navigation }) => {
     
     const lowerCaseQuery = searchQuery?.toLowerCase() || '';
     return (
-      (agreement.service?.title || '').toLowerCase().includes(lowerCaseQuery) ||
-      (agreement.client?.full_name || '').toLowerCase().includes(lowerCaseQuery) ||
+      (agreement.services?.title || '').toLowerCase().includes(lowerCaseQuery) ||
+      (agreement.user_profiles?.full_name || '').toLowerCase().includes(lowerCaseQuery) ||
       (agreement.agreement_number || '').toLowerCase().includes(lowerCaseQuery)
     );
   }) : [];
@@ -184,7 +184,7 @@ const ServiceAgreementsScreen = ({ navigation }) => {
         onPress={() => navigation.navigate('ServiceAgreementDetail', { agreementId: item.id })}
       >
         <View style={styles.agreementHeader}>
-          <Text style={styles.agreementTitle}>{item.service?.title || 'Service Agreement'}</Text>
+          <Text style={styles.agreementTitle}>{item.services?.title || 'Service Agreement'}</Text>
           <View style={[styles.statusBadge, { 
             backgroundColor: 
               item.status === 'active' ? '#4CAF50' : 
@@ -197,7 +197,7 @@ const ServiceAgreementsScreen = ({ navigation }) => {
         </View>
         
         <Text style={styles.agreementClient}>
-          <Ionicons name="person-outline" size={16} color="#666" /> {item.client?.full_name || 'Client'}
+          <Ionicons name="person-outline" size={16} color="#666" /> {item.user_profiles?.full_name || 'Client'}
         </Text>
         
         <Text style={styles.agreementNumber}>

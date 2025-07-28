@@ -9,6 +9,7 @@ import EditProfileScreen from '../screens/Main/EditProfileScreen';
 import UserPostsFeedScreen from '../screens/Social/UserPostsFeedScreen';
 import PostDetailScreen from '../screens/Social/PostDetailScreen';
 import UserProfileScreen from '../screens/Main/UserProfileScreen';
+import RewardsScreen from '../screens/Main/RewardsScreen';
 
 const Stack = createStackNavigator();
 
@@ -23,6 +24,7 @@ const ProfileStackNavigator = () => {
       <Stack.Screen name="UserPostsFeedScreen" component={UserPostsFeedScreen} />
       <Stack.Screen name="PostDetailScreen" component={PostDetailScreen} />
       <Stack.Screen name="UserProfileScreen" component={UserProfileScreen} />
+      <Stack.Screen name="RewardsScreen" component={RewardsScreen} />
     </Stack.Navigator>
   );
 };

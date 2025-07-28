@@ -374,7 +374,7 @@ const ProviderDiscoveryScreen = ({ route }) => {
   if (loading && currentData.length === 0) {
     return (
       <View style={styles.container}>
-        <AppHeader title="Discover" navigation={navigation} />
+        <AppHeader title="Explore" navigation={navigation} />
         <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
         </View>
@@ -384,7 +384,7 @@ const ProviderDiscoveryScreen = ({ route }) => {
 
   return (
     <View style={styles.container}>
-      <AppHeader title="Discover" navigation={navigation} />
+      <AppHeader title="Explore" navigation={navigation} />
       
       {/* Category tabs */}
       <View style={styles.categoryContainer}>

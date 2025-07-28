@@ -122,6 +122,10 @@ const BookingDetailScreen = ({ navigation }) => {
   const [trackingHistory, setTrackingHistory] = useState([]);
   const [showTrackingHistory, setShowTrackingHistory] = useState(false);
   
+  // Video sessions state
+  const [videoSessions, setVideoSessions] = useState([]);
+  const [showVideoSessions, setShowVideoSessions] = useState(false);
+  
   // Session tracking state
   const [trackingModalVisible, setTrackingModalVisible] = useState(false);
   const [sessionStarted, setSessionStarted] = useState(false);
@@ -197,6 +201,20 @@ const BookingDetailScreen = ({ navigation }) => {
           
         if (!trackingError && trackingData) {
           setTrackingHistory(trackingData);
+        }
+        
+        // Fetch video sessions
+        const { data: videoData, error: videoError } = await supabase
+          .from('booking_videos')
+          .select('*')
+          .eq('booking_id', bookingId)
+          .order('created_at', { ascending: false });
+          
+        if (!videoError && videoData) {
+          console.log(`Found ${videoData.length} video sessions for booking ${bookingId}`);
+          setVideoSessions(videoData);
+        } else if (videoError) {
+          console.error('Error fetching video sessions:', videoError);
         }
       } catch (err) {
         console.error('Error fetching booking details:', err);
@@ -944,6 +962,27 @@ const BookingDetailScreen = ({ navigation }) => {
                 </View>
               </TouchableOpacity>
             )}
+            
+            {/* Video Sessions Button - Only show if there are video sessions */}
+            {videoSessions.length > 0 && (
+              <TouchableOpacity
+                style={[styles.actionButton, styles.videoSessionsButton]}
+                onPress={() => setShowVideoSessions(!showVideoSessions)}
+              >
+                <View style={styles.historyButtonContent}>
+                  <MaterialIcons name="videocam" size={20} color="#fff" />
+                  <Text numberOfLines={1} style={styles.actionButtonText}>
+                    {showVideoSessions ? 'Hide Videos' : 'View Video Sessions'}
+                  </Text>
+                  <Ionicons 
+                    name={showVideoSessions ? "chevron-up" : "chevron-down"} 
+                    size={18} 
+                    color="#fff" 
+                    style={styles.historyChevron}
+                  />
+                </View>
+              </TouchableOpacity>
+            )}
           </View>
         </>
       ) : (
@@ -1107,6 +1146,141 @@ const BookingDetailScreen = ({ navigation }) => {
             <View style={styles.emptyHistoryContainer}>
               <FontAwesome5 name="route" size={40} color="#ddd" />
               <Text style={styles.emptyHistoryText}>No tracking sessions yet</Text>
+            </View>
+          )}
+        </View>
+      )}
+
+      {/* Video Sessions Section (conditionally shown) */}
+      {showVideoSessions && booking && (
+        <View style={styles.videoSessionsContainer}>
+          <View style={styles.historyHeader}>
+            <Text style={styles.historyTitle}>
+              Video Sessions {videoSessions.length > 0 && `(${videoSessions.length})`}
+            </Text>
+            <TouchableOpacity onPress={() => setShowVideoSessions(false)}>
+              <Ionicons name="close" size={24} color="#666" />
+            </TouchableOpacity>
+          </View>
+
+          {videoSessions.length > 0 ? (
+            <ScrollView 
+              style={styles.videoSessionsList}
+              showsVerticalScrollIndicator={true}
+              nestedScrollEnabled={true}
+            >
+              {console.log('Rendering video sessions:', videoSessions.length)}
+              {videoSessions.map((session, index) => (
+                <View key={`${session.id}-${index}`} style={styles.videoSessionCard}>
+                  <View style={styles.videoSessionHeader}>
+                    <View style={styles.videoSessionInfo}>
+                      <Text style={[styles.videoSessionDate, { marginBottom: 2 }]}>
+                        Session {videoSessions.length - index}
+                      </Text>
+                      <Text style={styles.videoSessionDate}>
+                        {format(parseISO(session.session_start_time || session.created_at), 'PPP')}
+                      </Text>
+                      <Text style={styles.videoSessionTime}>
+                        {session.session_start_time && session.session_end_time
+                          ? `${format(parseISO(session.session_start_time), 'p')} - ${format(parseISO(session.session_end_time), 'p')}`
+                          : format(parseISO(session.created_at), 'p')}
+                      </Text>
+                    </View>
+                    <View style={styles.videoDurationBadge}>
+                      <MaterialIcons name="timer" size={16} color="#fff" />
+                      <Text style={styles.videoDurationText}>
+                        {formatDuration(session.duration_seconds || 0)}
+                      </Text>
+                    </View>
+                  </View>
+                  
+                  {/* Video Info */}
+                  <View style={styles.videoInfoSection}>
+                    <View style={styles.videoInfoRow}>
+                      <MaterialIcons name="videocam" size={20} color="#1E90FF" />
+                      <Text style={styles.videoInfoText}>Video Session Recorded</Text>
+                    </View>
+                    <View style={styles.videoInfoRow}>
+                      <MaterialIcons name="photo-camera" size={20} color="#FF9500" />
+                      <Text style={styles.videoInfoText}>
+                        {session.screenshot_count || 0} proof-of-service images captured
+                      </Text>
+                    </View>
+                  </View>
+                  
+                  {/* Screenshot Film Strip */}
+                  {session.screenshot_count > 0 && session.screenshots_data && (
+                    <View style={styles.screenshotSection}>
+                      <Text style={styles.screenshotTitle}>Session Captures</Text>
+                      <ScrollView 
+                        horizontal 
+                        showsHorizontalScrollIndicator={false}
+                        style={styles.screenshotStrip}
+                      >
+                        {/* Display actual screenshots from JSON data */}
+                        {(() => {
+                          const screenshotsArray = typeof session.screenshots_data === 'string' 
+                            ? JSON.parse(session.screenshots_data) 
+                            : session.screenshots_data;
+                          return screenshotsArray.slice(0, 5).map((screenshot, index) => (
+                            <View key={index} style={styles.screenshotContainer}>
+                              {screenshot.thumbnail_url && !screenshot.error ? (
+                                <Image
+                                  source={{ uri: screenshot.thumbnail_url }}
+                                  style={styles.screenshotImage}
+                                  contentFit="cover"
+                                  transition={200}
+                                />
+                              ) : (
+                                <View style={styles.screenshotPlaceholder}>
+                                  <MaterialIcons name="image" size={30} color="#ddd" />
+                                  <Text style={styles.screenshotIndex}>{index + 1}</Text>
+                                </View>
+                              )}
+                              <View style={styles.screenshotTimestamp}>
+                                <Text style={styles.screenshotTime}>
+                                  {screenshot.relative_time || format(parseISO(screenshot.timestamp), 'HH:mm:ss')}
+                                </Text>
+                              </View>
+                            </View>
+                          ));
+                        })()}
+                        {session.screenshot_count > 5 && (
+                          <View style={styles.moreScreenshotsContainer}>
+                            <Text style={styles.moreScreenshotsText}>
+                              +{session.screenshot_count - 5} more
+                            </Text>
+                          </View>
+                        )}
+                      </ScrollView>
+                    </View>
+                  )}
+                  
+                  {/* Session Summary */}
+                  <View style={styles.sessionSummary}>
+                    <Text style={styles.sessionSummaryTitle}>Session Summary</Text>
+                    <View style={styles.sessionSummaryContent}>
+                      <View style={styles.videoSummaryItem}>
+                        <MaterialIcons name="photo" size={20} color="#4CD964" />
+                        <Text style={styles.videoSummaryText}>{session.screenshot_count} screenshots saved</Text>
+                      </View>
+                      <View style={styles.videoSummaryItem}>
+                        <MaterialIcons name="shield-check" size={20} color="#1E90FF" />
+                        <Text style={styles.videoSummaryText}>Proof of service captured</Text>
+                      </View>
+                      <View style={styles.videoSummaryItem}>
+                        <Ionicons name="information-circle" size={20} color="#FF9500" />
+                        <Text style={[styles.videoSummaryText, { fontSize: 13, fontStyle: 'italic' }]}>No video file stored for privacy</Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+          ) : (
+            <View style={styles.emptyHistoryContainer}>
+              <MaterialIcons name="videocam-off" size={40} color="#ddd" />
+              <Text style={styles.emptyHistoryText}>No video sessions yet</Text>
             </View>
           )}
         </View>
@@ -2640,6 +2814,13 @@ const styles = StyleSheet.create({
     marginHorizontal: 0,
     marginTop: 12,
   },
+  // Video Sessions Button
+  videoSessionsButton: {
+    backgroundColor: '#FF2D55', // iOS red color
+    width: '100%',
+    marginHorizontal: 0,
+    marginTop: 12,
+  },
   // Tracking History Container
   trackingHistoryContainer: {
     backgroundColor: '#fff',
@@ -2741,6 +2922,183 @@ const styles = StyleSheet.create({
     color: '#333',
     lineHeight: 20,
   },
+  
+  // Video Sessions Container
+  videoSessionsContainer: {
+    backgroundColor: '#fff',
+    margin: 16,
+    marginTop: 0,
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  videoSessionsList: {
+    // Removed maxHeight to allow showing all sessions
+    flexGrow: 0,
+    flexShrink: 1,
+  },
+  videoSessionCard: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  videoSessionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    paddingBottom: 12,
+  },
+  videoSessionInfo: {
+    flex: 1,
+  },
+  videoSessionDate: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  videoSessionTime: {
+    fontSize: 14,
+    color: '#666',
+  },
+  videoDurationBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FF2D55',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  videoDurationText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+    marginLeft: 4,
+  },
+  videoInfoSection: {
+    padding: 16,
+    paddingTop: 0,
+  },
+  videoInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  videoInfoText: {
+    fontSize: 14,
+    color: '#666',
+    marginLeft: 8,
+  },
+  
+  // Screenshot Strip Styles
+  screenshotSection: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+  },
+  screenshotTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 12,
+  },
+  screenshotStrip: {
+    flexDirection: 'row',
+  },
+  screenshotContainer: {
+    marginRight: 12,
+    alignItems: 'center',
+  },
+  screenshotPlaceholder: {
+    width: 120,
+    height: 90,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  screenshotIndex: {
+    position: 'absolute',
+    top: 5,
+    right: 5,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#666',
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  screenshotImage: {
+    width: 120,
+    height: 90,
+    borderRadius: 8,
+  },
+  screenshotTimestamp: {
+    marginTop: 4,
+    alignItems: 'center',
+  },
+  screenshotTime: {
+    fontSize: 11,
+    color: '#666',
+    fontWeight: '500',
+  },
+  moreScreenshotsContainer: {
+    width: 80,
+    height: 90,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  moreScreenshotsText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+  },
+  
+  // Session Summary Styles
+  sessionSummary: {
+    padding: 16,
+    paddingTop: 0,
+  },
+  sessionSummaryTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 12,
+    textTransform: 'uppercase',
+  },
+  sessionSummaryContent: {
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    padding: 12,
+  },
+  videoSummaryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  videoSummaryText: {
+    fontSize: 14,
+    color: '#333',
+    marginLeft: 8,
+  },
+  
   // <-- FIX 4: Removed duplicate and unused styles from here
 });
 

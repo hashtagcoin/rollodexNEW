@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useUser } from '../context/UserContext';
+import { CHAT_TYPE } from '../constants/chatConstants';
 
 /**
  * Hook for accessing chat-related data and functions
@@ -102,16 +103,25 @@ export const useChat = () => {
             // Filter out current user from participants for display purposes
             const otherParticipants = participantProfiles.filter(p => p.id !== profile.id);
 
+            // Determine display name based on conversation type
+            let displayName;
+            if (conversation.room_name) {
+              // This is a chat room
+              displayName = conversation.room_name;
+            } else if (conversation.is_group_chat) {
+              displayName = `Group Chat (${otherParticipants.length} members)`;
+            } else {
+              displayName = otherParticipants[0]?.full_name || otherParticipants[0]?.username || 'Unknown';
+            }
+
             return {
               ...conversation,
               latest_message: latestMessage ? latestMessage[0] : null,
               unread_count: unreadCount || 0,
               participants: participantProfiles,
-              participant_name: conversation.is_group_chat
-                ? `${otherParticipants.length} participants`
-                : otherParticipants[0]?.full_name || otherParticipants[0]?.username || 'Unknown',
-              participant_avatar: conversation.is_group_chat
-                ? null // Could create group avatar here
+              participant_name: displayName,
+              participant_avatar: conversation.is_group_chat || conversation.room_name
+                ? null // Could create group/room avatar here
                 : otherParticipants[0]?.avatar_url
             };
           })
@@ -482,6 +492,177 @@ export const useChat = () => {
     }
   };
 
+  /**
+   * Fetch available chat rooms
+   */
+  const fetchChatRooms = async () => {
+    try {
+      // Fetch all chat rooms (conversations with room_name set)
+      const { data: roomsData, error: roomsError } = await supabase
+        .from('chat_conversations')
+        .select('*')
+        .not('room_name', 'is', null)
+        .eq('is_group_chat', true)
+        .order('created_at', { ascending: true });
+
+      if (roomsError) throw roomsError;
+
+      // Get participant counts for each room
+      const roomsWithDetails = await Promise.all(
+        roomsData.map(async (room) => {
+          const { count: participantCount } = await supabase
+            .from('chat_participants')
+            .select('id', { count: 'exact' })
+            .eq('conversation_id', room.id);
+
+          // Check if current user is a participant
+          const { data: userParticipation } = await supabase
+            .from('chat_participants')
+            .select('id')
+            .eq('conversation_id', room.id)
+            .eq('user_id', profile?.id)
+            .single();
+
+          return {
+            ...room,
+            participant_count: participantCount || 0,
+            is_joined: !!userParticipation
+          };
+        })
+      );
+
+      return roomsWithDetails;
+    } catch (error) {
+      console.error('Error fetching chat rooms:', error);
+      return [];
+    }
+  };
+
+  /**
+   * Join a chat room
+   * @param {string} roomId - The ID of the room to join
+   */
+  const joinChatRoom = async (roomId) => {
+    if (!profile?.id || !roomId) return false;
+
+    try {
+      // Check if already a participant
+      const { data: existing } = await supabase
+        .from('chat_participants')
+        .select('id')
+        .eq('conversation_id', roomId)
+        .eq('user_id', profile.id)
+        .single();
+
+      if (existing) return true; // Already joined
+
+      // Add user as participant
+      const { error } = await supabase
+        .from('chat_participants')
+        .insert({
+          conversation_id: roomId,
+          user_id: profile.id,
+          created_at: new Date().toISOString()
+        });
+
+      if (error) throw error;
+
+      // Refresh conversations
+      await fetchConversations();
+      
+      return true;
+    } catch (error) {
+      console.error('Error joining chat room:', error);
+      return false;
+    }
+  };
+
+  /**
+   * Leave a chat room
+   * @param {string} roomId - The ID of the room to leave
+   */
+  const leaveChatRoom = async (roomId) => {
+    if (!profile?.id || !roomId) return false;
+
+    try {
+      const { error } = await supabase
+        .from('chat_participants')
+        .delete()
+        .eq('conversation_id', roomId)
+        .eq('user_id', profile.id);
+
+      if (error) throw error;
+
+      // Refresh conversations
+      await fetchConversations();
+      
+      return true;
+    } catch (error) {
+      console.error('Error leaving chat room:', error);
+      return false;
+    }
+  };
+
+  /**
+   * Create a new chat room
+   * @param {Object} roomData - Room information (name, description, topic_id)
+   */
+  const createChatRoom = async (roomData) => {
+    if (!profile?.id) return null;
+
+    try {
+      // Create new room conversation
+      const { data: conversationData, error: conversationError } = await supabase
+        .from('chat_conversations')
+        .insert({
+          is_group_chat: true,
+          room_name: roomData.name,
+          room_description: roomData.description,
+          room_topic_id: roomData.topic_id,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .select();
+
+      if (conversationError) throw conversationError;
+      
+      const roomId = conversationData[0].id;
+      
+      // Add creator as first participant
+      const { error: participantError } = await supabase
+        .from('chat_participants')
+        .insert({
+          conversation_id: roomId,
+          user_id: profile.id,
+          created_at: new Date().toISOString()
+        });
+
+      if (participantError) throw participantError;
+
+      // Create a welcome message for the new room
+      const systemMessage = {
+        conversation_id: roomId,
+        sender_id: profile.id,
+        content: `Welcome to ${roomData.name}! ${roomData.description || ''}`,
+        read: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      await supabase
+        .from('chat_messages')
+        .insert(systemMessage);
+
+      // Refresh conversations
+      await fetchConversations();
+      
+      return roomId;
+    } catch (error) {
+      console.error('Error creating chat room:', error);
+      return null;
+    }
+  };
+
   return {
     conversations,
     isLoadingConversations,
@@ -496,6 +677,10 @@ export const useChat = () => {
     markConversationAsRead,
     subscribeToConversation,
     subscribeToConversationUpdates,
+    fetchChatRooms,
+    joinChatRoom,
+    leaveChatRoom,
+    createChatRoom,
   };
 };
 

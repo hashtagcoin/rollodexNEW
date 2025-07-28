@@ -142,7 +142,7 @@ const ManageListingsScreen = ({ navigation }) => {
 // [LOG]'Processed service listings:', processedServiceData);
     } catch (err) {
       // console.log(error('Error fetching provider listings:', err);
-      Alert.alert('Error', 'Failed to load your listings');
+      // Silent error handling - no alert when listings fail to load
     } finally {
       setLoading(false);
     }

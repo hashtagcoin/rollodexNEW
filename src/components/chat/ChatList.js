@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONTS } from '../../constants/theme';
-import { EMPTY_STATES, LOADING_STATES, ERROR_MESSAGES } from '../../constants/chatConstants';
+import { EMPTY_STATES, LOADING_STATES, ERROR_MESSAGES, CHAT_TYPE, CHAT_ROOM_TOPICS } from '../../constants/chatConstants';
 import useChat from '../../hooks/useChat';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -49,7 +49,13 @@ const ChatList = ({ onSelectConversation, onNewConversation }) => {
         onPress={() => onSelectConversation(item)}
       >
         <View style={styles.avatarContainer}>
-          {item.participant_avatar ? (
+          {item.room_name ? (
+            <View style={styles.roomAvatar}>
+              <Text style={styles.roomAvatarIcon}>
+                {CHAT_ROOM_TOPICS.find(t => t.id === item.room_topic_id)?.icon || '💬'}
+              </Text>
+            </View>
+          ) : item.participant_avatar ? (
             <Image 
               source={{ uri: item.participant_avatar }} 
               style={styles.avatar} 
@@ -186,6 +192,17 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: COLORS.white,
+  },
+  roomAvatar: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: '#e8f0ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  roomAvatarIcon: {
+    fontSize: 24,
   },
   badge: {
     position: 'absolute',

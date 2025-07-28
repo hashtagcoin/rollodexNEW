@@ -164,37 +164,35 @@ function AppNavigator() {
   
   return (
     <AppStateProvider>
-      <ChatButtonOverlay>
-        <NavigationContainer
-            onStateChange={(state) => console.log(`[DEBUG][${new Date().toISOString()}] NavigationContainer - Navigation state changed:`, 
-              state ? `Current route: ${state.routes[state.index]?.name}` : 'No state')}
-            onReady={() => console.log(`[DEBUG][${new Date().toISOString()}] NavigationContainer - Navigation container is ready`)}
-          >
-          <NotificationProvider>
-        {isAuthenticated ? (
-          <RootStack.Navigator 
-            initialRouteName={getInitialRoute()}
-            screenOptions={{ headerShown: false }}
-          >
-            <RootStack.Screen name="MainApp" component={MainTabs} />
-            <RootStack.Screen name="ProviderStack" component={ProviderStackNavigator} />
-            {/* Define detail screens here */}
-            <RootStack.Screen name="ServiceDetail" component={ServiceDetailScreen} />
-            <RootStack.Screen name="HousingDetail" component={HousingDetailScreen} />
-            <RootStack.Screen name="EventDetail" component={EventDetailScreen} />
-            <RootStack.Screen name="GroupDetail" component={GroupDetailScreen} />
-            <RootStack.Screen name="HousingGroupDetailScreen" component={HousingGroupDetailScreen} />
-            <RootStack.Screen name="CreateHousingGroup" component={CreateHousingGroupScreen} />
-            <RootStack.Screen name="VideoScreen" component={VideoScreen} />
-          </RootStack.Navigator>
-        ) : (
-          <AuthFlowStack.Navigator screenOptions={{ headerShown: false }}>
-            <AuthFlowStack.Screen name="Auth" component={AuthStack} />
-          </AuthFlowStack.Navigator>
-        )}
-          </NotificationProvider>
-        </NavigationContainer>
-      </ChatButtonOverlay>
+      <NavigationContainer
+          onStateChange={(state) => console.log(`[DEBUG][${new Date().toISOString()}] NavigationContainer - Navigation state changed:`, 
+            state ? `Current route: ${state.routes[state.index]?.name}` : 'No state')}
+          onReady={() => console.log(`[DEBUG][${new Date().toISOString()}] NavigationContainer - Navigation container is ready`)}
+        >
+        <NotificationProvider>
+      <RootStack.Navigator 
+        initialRouteName="Auth"
+        screenOptions={{ headerShown: false }}
+      >
+        {/* Always show Auth stack first */}
+        <RootStack.Screen 
+          name="Auth" 
+          component={AuthStack} 
+          initialParams={{ isAuthenticated, userRole }}
+        />
+        <RootStack.Screen name="MainApp" component={MainTabs} />
+        <RootStack.Screen name="ProviderStack" component={ProviderStackNavigator} />
+        {/* Define detail screens here */}
+        <RootStack.Screen name="ServiceDetail" component={ServiceDetailScreen} />
+        <RootStack.Screen name="HousingDetail" component={HousingDetailScreen} />
+        <RootStack.Screen name="EventDetail" component={EventDetailScreen} />
+        <RootStack.Screen name="GroupDetail" component={GroupDetailScreen} />
+        <RootStack.Screen name="HousingGroupDetailScreen" component={HousingGroupDetailScreen} />
+        <RootStack.Screen name="CreateHousingGroup" component={CreateHousingGroupScreen} />
+        <RootStack.Screen name="VideoScreen" component={VideoScreen} />
+      </RootStack.Navigator>
+        </NotificationProvider>
+      </NavigationContainer>
     </AppStateProvider>
   );
 }

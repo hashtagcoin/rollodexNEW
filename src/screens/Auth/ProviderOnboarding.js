@@ -1,0 +1,1055 @@
+import React, { useState, useRef, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Animated,
+  ScrollView,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { MaterialCommunityIcons, Ionicons, FontAwesome5 } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
+const ProviderOnboarding = ({ navigation, route }) => {
+  const { isAuthenticated, userRole } = route.params || {};
+  const [currentStep, setCurrentStep] = useState(1);
+  const [formData, setFormData] = useState({
+    businessName: '',
+    contactName: '',
+    providerType: '',
+    serviceTypes: [],
+    specializations: [],
+    serviceAreas: [],
+    availability: {
+      weekdays: false,
+      weekends: false,
+      evenings: false,
+      emergencies: false,
+    },
+    languages: [],
+    ndisRegistered: false,
+    registrationNumber: '',
+  });
+  
+  const slideAnim = useRef(new Animated.Value(0)).current;
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const progressAnim = useRef(new Animated.Value(0.25)).current;
+
+  const totalSteps = 4;
+
+  const handleSkip = () => {
+    // Navigate directly to the provider stack
+    navigation.navigate('ProviderStack');
+  };
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(progressAnim, {
+        toValue: currentStep / totalSteps,
+        duration: 300,
+        useNativeDriver: false,
+      }),
+      Animated.sequence([
+        Animated.timing(fadeAnim, {
+          toValue: 0,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+      ]),
+    ]).start();
+  }, [currentStep]);
+
+  const handleNext = () => {
+    if (currentStep < totalSteps) {
+      setCurrentStep(currentStep + 1);
+    } else {
+      navigation.navigate('OnboardingSuccess', { userType: 'provider' });
+    }
+  };
+
+  const handleBack = () => {
+    if (currentStep > 1) {
+      setCurrentStep(currentStep - 1);
+    } else {
+      navigation.goBack();
+    }
+  };
+
+
+  const updateFormData = (field, value) => {
+    setFormData({ ...formData, [field]: value });
+  };
+
+  const toggleArrayItem = (field, item) => {
+    const array = formData[field];
+    if (array.includes(item)) {
+      updateFormData(field, array.filter(i => i !== item));
+    } else {
+      updateFormData(field, [...array, item]);
+    }
+  };
+
+  const renderStep = () => {
+    switch (currentStep) {
+      case 1:
+        return <Step1 formData={formData} updateFormData={updateFormData} />;
+      case 2:
+        return <Step2 formData={formData} toggleArrayItem={toggleArrayItem} updateFormData={updateFormData} />;
+      case 3:
+        return <Step3 formData={formData} updateFormData={updateFormData} toggleArrayItem={toggleArrayItem} />;
+      case 4:
+        return <Step4 formData={formData} updateFormData={updateFormData} />;
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <LinearGradient
+      colors={['#FFFFFF', '#FFF5F5', '#FFE4E1']}
+      style={styles.container}
+    >
+      <SafeAreaView style={styles.safeArea}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.keyboardView}
+        >
+          <View style={styles.header}>
+            <TouchableOpacity onPress={handleBack} style={styles.backButton}>
+              <Ionicons name="arrow-back" size={24} color="#6B7280" />
+            </TouchableOpacity>
+            
+            <TouchableOpacity onPress={handleSkip} style={styles.skipButton}>
+              <Text style={styles.skipText}>Skip for now</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.progressContainer}>
+            <View style={styles.progressBar}>
+              <Animated.View
+                style={[
+                  styles.progressFill,
+                  {
+                    width: progressAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: ['0%', '100%'],
+                    }),
+                  },
+                ]}
+              />
+            </View>
+            <Text style={styles.stepIndicator}>
+              Step {currentStep} of {totalSteps}
+            </Text>
+          </View>
+
+          <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
+            {renderStep()}
+          </Animated.View>
+
+          <View style={styles.footer}>
+            <TouchableOpacity
+              style={styles.continueButton}
+              onPress={handleNext}
+              activeOpacity={0.8}
+            >
+              <LinearGradient
+                colors={['#FF6347', '#FF7F50']}
+                style={styles.buttonGradient}
+              >
+                <Text style={styles.continueButtonText}>
+                  {currentStep === totalSteps ? "Complete setup" : 'Continue'}
+                </Text>
+                <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </LinearGradient>
+  );
+};
+
+const Step1 = ({ formData, updateFormData }) => {
+  const providerTypes = [
+    { id: 'individual', label: 'Individual Provider', icon: 'account', description: 'Solo practitioner or therapist' },
+    { id: 'business', label: 'Service Business', icon: 'domain', description: 'Company with multiple staff' },
+    { id: 'housing', label: 'Housing Provider', icon: 'home-city', description: 'SDA or rental properties' },
+    { id: 'community', label: 'Community Organization', icon: 'account-group', description: 'Groups, events, activities' },
+  ];
+
+  return (
+    <ScrollView showsVerticalScrollIndicator={false} style={styles.stepContainer}>
+      <View style={styles.welcomeSection}>
+        <Text style={styles.welcomeTitle}>Welcome to the Rollodex provider community!</Text>
+        <Text style={styles.welcomeSubtitle}>
+          Let's set up your profile so participants can find you
+        </Text>
+      </View>
+
+      <View style={styles.inputGroup}>
+        <Text style={styles.inputLabel}>Business or service name</Text>
+        <TextInput
+          style={styles.textInput}
+          placeholder="Enter your business name"
+          value={formData.businessName}
+          onChangeText={(text) => updateFormData('businessName', text)}
+          autoCapitalize="words"
+        />
+      </View>
+
+      <View style={styles.inputGroup}>
+        <Text style={styles.inputLabel}>Your name</Text>
+        <TextInput
+          style={styles.textInput}
+          placeholder="Contact person's name"
+          value={formData.contactName}
+          onChangeText={(text) => updateFormData('contactName', text)}
+          autoCapitalize="words"
+        />
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>What type of provider are you?</Text>
+        
+        <View style={styles.providerTypeList}>
+          {providerTypes.map((type) => (
+            <TouchableOpacity
+              key={type.id}
+              style={[
+                styles.providerTypeCard,
+                formData.providerType === type.id && styles.selectedProviderType,
+              ]}
+              onPress={() => updateFormData('providerType', type.id)}
+            >
+              <View style={[
+                styles.providerTypeIcon,
+                formData.providerType === type.id && styles.selectedProviderIcon,
+              ]}>
+                <MaterialCommunityIcons 
+                  name={type.icon} 
+                  size={28} 
+                  color={formData.providerType === type.id ? '#FFFFFF' : '#2563EB'} 
+                />
+              </View>
+              <View style={styles.providerTypeContent}>
+                <Text style={[
+                  styles.providerTypeTitle,
+                  formData.providerType === type.id && styles.selectedProviderTitle,
+                ]}>
+                  {type.label}
+                </Text>
+                <Text style={[
+                  styles.providerTypeDescription,
+                  formData.providerType === type.id && styles.selectedProviderDescription,
+                ]}>
+                  {type.description}
+                </Text>
+              </View>
+              {formData.providerType === type.id && (
+                <Ionicons name="checkmark-circle" size={24} color="#2563EB" />
+              )}
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+    </ScrollView>
+  );
+};
+
+const Step2 = ({ formData, toggleArrayItem, updateFormData }) => {
+  const serviceCategories = [
+    { id: 'therapy', label: 'Therapy Services', icon: 'heart-pulse', services: [
+      'Occupational Therapy', 'Speech Therapy', 'Physiotherapy', 'Psychology'
+    ]},
+    { id: 'daily', label: 'Daily Living', icon: 'home-heart', services: [
+      'Personal Care', 'Domestic Assistance', 'Meal Preparation', 'Shopping'
+    ]},
+    { id: 'social', label: 'Social Support', icon: 'account-group', services: [
+      'Community Access', 'Social Groups', 'Recreation', 'Mentoring'
+    ]},
+    { id: 'health', label: 'Health & Nursing', icon: 'medical-bag', services: [
+      'Nursing Care', 'Medication Support', 'Health Monitoring', 'Wound Care'
+    ]},
+    { id: 'housing', label: 'Accommodation', icon: 'home-city', services: [
+      'SDA Housing', 'Supported Living', 'Respite Care', 'Short Term Accommodation'
+    ]},
+    { id: 'transport', label: 'Transport', icon: 'car', services: [
+      'Community Transport', 'Medical Appointments', 'Shopping Trips', 'Social Outings'
+    ]},
+  ];
+
+  return (
+    <ScrollView showsVerticalScrollIndicator={false} style={styles.stepContainer}>
+      <View style={styles.welcomeSection}>
+        <Text style={styles.stepTitle}>What services do you offer?</Text>
+        <Text style={styles.stepSubtitle}>
+          Select all that apply - this helps participants find the right support
+        </Text>
+      </View>
+
+      {serviceCategories.map((category) => (
+        <View key={category.id} style={styles.serviceCategory}>
+          <View style={styles.categoryHeader}>
+            <MaterialCommunityIcons name={category.icon} size={24} color="#2563EB" />
+            <Text style={styles.categoryTitle}>{category.label}</Text>
+          </View>
+          
+          <View style={styles.serviceGrid}>
+            {category.services.map((service) => (
+              <TouchableOpacity
+                key={service}
+                style={[
+                  styles.serviceChip,
+                  formData.serviceTypes.includes(service) && styles.selectedServiceChip,
+                ]}
+                onPress={() => toggleArrayItem('serviceTypes', service)}
+              >
+                <Text style={[
+                  styles.serviceChipText,
+                  formData.serviceTypes.includes(service) && styles.selectedServiceChipText,
+                ]}>
+                  {service}
+                </Text>
+                {formData.serviceTypes.includes(service) && (
+                  <Ionicons name="checkmark" size={16} color="#FFFFFF" />
+                )}
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      ))}
+
+      <View style={styles.registrationSection}>
+        <TouchableOpacity
+          style={styles.registrationToggle}
+          onPress={() => updateFormData('ndisRegistered', !formData.ndisRegistered)}
+        >
+          <View style={[
+            styles.checkbox,
+            formData.ndisRegistered && styles.checkedBox,
+          ]}>
+            {formData.ndisRegistered && (
+              <Ionicons name="checkmark" size={16} color="#FFFFFF" />
+            )}
+          </View>
+          <Text style={styles.registrationText}>I am NDIS registered</Text>
+        </TouchableOpacity>
+
+        {formData.ndisRegistered && (
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>NDIS Registration Number</Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder="Enter your registration number"
+              value={formData.registrationNumber}
+              onChangeText={(text) => updateFormData('registrationNumber', text)}
+            />
+          </View>
+        )}
+      </View>
+    </ScrollView>
+  );
+};
+
+const Step3 = ({ formData, updateFormData, toggleArrayItem }) => {
+  const areas = [
+    'Melbourne CBD', 'North Melbourne', 'South Melbourne', 'Eastern Suburbs',
+    'Western Suburbs', 'Geelong', 'Ballarat', 'Bendigo', 'Online/Remote'
+  ];
+
+  const languages = [
+    'English', 'Mandarin', 'Arabic', 'Vietnamese', 'Greek', 'Italian',
+    'Cantonese', 'Spanish', 'Hindi', 'Punjabi', 'Auslan', 'Other'
+  ];
+
+  return (
+    <ScrollView showsVerticalScrollIndicator={false} style={styles.stepContainer}>
+      <View style={styles.welcomeSection}>
+        <Text style={styles.stepTitle}>Where and when do you provide services?</Text>
+        <Text style={styles.stepSubtitle}>
+          Help participants know if you're available in their area
+        </Text>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Service areas</Text>
+        <View style={styles.chipContainer}>
+          {areas.map((area) => (
+            <TouchableOpacity
+              key={area}
+              style={[
+                styles.areaChip,
+                formData.serviceAreas.includes(area) && styles.selectedAreaChip,
+              ]}
+              onPress={() => toggleArrayItem('serviceAreas', area)}
+            >
+              <Ionicons 
+                name="location" 
+                size={16} 
+                color={formData.serviceAreas.includes(area) ? '#FFFFFF' : '#6B7280'} 
+              />
+              <Text style={[
+                styles.areaChipText,
+                formData.serviceAreas.includes(area) && styles.selectedAreaChipText,
+              ]}>
+                {area}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Availability</Text>
+        <View style={styles.availabilityGrid}>
+          <TouchableOpacity
+            style={[
+              styles.availabilityCard,
+              formData.availability.weekdays && styles.selectedAvailability,
+            ]}
+            onPress={() => updateFormData('availability', {
+              ...formData.availability,
+              weekdays: !formData.availability.weekdays
+            })}
+          >
+            <MaterialCommunityIcons 
+              name="calendar-week" 
+              size={24} 
+              color={formData.availability.weekdays ? '#FFFFFF' : '#2563EB'} 
+            />
+            <Text style={[
+              styles.availabilityText,
+              formData.availability.weekdays && styles.selectedAvailabilityText,
+            ]}>
+              Weekdays
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.availabilityCard,
+              formData.availability.weekends && styles.selectedAvailability,
+            ]}
+            onPress={() => updateFormData('availability', {
+              ...formData.availability,
+              weekends: !formData.availability.weekends
+            })}
+          >
+            <MaterialCommunityIcons 
+              name="calendar-weekend" 
+              size={24} 
+              color={formData.availability.weekends ? '#FFFFFF' : '#2563EB'} 
+            />
+            <Text style={[
+              styles.availabilityText,
+              formData.availability.weekends && styles.selectedAvailabilityText,
+            ]}>
+              Weekends
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.availabilityCard,
+              formData.availability.evenings && styles.selectedAvailability,
+            ]}
+            onPress={() => updateFormData('availability', {
+              ...formData.availability,
+              evenings: !formData.availability.evenings
+            })}
+          >
+            <MaterialCommunityIcons 
+              name="weather-night" 
+              size={24} 
+              color={formData.availability.evenings ? '#FFFFFF' : '#2563EB'} 
+            />
+            <Text style={[
+              styles.availabilityText,
+              formData.availability.evenings && styles.selectedAvailabilityText,
+            ]}>
+              Evenings
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.availabilityCard,
+              formData.availability.emergencies && styles.selectedAvailability,
+            ]}
+            onPress={() => updateFormData('availability', {
+              ...formData.availability,
+              emergencies: !formData.availability.emergencies
+            })}
+          >
+            <MaterialCommunityIcons 
+              name="alert-circle" 
+              size={24} 
+              color={formData.availability.emergencies ? '#FFFFFF' : '#2563EB'} 
+            />
+            <Text style={[
+              styles.availabilityText,
+              formData.availability.emergencies && styles.selectedAvailabilityText,
+            ]}>
+              Emergency
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Languages spoken</Text>
+        <View style={styles.chipContainer}>
+          {languages.map((language) => (
+            <TouchableOpacity
+              key={language}
+              style={[
+                styles.languageChip,
+                formData.languages.includes(language) && styles.selectedLanguageChip,
+              ]}
+              onPress={() => toggleArrayItem('languages', language)}
+            >
+              <Text style={[
+                styles.languageChipText,
+                formData.languages.includes(language) && styles.selectedLanguageChipText,
+              ]}>
+                {language}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+    </ScrollView>
+  );
+};
+
+const Step4 = ({ formData, updateFormData }) => {
+  return (
+    <ScrollView showsVerticalScrollIndicator={false} style={styles.stepContainer}>
+      <View style={styles.welcomeSection}>
+        <View style={styles.celebrationContainer}>
+          <LinearGradient
+            colors={['#DBEAFE', '#BFDBFE']}
+            style={styles.celebrationCircle}
+          >
+            <MaterialCommunityIcons name="check-decagram" size={48} color="#2563EB" />
+          </LinearGradient>
+        </View>
+        
+        <Text style={styles.successTitle}>You're all set!</Text>
+        <Text style={styles.successSubtitle}>
+          Welcome to the Rollodex provider community
+        </Text>
+      </View>
+
+      <View style={styles.summaryCard}>
+        <Text style={styles.summaryTitle}>What happens next?</Text>
+        
+        <View style={styles.nextStep}>
+          <View style={styles.stepNumber}>
+            <Text style={styles.stepNumberText}>1</Text>
+          </View>
+          <View style={styles.stepContent}>
+            <Text style={styles.stepTitle}>Profile review</Text>
+            <Text style={styles.stepDescription}>
+              Our team will review your profile within 24 hours
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.nextStep}>
+          <View style={styles.stepNumber}>
+            <Text style={styles.stepNumberText}>2</Text>
+          </View>
+          <View style={styles.stepContent}>
+            <Text style={styles.stepTitle}>Start receiving inquiries</Text>
+            <Text style={styles.stepDescription}>
+              Participants can find and contact you once approved
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.nextStep}>
+          <View style={styles.stepNumber}>
+            <Text style={styles.stepNumberText}>3</Text>
+          </View>
+          <View style={styles.stepContent}>
+            <Text style={styles.stepTitle}>Manage bookings</Text>
+            <Text style={styles.stepDescription}>
+              Use our tools to schedule and track your services
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.tipsCard}>
+        <MaterialCommunityIcons name="lightbulb" size={24} color="#F59E0B" />
+        <View style={styles.tipsContent}>
+          <Text style={styles.tipsTitle}>Pro tip</Text>
+          <Text style={styles.tipsText}>
+            Complete your profile with photos and detailed service descriptions to stand out to participants
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.supportInfo}>
+        <MaterialCommunityIcons name="help-circle" size={20} color="#2563EB" />
+        <Text style={styles.supportText}>
+          Need help? Our provider support team is here for you
+        </Text>
+      </View>
+    </ScrollView>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  safeArea: {
+    flex: 1,
+  },
+  keyboardView: {
+    flex: 1,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: 8,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  skipButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  skipText: {
+    color: '#6B7280',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  progressContainer: {
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+  },
+  progressBar: {
+    height: 6,
+    backgroundColor: '#E5E7EB',
+    borderRadius: 3,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#FF6347',
+    borderRadius: 3,
+  },
+  stepIndicator: {
+    fontSize: 12,
+    color: '#6B7280',
+    textAlign: 'center',
+  },
+  content: {
+    flex: 1,
+    paddingHorizontal: 24,
+  },
+  footer: {
+    paddingHorizontal: 24,
+    paddingVertical: 20,
+  },
+  continueButton: {
+    width: '100%',
+  },
+  buttonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    borderRadius: 12,
+  },
+  continueButtonText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '600',
+    marginRight: 8,
+  },
+  stepContainer: {
+    flex: 1,
+  },
+  welcomeSection: {
+    marginBottom: 32,
+  },
+  welcomeTitle: {
+    fontSize: 26,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    marginBottom: 8,
+    lineHeight: 32,
+  },
+  welcomeSubtitle: {
+    fontSize: 16,
+    color: '#6B7280',
+    lineHeight: 24,
+  },
+  stepTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    marginBottom: 8,
+  },
+  stepSubtitle: {
+    fontSize: 16,
+    color: '#6B7280',
+    lineHeight: 24,
+  },
+  inputGroup: {
+    marginBottom: 24,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  textInput: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  section: {
+    marginTop: 32,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 16,
+  },
+  providerTypeList: {
+    marginBottom: 24,
+  },
+  providerTypeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+  },
+  selectedProviderType: {
+    borderColor: '#2563EB',
+    backgroundColor: '#EFF6FF',
+  },
+  providerTypeIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 12,
+    backgroundColor: '#DBEAFE',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  selectedProviderIcon: {
+    backgroundColor: '#2563EB',
+  },
+  providerTypeContent: {
+    flex: 1,
+  },
+  providerTypeTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  selectedProviderTitle: {
+    color: '#1E40AF',
+  },
+  providerTypeDescription: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  selectedProviderDescription: {
+    color: '#3730A3',
+  },
+  serviceCategory: {
+    marginBottom: 24,
+  },
+  categoryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  categoryTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginLeft: 8,
+  },
+  serviceGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: -4,
+  },
+  serviceChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    margin: 4,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  selectedServiceChip: {
+    backgroundColor: '#2563EB',
+    borderColor: '#2563EB',
+  },
+  serviceChipText: {
+    fontSize: 14,
+    color: '#374151',
+    marginRight: 4,
+  },
+  selectedServiceChipText: {
+    color: '#FFFFFF',
+  },
+  registrationSection: {
+    backgroundColor: '#EFF6FF',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 24,
+  },
+  registrationToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#2563EB',
+    marginRight: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkedBox: {
+    backgroundColor: '#2563EB',
+  },
+  registrationText: {
+    fontSize: 16,
+    color: '#1F2937',
+  },
+  chipContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: -4,
+  },
+  areaChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    margin: 4,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  selectedAreaChip: {
+    backgroundColor: '#2563EB',
+    borderColor: '#2563EB',
+  },
+  areaChipText: {
+    marginLeft: 4,
+    fontSize: 14,
+    color: '#374151',
+  },
+  selectedAreaChipText: {
+    color: '#FFFFFF',
+  },
+  availabilityGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: -6,
+  },
+  availabilityCard: {
+    width: '48%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    margin: '1%',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+  },
+  selectedAvailability: {
+    backgroundColor: '#2563EB',
+    borderColor: '#2563EB',
+  },
+  availabilityText: {
+    marginTop: 8,
+    fontSize: 14,
+    color: '#374151',
+    fontWeight: '500',
+  },
+  selectedAvailabilityText: {
+    color: '#FFFFFF',
+  },
+  languageChip: {
+    backgroundColor: '#F3F4F6',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    margin: 4,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  selectedLanguageChip: {
+    backgroundColor: '#2563EB',
+    borderColor: '#2563EB',
+  },
+  languageChipText: {
+    fontSize: 14,
+    color: '#374151',
+  },
+  selectedLanguageChipText: {
+    color: '#FFFFFF',
+  },
+  celebrationContainer: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  celebrationCircle: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  successTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  successSubtitle: {
+    fontSize: 18,
+    color: '#6B7280',
+    textAlign: 'center',
+  },
+  summaryCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  summaryTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 20,
+  },
+  nextStep: {
+    flexDirection: 'row',
+    marginBottom: 20,
+  },
+  stepNumber: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#DBEAFE',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  stepNumberText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#2563EB',
+  },
+  stepContent: {
+    flex: 1,
+  },
+  stepTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  stepDescription: {
+    fontSize: 14,
+    color: '#6B7280',
+    lineHeight: 20,
+  },
+  tipsCard: {
+    flexDirection: 'row',
+    backgroundColor: '#FEF3C7',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+  },
+  tipsContent: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  tipsTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#92400E',
+    marginBottom: 4,
+  },
+  tipsText: {
+    fontSize: 14,
+    color: '#92400E',
+    lineHeight: 20,
+  },
+  supportInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+  },
+  supportText: {
+    marginLeft: 8,
+    fontSize: 14,
+    color: '#2563EB',
+  },
+});
+
+export default ProviderOnboarding;

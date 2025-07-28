@@ -8,7 +8,7 @@ import { COLORS, SIZES } from '../../constants/theme';
 import { getImageProps } from '../../config/imageConfig';
 
 // Pre-load the placeholder image once
-const placeholderImage = require('../../assets/images/placeholder-house.png'); 
+const placeholderImage = { uri: 'https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/providerimages/default-service.png' }; 
 
 // Pre-calculate all styles to avoid inline calculations
 const styles = StyleSheet.create({
@@ -295,7 +295,7 @@ const HousingCard = memo(({
               <Ionicons 
                 name={isFavorited ? "heart" : "heart-outline"} 
                 size={18} 
-                color={isFavorited ? COLORS.primary : "#666"} 
+                color={isFavorited ? "red" : "#666"} 
               />
             </TouchableOpacity>
           </View>
@@ -367,7 +367,7 @@ const HousingCard = memo(({
                 <Ionicons 
                   name={isFavorited ? "heart" : "heart-outline"} 
                   size={20} 
-                  color={isFavorited ? COLORS.primary : "#666"} 
+                  color={isFavorited ? "red" : "#666"} 
                 />
               </TouchableOpacity>
             </View>

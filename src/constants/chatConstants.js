@@ -29,6 +29,7 @@ export const EMPTY_STATES = {
   START_CONVERSATION: 'Start a conversation',
   NO_MESSAGES: 'No messages yet',
   BEGIN_CONVERSATION: 'Say hello to start the conversation!',
+  NO_CHAT_ROOMS: 'No chat rooms available',
 };
 
 // Loading state messages
@@ -36,6 +37,7 @@ export const LOADING_STATES = {
   CONVERSATIONS: 'Loading conversations...',
   MESSAGES: 'Loading messages...',
   USERS: 'Loading users...',
+  CHAT_ROOMS: 'Loading chat rooms...',
 };
 
 // Error messages
@@ -44,4 +46,52 @@ export const ERROR_MESSAGES = {
   FAILED_TO_LOAD_MESSAGES: 'Failed to load messages',
   FAILED_TO_SEND: 'Failed to send message',
   RETRY: 'Retry',
+  FAILED_TO_LOAD_CHAT_ROOMS: 'Failed to load chat rooms',
+  FAILED_TO_JOIN_ROOM: 'Failed to join chat room',
 };
+
+// Chat Types
+export const CHAT_TYPE = {
+  PRIVATE: 'private',
+  GROUP: 'group', 
+  ROOM: 'room'
+};
+
+// NDIS Chat Room Topics
+export const CHAT_ROOM_TOPICS = [
+  {
+    id: 'support-wellbeing',
+    name: 'Support & Wellbeing',
+    description: 'Mental health support and coping strategies',
+    icon: '💙',
+    subtopics: ['Mental Health', 'Daily Living', 'Peer Support']
+  },
+  {
+    id: 'activities-social',
+    name: 'Activities & Social',
+    description: 'Events, hobbies, and social connections',
+    icon: '🎉',
+    subtopics: ['Local Events', 'Hobbies', 'Sports & Recreation']
+  },
+  {
+    id: 'ndis-services',
+    name: 'NDIS Services',
+    description: 'Plan management and service navigation',
+    icon: '📋',
+    subtopics: ['Plan Management', 'Provider Reviews', 'Funding Questions']
+  },
+  {
+    id: 'life-skills',
+    name: 'Life Skills',
+    description: 'Independent living and education',
+    icon: '🎯',
+    subtopics: ['Independent Living', 'Employment', 'Technology Help']
+  },
+  {
+    id: 'community-groups',
+    name: 'Community Groups',
+    description: 'Connect with specific communities',
+    icon: '👥',
+    subtopics: ['Parents & Carers', 'Young Adults', 'Regional Communities']
+  }
+];

@@ -501,7 +501,6 @@ export default function EditProfileScreen() {
             
             {/* Background Image Upload */}
             <View style={styles.backgroundUploadContainer}>
-              <Text style={styles.sectionTitle}>Background Image</Text>
               <TouchableOpacity 
                 style={styles.backgroundButton}
                 onPress={handleBackgroundUpload}
