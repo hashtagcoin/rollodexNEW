@@ -324,3 +324,182 @@ StoryAvatar.js
 After each update, I will let you test before proceeding to the next batch.
 
 Would you like me to start with the main profile/friends/post/chat components first? If so, I’ll update those files and let you know when to test.
+
+## 2025-01-17: ProviderDiscoveryScreen Performance Optimization
+
+### Problem Statement
+The ProviderDiscoveryScreen experienced significant lag when switching between categories (Therapy, Housing, Support, etc.). Users reported visible delays in image and card loading, making the UI feel sluggish despite implementing CachedImage components and data caching.
+
+### Diagnostic Approach
+1. **Added comprehensive timing logs** to track:
+   - Component mount/unmount cycles with unique IDs
+   - Render counts and timing
+   - Category change events
+   - Data fetch start/complete times
+   - Cache hit/miss events
+   - Focus/blur screen events
+
+2. **Key diagnostic code pattern**:
+```javascript
+// Performance tracking
+const performanceTracker = {
+  componentId: `PDS-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+  mountTime: null,
+  renders: 0,
+  categoryChanges: {},
+  fetchTimes: {},
+  imageTimes: {}
+};
+
+const debugTiming = (action, details = {}) => {
+  const timestamp = Date.now();
+  const elapsed = performanceTracker.mountTime ? timestamp - performanceTracker.mountTime : 0;
+  console.log(`[PROVIDER-TIMING][${performanceTracker.componentId}][${elapsed}ms] ${action}`, {
+    timestamp,
+    elapsed,
+    ...details
+  });
+};
+```
+
+### Root Causes Discovered
+1. **Multiple Redundant Fetches**: Each category change triggered 3+ fetch calls:
+   - Initial fetch from category change effect
+   - Focus event fetch
+   - Additional duplicate fetches
+   
+2. **Cache Not Working**: The cache was never populated after fetches, forcing fresh data loads every time
+
+3. **Wrong Import**: ProviderDiscoveryContainer was importing `ProviderDiscoveryScreen.old` instead of the current version
+
+4. **Focus Event Issues**: Screen refetched data on every focus event, even when data was already cached
+
+5. **No Fetch Deduplication**: Multiple simultaneous fetches for the same category weren't prevented
+
+### Solution Implementation
+
+#### 1. Prevent Duplicate Fetches
+```javascript
+// Add fetch tracking refs
+const fetchInProgressRef = useRef(false);
+const lastFetchCategoryRef = useRef(null);
+
+// In fetchData function
+const fetchData = useCallback(async (isRefreshing = false, targetPage = 0, append = false) => {
+  // Prevent duplicate fetches
+  if (fetchInProgressRef.current && lastFetchCategoryRef.current === selectedCategory && !append) {
+    debugTiming('FETCH_PREVENTED_DUPLICATE', { 
+      category: selectedCategory,
+      isRefreshing,
+      targetPage
+    });
+    return;
+  }
+  
+  fetchInProgressRef.current = true;
+  lastFetchCategoryRef.current = selectedCategory;
+  
+  try {
+    // ... fetch logic
+  } finally {
+    fetchInProgressRef.current = false;
+  }
+}, [selectedCategory, searchTerm]);
+```
+
+#### 2. Fix Cache Population
+```javascript
+// After successful fetch
+if (append) {
+  setItems(prev => [...prev, ...filteredData]);
+} else {
+  setItems(filteredData);
+  // Update cache when not appending
+  cacheRef.current[selectedCategory] = filteredData;
+}
+
+// For favorites
+setUserFavorites(prev => {
+  const newSet = append ? new Set([...prev, ...favoritedIds]) : favoritedIds;
+  // Update favorites cache when not appending
+  if (!append) {
+    favoritesCacheRef.current[selectedCategory] = newSet;
+  }
+  return newSet;
+});
+```
+
+#### 3. Smart Category Change Handling
+```javascript
+useEffect(() => {
+  // Show cached data instantly
+  if (cacheRef.current[selectedCategory]) {
+    setItems(cacheRef.current[selectedCategory]);
+    const cachedFavs = favoritesCacheRef.current[selectedCategory];
+    setUserFavorites(cachedFavs ? new Set(cachedFavs) : new Set());
+    setLoading(false);
+
+    // Only fetch if not already fetching this category
+    if (!fetchInProgressRef.current || lastFetchCategoryRef.current !== selectedCategory) {
+      fetchData(false, 0, false);
+    }
+  } else {
+    // No cache – fetch immediately
+    if (!fetchInProgressRef.current || lastFetchCategoryRef.current !== selectedCategory) {
+      fetchData(false, 0, false);
+    }
+  }
+}, [selectedCategory]);
+```
+
+#### 4. Conditional Focus Refresh
+```javascript
+useFocusEffect(
+  useCallback(() => {
+    // Only fetch if we don't have cached data for current category
+    if (!cacheRef.current[selectedCategory]) {
+      fetchData(false, 0, false);
+    }
+    
+    return () => {
+      console.log('[ProviderDiscovery] Screen unfocused');
+    };
+  }, [selectedCategory])
+);
+```
+
+### Reusable Pattern for Other Screens
+
+To apply this optimization pattern to other screens with similar category/tab switching:
+
+1. **Add fetch tracking refs**:
+```javascript
+const fetchInProgressRef = useRef(false);
+const lastFetchCategoryRef = useRef(null);
+const cacheRef = useRef({});
+const favoritesCacheRef = useRef({});
+```
+
+2. **Implement fetch deduplication** at the start of your fetch function
+
+3. **Populate cache** after successful fetches (non-append operations)
+
+4. **Use cached data immediately** when switching categories/tabs
+
+5. **Only fetch on focus** if cache is empty
+
+6. **Add timing logs** during development to identify bottlenecks
+
+### Results
+- Reduced fetch calls from 3+ per category change to 1
+- Instant category switching when data is cached
+- Eliminated redundant fetches on focus events
+- Smoother UI with proper loading states
+- Better user experience with perceived instant loading
+
+### Key Takeaways
+1. Always check for and prevent duplicate in-flight requests
+2. Implement proper caching at the component level for instant UI updates
+3. Use diagnostic logging to identify performance bottlenecks
+4. Focus events should be smart about when to refresh data
+5. Test with wrong imports (e.g., `.old` files) that might cause issues

@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "ef24b784-c8d0-469f-9432-a54663b7476e"
+      }
+    },
+    "ios": {
+      "bundleIdentifier": "com.boredbash.rollodexnew",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    }
+  }
+}

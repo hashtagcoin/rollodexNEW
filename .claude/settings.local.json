@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run lint)",
+      "Bash(grep:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(npm install:*)",
+      "Bash(ls:*)",
+      "Bash(node:*)",
+      "Bash(find:*)",
+      "Bash(rg:*)",
+      "Bash(curl:*)",
+      "Bash(npx expo start:*)",
+      "Bash(mv:*)",
+      "Bash(rm:*)",
+      "WebFetch(domain:supabase.com)",
+      "Bash(mkdir:*)",
+      "WebFetch(domain:smtckdlpdfvdycocwoip.supabase.co)",
+      "Bash(cp:*)",
+      "Bash(npx supabase db remote:*)",
+      "Bash(npm start)"
+    ],
+    "deny": []
+  }
+}
