@@ -160,15 +160,14 @@ const AppHeader = ({
             }
           }}
         >
-          {avatarUrl ? (
-            <Image 
-              source={{ uri: avatarUrl }} 
-              style={styles.avatarImage} 
-              cachePolicy="memory-disk"
-            />
-          ) : (
-            <Ionicons name="person-circle-outline" size={28} color={'#333'} />
-          )}
+          <Image 
+            source={avatarUrl 
+              ? { uri: avatarUrl } 
+              : require('../../assets/images/default-avatar.png')
+            } 
+            style={styles.avatarImage} 
+            resizeMode="cover"
+          />
         </TouchableOpacity>
       </View>
     </View>

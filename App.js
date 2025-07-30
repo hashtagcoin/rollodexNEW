@@ -29,7 +29,10 @@ function ChatOverlay() {
 export default function App() {
   useEffect(() => {
     // Initialize image preloading service on app startup
-    ImagePreloadService.initializePreloading();
+    console.log('[App] Initializing ImagePreloadService...');
+    ImagePreloadService.initializePreloading().catch(error => {
+      console.error('[App] Failed to initialize ImagePreloadService:', error);
+    });
   }, []);
 
   return (

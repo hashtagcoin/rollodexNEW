@@ -1156,16 +1156,16 @@ const ProfileScreen = () => {
         <View style={styles.profileHeader}>
         <View style={styles.profileTopSection}>
           <Image 
-            source={{ 
-              uri: userProfile?.avatar_url || 'https://randomuser.me/api/portraits/women/44.jpg' 
-            }} 
+            source={userProfile?.avatar_url 
+              ? { uri: userProfile.avatar_url } 
+              : require('../../assets/images/default-avatar.png')
+            } 
             style={styles.avatar}
-            // Use cache policy for faster loading across screen changes
-            cachePolicy="memory-disk"
+            resizeMode="cover"
           />
           
           <View style={styles.profileInfo}>
-            <Text style={styles.profileName}>{userProfile?.full_name || 'User'}</Text>
+            <Text style={styles.profileName}>{userProfile?.full_name || userProfile?.username || 'User'}</Text>
             <Text style={styles.username}>@{userProfile?.username || 'username'}</Text>
             <Text style={styles.ndisParticipant}>NDIS Participant</Text>
           </View>

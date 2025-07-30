@@ -467,7 +467,10 @@ const WalletScreen = () => {
                       </TouchableOpacity>
                     ))}
                     
-                    <TouchableOpacity style={styles.addPaymentButton}>
+                    <TouchableOpacity 
+                      style={styles.addPaymentButton}
+                      onPress={() => navigation.navigate('AddPaymentMethod')}
+                    >
                       <View style={styles.addIconContainer}>
                         <Ionicons name="add" size={22} color={COLORS.primary} />
                       </View>

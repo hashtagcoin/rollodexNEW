@@ -6,7 +6,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import AppHeader from '../../components/layout/AppHeader';
 import { supabase } from '../../lib/supabaseClient';
 import ModernImagePicker from '../../components/ModernImagePicker';
-import { useAuth, useUser } from '../../context/UserContext';
+import { useUser } from '../../context/UserContext';
 import * as ImagePicker from 'expo-image-picker';
 
 // Define colors for UI elements
@@ -35,7 +35,7 @@ export default function EditProfileScreen() {
   const usernameTimeoutRef = useRef(null);
   
   // Use the global user context
-  const { profile: userProfile, updateProfile, updateAvatar, uploadAvatarDirectly } = useUser();
+  const { user, profile: userProfile, updateProfile, updateAvatar, uploadAvatarDirectly } = useUser();
   
   // Local state for form inputs
   const [profile, setProfile] = useState({ 
@@ -141,20 +141,58 @@ export default function EditProfileScreen() {
 
   // Initialize form with user profile data from context
   useEffect(() => {
+    // Add timeout to prevent infinite loading
+    const timeoutId = setTimeout(() => {
+      setLoading(false);
+    }, 5000); // 5 second timeout
+
     if (userProfile) {
       setProfile({
         ...userProfile,
-        // Ensure NDIS fields are properly initialized
+        // Ensure ALL fields are properly initialized
         mobility_aids: userProfile.mobility_aids || [],
         dietary_requirements: userProfile.dietary_requirements || [],
-        accessibility_preferences: userProfile.accessibility_preferences || {}
+        accessibility_preferences: userProfile.accessibility_preferences || {},
+        comfort_traits: userProfile.comfort_traits || [],
+        preferred_categories: userProfile.preferred_categories || [],
+        preferred_service_formats: userProfile.preferred_service_formats || [],
+        ndis_number: userProfile.ndis_number || '',
+        primary_disability: userProfile.primary_disability || '',
+        support_level: userProfile.support_level || ''
       });
       setAvatar(userProfile.avatar_url);
       setLoading(false);
+      clearTimeout(timeoutId);
       // Store the original username to compare when checking availability
       setOriginalUsername(userProfile.username || '');
+    } else if (user) {
+      // If no profile but user exists, create a basic profile with ALL fields
+      setProfile({
+        id: user.id,
+        email: user.email,
+        username: user.email?.split('@')[0] || '',
+        full_name: '',
+        bio: '',
+        avatar_url: '',
+        age: '',
+        sex: '',
+        address: '',
+        ndis_number: '',
+        primary_disability: '',
+        support_level: '',
+        mobility_aids: [],
+        dietary_requirements: [],
+        accessibility_preferences: {},
+        comfort_traits: [],
+        preferred_categories: [],
+        preferred_service_formats: []
+      });
+      setLoading(false);
+      clearTimeout(timeoutId);
     }
-  }, [userProfile]);
+
+    return () => clearTimeout(timeoutId);
+  }, [userProfile, user]);
   
   // State to store the original username for comparison
   const [originalUsername, setOriginalUsername] = useState('');

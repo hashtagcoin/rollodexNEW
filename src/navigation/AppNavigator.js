@@ -143,10 +143,11 @@ function AppNavigator() {
   }
   const { isAuthenticated, isLoading, userRole } = useAuth();
 
-  if (isLoading) {
-    // Show loading screen while loading user role/auth state
-    return <LoadingScreen />;
-  }
+  // Skip loading screen - go straight to splash
+  // if (isLoading) {
+  //   // Show loading screen while loading user role/auth state
+  //   return <LoadingScreen />;
+  // }
 
   // Customize initial route based on user role
   const getInitialRoute = () => {

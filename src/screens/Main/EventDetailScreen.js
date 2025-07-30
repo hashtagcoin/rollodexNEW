@@ -8,6 +8,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { format } from 'date-fns';
 import { useAuth } from '../../context/AuthContext';
 import { useUser } from '../../context/UserContext';
+import { defaultDataProvider } from '../../utils/defaultDataProvider';
 
 const EventDetailScreen = ({ route, navigation }) => {
   const { eventId } = route.params || {};
@@ -36,6 +37,19 @@ const EventDetailScreen = ({ route, navigation }) => {
   const fetchEventDetails = async () => {
     try {
       setLoading(true);
+      
+      // Check if this is a default event
+      if (eventId && eventId.startsWith('00000000-0000-0000-0000-')) {
+        const defaultEvents = defaultDataProvider.getDefaultEvents();
+        const defaultEvent = defaultEvents.find(e => e.id === eventId);
+        if (defaultEvent) {
+          setEvent(defaultEvent);
+          setParticipantCount(defaultEvent.participant_count || 0);
+          setLoading(false);
+          return;
+        }
+      }
+      
       const { data, error } = await supabase
         .from('events_with_details')
         .select('*')
@@ -60,6 +74,12 @@ const EventDetailScreen = ({ route, navigation }) => {
     // Use userProfile which comes from UserContext and contains the current user's profile
     if (!userProfile?.id || !eventId) return;
     
+    // Skip for default events
+    if (eventId.startsWith('00000000-0000-0000-0000-')) {
+      setIsParticipant(false);
+      return;
+    }
+    
     try {
       const { data, error } = await supabase
         .from('group_event_participants')
@@ -79,6 +99,12 @@ const EventDetailScreen = ({ route, navigation }) => {
   const checkFavoriteStatus = async () => {
     // Use userProfile which comes from UserContext and contains the current user's profile
     if (!userProfile?.id || !eventId) return;
+    
+    // Skip for default events
+    if (eventId.startsWith('00000000-0000-0000-0000-')) {
+      setIsFavorite(false);
+      return;
+    }
     
     try {
       const { data, error } = await supabase
@@ -101,6 +127,12 @@ const EventDetailScreen = ({ route, navigation }) => {
     // Check if userProfile (from UserContext) exists
     if (!userProfile?.id) {
       Alert.alert('Sign In Required', 'Please sign in to join events');
+      return;
+    }
+    
+    // Prevent joining default events
+    if (eventId.startsWith('00000000-0000-0000-0000-')) {
+      Alert.alert('Sample Event', 'This is a sample event. Browse real events to join!');
       return;
     }
     
@@ -145,6 +177,12 @@ const EventDetailScreen = ({ route, navigation }) => {
     // Check if userProfile (from UserContext) exists
     if (!userProfile?.id) {
       Alert.alert('Sign In Required', 'Please sign in to favorite events');
+      return;
+    }
+    
+    // Prevent favoriting default events
+    if (eventId.startsWith('00000000-0000-0000-0000-')) {
+      Alert.alert('Sample Event', 'This is a sample event. Browse real events to favorite!');
       return;
     }
     

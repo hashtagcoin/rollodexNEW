@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "RollodexApp",
-    "slug": "RollodexApp",
+    "name": "rollodexNEW",
+    "slug": "rollodexnew",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -13,7 +13,13 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.boredbash.rollodexnew",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSCameraUsageDescription": "This app uses the camera to take photos for profiles and listings.",
+        "NSPhotoLibraryUsageDescription": "This app accesses your photo library to select images for profiles and listings."
+      }
     },
     "android": {
       "adaptiveIcon": {

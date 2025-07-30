@@ -7,6 +7,7 @@ import { Feather, MaterialIcons, Ionicons, FontAwesome5, FontAwesome } from '@ex
 import { COLORS } from '../../constants/theme';
 import { supabase } from '../../lib/supabaseClient';
 import { format, addDays, isSameDay, parseISO } from 'date-fns';
+import { defaultDataProvider } from '../../utils/defaultDataProvider';
 
 import BookingAvailabilityScreen from '../Bookings/BookingAvailabilityScreen';
 
@@ -88,6 +89,27 @@ const ServiceDetailScreen = ({ route }) => {
     try {
       setLoading(true);
       
+      // Check if this is a default service
+      if (serviceId && serviceId.startsWith('00000000-0000-0000-0000-')) {
+        const defaultServices = defaultDataProvider.getDefaultServices();
+        const defaultService = defaultServices.find(s => s.id === serviceId);
+        if (defaultService) {
+          setServiceData({
+            ...defaultService,
+            service_providers: [{
+              business_name: defaultService.provider_name || 'Default Provider',
+              credentials: 'NDIS Registered',
+              verified: true,
+              service_area: 'All Areas',
+              business_description: 'Quality service provider',
+              logo_url: null
+            }]
+          });
+          setLoading(false);
+          return;
+        }
+      }
+      
       // Fetch the service and provider details in a single query with a join
       const { data, error } = await supabase
         .from('services')
@@ -144,6 +166,12 @@ const ServiceDetailScreen = ({ route }) => {
   // Check if this service is in user's favorites
   const checkIfFavorited = useCallback(async () => {
     try {
+      // Skip for default services
+      if (serviceId && serviceId.startsWith('00000000-0000-0000-0000-')) {
+        setLiked(false);
+        return;
+      }
+      
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       
       if (authError || !user) {
@@ -172,6 +200,12 @@ const ServiceDetailScreen = ({ route }) => {
   // Toggle favorite status in Supabase
   const toggleFavorite = useCallback(async () => {
     try {
+      // Prevent favoriting default services
+      if (serviceId && serviceId.startsWith('00000000-0000-0000-0000-')) {
+        Alert.alert('Sample Service', 'This is a sample service. Browse real services to favorite!');
+        return;
+      }
+      
       setFavoriteLoading(true);
       
       const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -510,6 +544,12 @@ const ServiceDetailScreen = ({ route }) => {
           disabled={!serviceData.available}
           onPress={() => {
             console.log('[ServiceDetailScreen] Action button pressed - selectedDate:', selectedDate, 'selectedTime:', selectedTime);
+            
+            // Prevent booking default services
+            if (serviceId && serviceId.startsWith('00000000-0000-0000-0000-')) {
+              Alert.alert('Sample Service', 'This is a sample service. Browse real services to book!');
+              return;
+            }
             
             if (selectedDate && selectedTime) {
               // Navigate to create booking screen with all required information

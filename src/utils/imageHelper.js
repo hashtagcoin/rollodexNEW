@@ -220,9 +220,19 @@ export const getOptimizedImageUrl = (url, width = 400, quality = 70) => {
   try {
     if (!url || typeof url !== 'string') return url;
 
+    // Skip placeholder URLs
+    if (url.includes('placeholder.com')) return url;
+
     // Skip if a transformation is already applied (presence of ?width or format)
     if (url.includes('?width=') || url.includes('?quality=')) return url;
 
+    // For now, return the original URL without transformations
+    // Supabase Storage v1 doesn't support image transformations via query params
+    // This was causing preload failures
+    return url;
+    
+    // The code below is commented out as it's not compatible with Supabase Storage v1
+    /*
     // Use different quality settings based on width
     const finalQuality = width <= 200 ? 60 : width <= 400 ? quality : 85;
     
@@ -236,6 +246,7 @@ export const getOptimizedImageUrl = (url, width = 400, quality = 70) => {
     // For other URLs, append standard query params
     const params = `?width=${width}&quality=${finalQuality}`;
     return `${url}${params}`;
+    */
   } catch (err) {
     // On error just return original
     return url;

@@ -8,6 +8,7 @@ import RoleSelectionScreen from '../screens/Auth/RoleSelectionScreen';
 import ParticipantOnboarding from '../screens/Auth/ParticipantOnboarding';
 import ProviderOnboarding from '../screens/Auth/ProviderOnboarding';
 import OnboardingSuccess from '../screens/Auth/OnboardingSuccess';
+import AccountSetupScreen from '../screens/Auth/AccountSetupScreen';
 
 const Stack = createStackNavigator();
 
@@ -45,6 +46,11 @@ const AuthStack = ({ route }) => {
       <Stack.Screen 
         name="ProviderOnboarding" 
         component={ProviderOnboarding} 
+        initialParams={{ isAuthenticated, userRole }}
+      />
+      <Stack.Screen 
+        name="AccountSetup" 
+        component={AccountSetupScreen} 
         initialParams={{ isAuthenticated, userRole }}
       />
       <Stack.Screen 

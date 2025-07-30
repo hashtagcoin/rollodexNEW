@@ -99,6 +99,12 @@ const ProviderDashboardContent = () => {
     if (!profile?.id) return;
     
     setLoading(prevState => ({ ...prevState, appointments: true }));
+    
+    // Add timeout to prevent infinite loading
+    const timeoutId = setTimeout(() => {
+      setLoading(prevState => ({ ...prevState, appointments: false }));
+    }, 8000); // 8 second timeout
+    
     try {
       const today = new Date().toISOString();
       
@@ -113,10 +119,12 @@ const ProviderDashboardContent = () => {
         
       if (error) throw error;
       
+      clearTimeout(timeoutId);
       setUpcomingAppointments(data || []);
     } catch (err) {
       console.error('Error fetching provider appointments:', err);
-      setError('Failed to load upcoming appointments');
+      clearTimeout(timeoutId);
+      setUpcomingAppointments([]); // Set empty array on error
     } finally {
       setLoading(prevState => ({ ...prevState, appointments: false }));
     }
@@ -127,6 +135,13 @@ const ProviderDashboardContent = () => {
     if (!profile?.id) return;
     
     setLoading(prevState => ({ ...prevState, listings: true }));
+    
+    // Add timeout to prevent infinite loading
+    const timeoutId = setTimeout(() => {
+      setLoading(prevState => ({ ...prevState, listings: false }));
+      setListings({ services: [], housing: [] });
+    }, 8000); // 8 second timeout
+    
     try {
       // Get services provided by this user
       const { data: serviceData, error: serviceError } = await supabase
@@ -146,13 +161,15 @@ const ProviderDashboardContent = () => {
         
       if (housingError) throw housingError;
       
+      clearTimeout(timeoutId);
       setListings({
         services: serviceData || [],
         housing: housingData || []
       });
     } catch (err) {
       console.error('Error fetching provider listings:', err);
-      setError('Failed to load your listings');
+      clearTimeout(timeoutId);
+      setListings({ services: [], housing: [] }); // Set empty arrays on error
     } finally {
       setLoading(prevState => ({ ...prevState, listings: false }));
     }
@@ -163,6 +180,13 @@ const ProviderDashboardContent = () => {
     if (!profile?.id) return;
     
     setLoading(prevState => ({ ...prevState, stats: true }));
+    
+    // Add timeout to prevent infinite loading
+    const timeoutId = setTimeout(() => {
+      setLoading(prevState => ({ ...prevState, stats: false }));
+      setStats({ totalBookings: 0, pendingAgreements: 0, revenue: 0 });
+    }, 8000); // 8 second timeout
+    
     try {
       // Get total bookings count - using a safer approach with error handling
       let totalBookings = 0;
@@ -218,6 +242,7 @@ const ProviderDashboardContent = () => {
       }
       
       // Update stats with safely calculated values
+      clearTimeout(timeoutId);
       setStats({
         totalBookings,
         pendingAgreements,
@@ -226,7 +251,9 @@ const ProviderDashboardContent = () => {
     } catch (err) {
       // More detailed error logging
       console.error('Error fetching provider stats:', err?.message || 'Unknown error');
-      // Don't set error state to avoid UI disruption
+      clearTimeout(timeoutId);
+      // Set default stats on error
+      setStats({ totalBookings: 0, pendingAgreements: 0, revenue: 0 });
     } finally {
       setLoading(prevState => ({ ...prevState, stats: false }));
     }
@@ -319,9 +346,10 @@ const ProviderDashboardContent = () => {
               source={
                 profile?.avatar_url
                   ? { uri: profile.avatar_url }
-                  : require('../../assets/images/placeholder-avatar.jpg')
+                  : require('../../assets/images/default-avatar.png')
               }
               style={styles.avatar}
+              resizeMode="cover"
             />
           </View>
         </View>
@@ -329,8 +357,9 @@ const ProviderDashboardContent = () => {
         {/* Provider Stats Section */}
         <View style={styles.statsContainer}>
           {loading.stats ? (
-            <View style={styles.loadingContainer}>
+            <View style={[styles.loadingContainer, { height: 152 }]}>
               <ActivityIndicator size="large" color="#3A76F0" />
+              <Text style={styles.loadingText}>Loading your stats...</Text>
             </View>
           ) : (
             <LinearGradient
@@ -389,6 +418,7 @@ const ProviderDashboardContent = () => {
         {loading.appointments ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="small" color="#3A76F0" />
+            <Text style={styles.loadingText}>Loading appointments...</Text>
           </View>
         ) : upcomingAppointments.length > 0 ? (
           <FlatList
@@ -414,7 +444,9 @@ const ProviderDashboardContent = () => {
           />
         ) : (
           <View style={styles.emptyStateContainer}>
+            <Ionicons name="calendar-outline" size={40} color="#ccc" style={{ marginBottom: 8 }} />
             <Text style={styles.emptyStateText}>No upcoming appointments</Text>
+            <Text style={styles.emptyStateSubText}>Set your availability to start receiving bookings</Text>
             <TouchableOpacity 
               style={styles.emptyStateButton}
               onPress={() => navigation.navigate('ProviderStack', { screen: 'ProviderCalendar' })}
@@ -435,6 +467,7 @@ const ProviderDashboardContent = () => {
         {loading.listings ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="small" color="#3A76F0" />
+            <Text style={styles.loadingText}>Loading listings...</Text>
           </View>
         ) : listings.services.length > 0 || listings.housing.length > 0 ? (
           <View>
@@ -511,8 +544,10 @@ const ProviderDashboardContent = () => {
             )}
           </View>
         ) : (
-          <View style={styles.emptyStateContainer}>
+          <View style={[styles.emptyStateContainer, { height: 140 }]}>
+            <MaterialIcons name="add-business" size={40} color="#ccc" style={{ marginBottom: 8 }} />
             <Text style={styles.emptyStateText}>You haven't created any listings yet</Text>
+            <Text style={styles.emptyStateSubText}>Start offering services to the community</Text>
             <View style={styles.newListingButtonsRow}>
               <TouchableOpacity 
                 style={styles.newListingButton}
@@ -887,7 +922,14 @@ const styles = StyleSheet.create({
   },
   emptyStateText: {
     color: '#666',
-    marginBottom: 8,
+    marginBottom: 4,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  emptyStateSubText: {
+    color: '#999',
+    marginBottom: 12,
+    fontSize: 14,
   },
   emptyStateButton: {
     backgroundColor: COLORS.primary,
@@ -898,6 +940,11 @@ const styles = StyleSheet.create({
   emptyStateButtonText: {
     color: 'white',
     fontWeight: '500',
+  },
+  loadingText: {
+    color: '#666',
+    marginTop: 8,
+    fontSize: 14,
   },
   newListingButtonsRow: {
     flexDirection: 'row',

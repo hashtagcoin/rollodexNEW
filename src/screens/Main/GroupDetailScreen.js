@@ -756,11 +756,20 @@ const GroupDetailScreen = () => {
               <View style={styles.groupInfoCard}>
                 <View style={styles.groupNameRow}>
                   <Text style={styles.groupName}>{group.name}</Text>
-                  {(currentUserRole === 'admin' || user?.id === group.created_by) && (
-                    <TouchableOpacity onPress={handleEditGroup} style={styles.editIconContainer}>
-                      <Feather name="edit-2" size={20} color={COLORS.DARK_GRAY} />
+                  <View style={styles.headerIconsContainer}>
+                    <TouchableOpacity 
+                      onPress={handleShareGroup} 
+                      style={styles.headerIconButton}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="share-social-outline" size={22} color={COLORS.PRIMARY || '#007AFF'} />
                     </TouchableOpacity>
-                  )}
+                    {(currentUserRole === 'admin' || user?.id === group.created_by) && (
+                      <TouchableOpacity onPress={handleEditGroup} style={styles.headerIconButton}>
+                        <Feather name="edit-2" size={20} color={COLORS.DARK_GRAY} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
                 </View>
                 <View style={styles.groupTypeContainer}>
                   <Ionicons name={group.is_public ? "lock-open-outline" : "lock-closed-outline"} size={16} color={COLORS.DARK_GREEN} />
@@ -800,13 +809,6 @@ const GroupDetailScreen = () => {
                         disabled={!group}
                      />
                   )}
-                   <ActionButton
-                        iconName="share-social-outline"
-                        onPress={handleShareGroup}
-                        style={styles.iconButton}
-                        iconColor={COLORS.DARK_GRAY}
-                        disabled={!group}
-                    />
                 </View>
               </View>
             </View>
@@ -855,7 +857,7 @@ const GroupDetailScreen = () => {
       )}
       {shareVisible && shareItem && (
         <ShareTray
-          isVisible={shareVisible}
+          visible={shareVisible}
           item={shareItem}
           itemType={shareItemType}
           onClose={() => { setShareVisible(false); setShareItem(null); }}
@@ -953,6 +955,14 @@ const styles = StyleSheet.create({
   },
   editIconContainer: {
     padding: 8, // Make tappable area larger
+  },
+  headerIconsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerIconButton: {
+    padding: 8,
+    marginLeft: 8,
   },
   groupTypeContainer: {
     flexDirection: 'row',

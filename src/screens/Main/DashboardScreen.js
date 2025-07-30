@@ -1,5 +1,6 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, FlatList, ActivityIndicator, ImageBackground } from 'react-native';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, FlatList, ActivityIndicator, ImageBackground } from 'react-native';
+import { Image } from 'expo-image';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import Feather from 'react-native-vector-icons/Feather'; 
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons'; 
@@ -13,6 +14,10 @@ import { supabase } from '../../lib/supabaseClient';
 import { formatDistanceToNow, format, parseISO } from 'date-fns';
 import { useNotifications, NotificationBadge } from '../../components/notifications';
 import { useScrollContext } from '../../context/ScrollContext';
+import { defaultDataProvider, isNewUser, shuffleArray } from '../../utils/defaultDataProvider';
+import { getValidImageUrl, getOptimizedImageUrl } from '../../utils/imageHelper';
+import EventCard from '../../components/cards/EventCard';
+import ServiceCard from '../../components/cards/ServiceCard';
 
 const DashboardScreen = () => {
   const { reportScroll } = useScrollContext();
@@ -24,10 +29,13 @@ const DashboardScreen = () => {
   const [wallet, setWallet] = useState(null);
   const [upcomingBookings, setUpcomingBookings] = useState([]);
   const [recommendations, setRecommendations] = useState([]);
+  const [events, setEvents] = useState([]);
+  const [isNewUserStatus, setIsNewUserStatus] = useState(false);
   const [loading, setLoading] = useState({
     wallet: true,
     bookings: true,
-    recommendations: true
+    recommendations: true,
+    events: false
   });
   const [error, setError] = useState(null);
 
@@ -57,6 +65,14 @@ const DashboardScreen = () => {
         scrollViewRef.current.scrollTo({ x: 0, y: 0, animated: true });
       }
 
+      // Check if user is new first
+      if (profile) {
+        const userIsNew = isNewUser(profile);
+        console.log('[Dashboard] Profile created_at:', profile.created_at);
+        console.log('[Dashboard] Is new user:', userIsNew);
+        setIsNewUserStatus(userIsNew);
+      }
+
       // Check cache for instant loading on focus
       const cache = cacheRef.current;
       const userChanged = lastFetchUserRef.current !== profile?.id;
@@ -70,7 +86,8 @@ const DashboardScreen = () => {
         setLoading({
           wallet: false,
           bookings: false,
-          recommendations: false
+          recommendations: false,
+          events: false
         });
       }
       
@@ -80,9 +97,18 @@ const DashboardScreen = () => {
   
   // Fetch wallet data
   const fetchWalletData = useCallback(async () => {
-    if (!profile?.id) return;
+    if (!profile?.id) {
+      setLoading(prevState => ({ ...prevState, wallet: false }));
+      return;
+    }
     
     setLoading(prevState => ({ ...prevState, wallet: true }));
+    
+    // Add timeout to prevent infinite loading
+    const timeoutId = setTimeout(() => {
+      setLoading(prevState => ({ ...prevState, wallet: false }));
+    }, 10000); // 10 second timeout
+    
     try {
       // Fetch wallet
       let { data: walletData, error: walletError } = await supabase
@@ -120,17 +146,50 @@ const DashboardScreen = () => {
       
     } catch (err) {
       console.error('Error fetching wallet data:', err);
-      setError('Failed to load wallet information');
     } finally {
+      clearTimeout(timeoutId);
       setLoading(prevState => ({ ...prevState, wallet: false }));
     }
   }, [profile]);
+  
+  // Fetch events for all users
+  const fetchEvents = useCallback(async () => {
+    setLoading(prevState => ({ ...prevState, events: true }));
+    
+    try {
+      // Get upcoming events from events_with_details view - ordered by end_time (expiring first)
+      const { data: eventsData, error: eventsError } = await supabase
+        .from('events_with_details')
+        .select('*')
+        .gte('end_time', new Date().toISOString())
+        .order('end_time', { ascending: true })
+        .limit(5);
+        
+      if (eventsError) throw eventsError;
+      
+      // Use the real events data
+      setEvents(eventsData || []);
+      
+    } catch (err) {
+      console.error('Error fetching events:', err);
+      // Don't fall back to default events - show empty state instead
+      setEvents([]);
+    } finally {
+      setLoading(prevState => ({ ...prevState, events: false }));
+    }
+  }, []);
 
   // Fetch upcoming bookings
   const fetchUpcomingBookings = useCallback(async () => {
     if (!profile?.id) return;
     
     setLoading(prevState => ({ ...prevState, bookings: true }));
+    
+    // Add timeout to prevent infinite loading
+    const timeoutId = setTimeout(() => {
+      setLoading(prevState => ({ ...prevState, bookings: false }));
+    }, 10000); // 10 second timeout
+    
     try {
       const today = new Date().toISOString();
       
@@ -154,66 +213,53 @@ const DashboardScreen = () => {
       console.error('Error fetching upcoming bookings:', err);
       setError('Failed to load upcoming bookings');
     } finally {
+      clearTimeout(timeoutId);
       setLoading(prevState => ({ ...prevState, bookings: false }));
     }
   }, [profile]);
 
-  // Fetch recommendations based on user's bookings and interests
+  // Fetch recommendations - random services from the services table
   const fetchRecommendations = useCallback(async () => {
-    if (!profile?.id) return;
+    if (!profile?.id) {
+      setLoading(prevState => ({ ...prevState, recommendations: false }));
+      return;
+    }
     
     setLoading(prevState => ({ ...prevState, recommendations: true }));
+    
+    // Add timeout to prevent infinite loading
+    const timeoutId = setTimeout(() => {
+      setLoading(prevState => ({ ...prevState, recommendations: false }));
+    }, 10000); // 10 second timeout
+    
     try {
-      // First, get the categories of services the user has booked
-      const { data: userBookings, error: bookingError } = await supabase
-        .from('bookings_with_details')
-        .select('service_category')
-        .eq('user_profile_id', profile.id)
-        .limit(10);
+      // Get random available services - same as ProviderDiscoveryScreen
+      const { data: services, error: servicesError } = await supabase
+        .from('services')
+        .select('*')
+        .eq('available', true)
+        .order('created_at', { ascending: false });
         
-      if (bookingError) throw bookingError;
+      if (servicesError) throw servicesError;
       
-      // Extract unique categories
-      const bookedCategories = userBookings ? 
-        [...new Set(userBookings.map(booking => booking.service_category))] : 
-        [];
-        
-      // If user has no bookings, get some popular services
-      if (bookedCategories.length === 0) {
-        const { data: popularServices, error: servicesError } = await supabase
-          .from('services')
-          .select('*, provider:provider_id(id, business_name)')
-          .eq('available', true)
-          .order('created_at', { ascending: false })
-          .limit(3);
-          
-        if (servicesError) throw servicesError;
-        setRecommendations(popularServices || []);
+      // Shuffle and take 3 random services
+      if (services && services.length > 0) {
+        const shuffled = shuffleArray([...services]);
+        const randomServices = shuffled.slice(0, 3);
+        setRecommendations(randomServices);
         
         // Update cache
-        cacheRef.current.recommendations = popularServices || [];
-        
+        cacheRef.current.recommendations = randomServices;
       } else {
-        // Get services in the same categories the user has booked before
-        const { data: similarServices, error: servicesError } = await supabase
-          .from('services')
-          .select('*, provider:provider_id(id, business_name)')
-          .in('category', bookedCategories)
-          .eq('available', true)
-          .order('created_at', { ascending: false })
-          .limit(3);
-          
-        if (servicesError) throw servicesError;
-        setRecommendations(similarServices || []);
-        
-        // Update cache
-        cacheRef.current.recommendations = similarServices || [];
-        
+        setRecommendations([]);
       }
+        
     } catch (err) {
       console.error('Error fetching recommendations:', err);
       setError('Failed to load recommendations');
+      setRecommendations([]);
     } finally {
+      clearTimeout(timeoutId);
       setLoading(prevState => ({ ...prevState, recommendations: false }));
     }
   }, [profile]);
@@ -255,12 +301,33 @@ const DashboardScreen = () => {
         try {
           console.log('[Dashboard] Fetching fresh data from useEffect');
           
-          // Fetch all data in parallel - the individual functions will update cache
-          await Promise.all([
-            fetchWalletData(),
-            fetchUpcomingBookings(), 
-            fetchRecommendations()
-          ]);
+          // Check if user is new first
+          const userIsNew = isNewUser(profile);
+          console.log('[Dashboard] Fetch - Profile created_at:', profile.created_at);
+          console.log('[Dashboard] Fetch - Is new user:', userIsNew);
+          setIsNewUserStatus(userIsNew);
+          
+          // Fetch data based on user status
+          if (userIsNew) {
+            console.log('[Dashboard] Fetching events for new user');
+            // For new users, fetch events instead of wallet
+            await Promise.all([
+              fetchEvents(),
+              fetchUpcomingBookings(), 
+              fetchRecommendations()
+            ]);
+            // Set wallet loading to false since we're not fetching it
+            setLoading(prevState => ({ ...prevState, wallet: false }));
+          } else {
+            console.log('[Dashboard] Fetching wallet and events for existing user');
+            // For existing users, fetch wallet data AND events
+            await Promise.all([
+              fetchWalletData(),
+              fetchEvents(),
+              fetchUpcomingBookings(), 
+              fetchRecommendations()
+            ]);
+          }
 
           // Update cache timestamp after successful fetch
           cacheRef.current.timestamp = Date.now();
@@ -275,7 +342,7 @@ const DashboardScreen = () => {
 
       fetchAllData();
     }
-  }, [profile?.id, isProviderMode, fetchWalletData, fetchUpcomingBookings, fetchRecommendations]);
+  }, [profile?.id, isProviderMode, fetchWalletData, fetchUpcomingBookings, fetchRecommendations, fetchEvents]);
   
   // Helper function to format dates for upcoming bookings
   const formatBookingDate = (dateString) => {
@@ -294,6 +361,10 @@ const DashboardScreen = () => {
   const backgroundImageSource = profile?.background_url 
     ? { uri: profile.background_url } 
     : require('../../assets/images/MegaTron.jpg');
+
+  console.log('[Dashboard] Rendering - Profile:', profile);
+  console.log('[Dashboard] Rendering - Is new user:', isNewUserStatus);
+  console.log('[Dashboard] Rendering - Loading states:', loading);
 
   return (
     <ImageBackground
@@ -346,14 +417,53 @@ const DashboardScreen = () => {
               source={
                 profile?.avatar_url
                   ? { uri: profile.avatar_url }
-                  : require('../../assets/images/placeholder-avatar.jpg')
+                  : require('../../assets/images/default-avatar.png')
               }
               style={styles.avatar}
+              contentFit="cover"
             />
           </View>
         </View>
 
-        {/* Financial Information Group */}
+        {/* New User Events Section or Wallet */}
+        {isNewUserStatus ? (
+          <View style={styles.eventsSection}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.carouselTitle}>Discover Community Events</Text>
+              <TouchableOpacity onPress={() => navigation.navigate('Social', { screen: 'Events' })}>
+                <Text style={styles.viewAllText}>See All</Text>
+              </TouchableOpacity>
+            </View>
+            {loading.events ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="small" color="#3A76F0" />
+              </View>
+            ) : events.length > 0 ? (
+              <FlatList
+                data={events}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                keyExtractor={item => item.id}
+                contentContainerStyle={styles.eventsCarousel}
+                renderItem={({ item }) => (
+                  <View style={{ marginRight: 12 }}>
+                    <EventCard
+                      event={item}
+                      onPress={() => navigation.navigate('EventDetail', { eventId: item.id })}
+                      listView={false}
+                    />
+                  </View>
+                )}
+              />
+            ) : (
+              <View style={styles.emptyStateContainer}>
+                <Ionicons name="calendar-outline" size={48} color="#007AFF" style={{ marginBottom: 12 }} />
+                <Text style={styles.emptyStateText}>No Upcoming Events</Text>
+                <Text style={[styles.emptyStateText, { fontSize: 14, color: '#666', marginTop: 4 }]}>Check back later for community events</Text>
+              </View>
+            )}
+          </View>
+        ) : (
         <View style={styles.financialGroup}>
           {/* Wallet Card */}
           {loading.wallet ? (
@@ -388,9 +498,31 @@ const DashboardScreen = () => {
               </LinearGradient>
             </TouchableOpacity>
           ) : (
-            <View style={[styles.walletCard, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#f0f0f0' }]}>
-              <Text style={{ color: '#666' }}>Error loading wallet data</Text>
-            </View>
+            <TouchableOpacity 
+              onPress={() => navigation.navigate('Wallet')}
+              activeOpacity={0.8}
+            >
+              <LinearGradient
+                colors={['#F5F5F5', '#E8E8E8']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.walletCard}
+              >
+                <View style={styles.walletCardContent}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                    <Ionicons name="link-outline" size={22} color="#666" style={{ marginRight: 8 }} />
+                    <Text style={[styles.walletCardTitle, { color: '#333' }]}>Connect Your NDIS</Text>
+                  </View>
+                  <Text style={[styles.walletCardBalance, { fontSize: 16, color: '#666' }]}>Link your NDIS account to view balance</Text>
+                  <View style={[styles.balanceCardChip, { backgroundColor: '#007AFF' }]}>
+                    <Text style={styles.balanceCardChipText}>Tap to Connect</Text>
+                  </View>
+                </View>
+                <View style={styles.walletCardIllustration}>
+                  <Ionicons name="wallet" size={36} color="rgba(0,0,0,0.1)" />
+                </View>
+              </LinearGradient>
+            </TouchableOpacity>
           )}
           
           {/* Category Pills */}
@@ -438,6 +570,7 @@ const DashboardScreen = () => {
             </Text>
           </TouchableOpacity>
         </View>
+        )}
         
         {/* Upcoming Appointments Carousel */}
         <View style={styles.sectionHeader}>
@@ -485,13 +618,58 @@ const DashboardScreen = () => {
           />
         ) : (
           <View style={styles.emptyStateContainer}>
-            <Text style={styles.emptyStateText}>No upcoming appointments</Text>
+            <Ionicons name="calendar-outline" size={48} color="#007AFF" style={{ marginBottom: 12 }} />
+            <Text style={styles.emptyStateText}>Book Services Now!</Text>
+            <Text style={[styles.emptyStateText, { fontSize: 14, color: '#666', marginTop: 4 }]}>Find support that fits your needs</Text>
             <TouchableOpacity 
-              style={styles.emptyStateButton}
+              style={[styles.emptyStateButton, { backgroundColor: '#007AFF', paddingHorizontal: 24, paddingVertical: 12 }]}
               onPress={() => navigation.navigate('Explore', { screen: 'ProviderDiscovery' })}
             >
-              <Text style={styles.emptyStateButtonText}>Book a Service</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={[styles.emptyStateButtonText, { fontSize: 16, fontWeight: '600' }]}>Book Now</Text>
+                <Ionicons name="arrow-forward" size={18} color="white" style={{ marginLeft: 6 }} />
+              </View>
             </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Community Events Section - for existing users */}
+        {!isNewUserStatus && (
+          <View style={styles.eventsSection}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.carouselTitle}>Community Events</Text>
+              <TouchableOpacity onPress={() => navigation.navigate('Social', { screen: 'Events' })}>
+                <Text style={styles.viewAllText}>See All</Text>
+              </TouchableOpacity>
+            </View>
+            {loading.events ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="small" color="#3A76F0" />
+              </View>
+            ) : events.length > 0 ? (
+              <FlatList
+                data={events}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                keyExtractor={item => item.id}
+                contentContainerStyle={styles.eventsCarousel}
+                renderItem={({ item }) => (
+                  <View style={{ marginRight: 12 }}>
+                    <EventCard
+                      event={item}
+                      onPress={() => navigation.navigate('EventDetail', { eventId: item.id })}
+                      listView={false}
+                    />
+                  </View>
+                )}
+              />
+            ) : (
+              <View style={styles.emptyStateContainer}>
+                <Ionicons name="calendar-outline" size={48} color="#007AFF" style={{ marginBottom: 12 }} />
+                <Text style={styles.emptyStateText}>No Upcoming Events</Text>
+                <Text style={[styles.emptyStateText, { fontSize: 14, color: '#666', marginTop: 4 }]}>Check back later for community events</Text>
+              </View>
+            )}
           </View>
         )}
 
@@ -515,42 +693,27 @@ const DashboardScreen = () => {
             keyExtractor={item => item.id}
             contentContainerStyle={styles.recommendationsList}
             renderItem={({ item }) => (
-              <TouchableOpacity 
-                style={styles.bookingsCard}
-                onPress={() => navigation.navigate('Explore', { screen: 'ServiceDetail', params: { serviceId: item.id } })}
-              >
-                <Image
-                  source={{ 
-                    uri: item.media_urls && item.media_urls.length > 0 
-                      ? item.media_urls[0] 
-                      : 'https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/providerimages/default-service.png'
-                  }}
-                  style={styles.bookingsImage}
+              <View style={styles.recommendationCard}>
+                <ServiceCard
+                  item={item}
+                  onPress={() => navigation.navigate('Explore', { screen: 'ServiceDetail', params: { serviceId: item.id } })}
+                  isFavorited={false}
+                  onToggleFavorite={() => {}}
+                  displayAs="grid"
                 />
-                <View style={styles.bookingsContent}>
-                  <Text style={styles.bookingsTitle}>{item.title || 'Service Title'}</Text>
-                  <Text style={styles.bookingsFunding}>
-                    {item.ndis_approved ? 'NDIS Approved' : 'Service Available'}
-                  </Text>
-                  <TouchableOpacity 
-                    style={styles.bookingsBtn}
-                    onPress={() => navigation.navigate('Explore', { screen: 'ServiceDetail', params: { serviceId: item.id } })}
-                  >
-                    <Text style={styles.bookingsBtnText}>View Details</Text>
-                    <Feather name="chevron-right" size={18} color="#fff" />
-                  </TouchableOpacity>
-                </View>
-              </TouchableOpacity>
+              </View>
             )}
           />
         ) : (
           <View style={styles.emptyStateContainer}>
-            <Text style={styles.emptyStateText}>No recommendations available</Text>
+            <Ionicons name="sparkles" size={48} color="#CCC" style={{ marginBottom: 12 }} />
+            <Text style={styles.emptyStateText}>No services available</Text>
+            <Text style={[styles.emptyStateText, { fontSize: 14, color: '#888', marginTop: 4 }]}>Check back later for new services</Text>
             <TouchableOpacity 
               style={styles.emptyStateButton}
               onPress={() => navigation.navigate('Explore', { screen: 'ProviderDiscovery' })}
             >
-              <Text style={styles.emptyStateButtonText}>Browse Services</Text>
+              <Text style={styles.emptyStateButtonText}>Browse All Services</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -653,29 +816,46 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   emptyStateContainer: {
-    height: 120,
+    minHeight: 150,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#f8f8f8',
-    borderRadius: 10,
+    borderRadius: 16,
     marginHorizontal: 16,
     marginBottom: 16,
+    paddingVertical: 24,
+    paddingHorizontal: 20,
   },
   emptyStateText: {
-    color: '#666',
+    color: '#333',
     marginBottom: 8,
+    fontSize: 16,
+    fontWeight: '600',
   },
   emptyStateButton: {
     backgroundColor: COLORS.primary,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 25,
+    marginTop: 12,
   },
   emptyStateButtonText: {
     color: 'white',
-    fontWeight: '500',
+    fontWeight: '600',
+    fontSize: 15,
   },
   recommendationsList: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+  },
+  recommendationCard: {
+    width: 280,
+    marginRight: 12,
+  },
+  eventsSection: {
+    marginBottom: 24,
+  },
+  eventsCarousel: {
     paddingHorizontal: 16,
     paddingBottom: 16,
   },
@@ -957,57 +1137,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#b88900',
     flex: 1,
-  },
-  bookingsCard: {
-    flexDirection: 'row',
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    overflow: 'hidden',
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  bookingsImage: {
-    width: 94,
-    height: 94,
-    borderTopLeftRadius: 18,
-    borderBottomLeftRadius: 18,
-    backgroundColor: '#eaeaea',
-  },
-  bookingsContent: {
-    flex: 1,
-    padding: 14,
-    justifyContent: 'center',
-  },
-  bookingsTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#222',
-    marginBottom: 2,
-  },
-  bookingsFunding: {
-    fontSize: 13,
-    color: '#666',
-    marginBottom: 8,
-  },
-  bookingsBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#007AFF',
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 7,
-    alignSelf: 'flex-start',
-    marginTop: 2,
-  },
-  bookingsBtnText: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 15,
-    marginRight: 6,
   },
   actionRow: {
     flexDirection: 'row',

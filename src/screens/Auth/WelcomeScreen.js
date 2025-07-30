@@ -109,13 +109,11 @@ const WelcomeScreen = ({ navigation, route }) => {
             ]}
           >
             <View style={styles.logoContainer}>
-              <View style={styles.logoCircle}>
-                <Image 
-                  source={require('../../assets/images/placeholder.png')}
-                  style={styles.logoImage}
-                  resizeMode="contain"
-                />
-              </View>
+              <Image 
+                source={require('../../assets/images/placeholder.png')}
+                style={styles.logoImage}
+                resizeMode="contain"
+              />
             </View>
 
             <Text style={styles.welcomeText}>Welcome to</Text>

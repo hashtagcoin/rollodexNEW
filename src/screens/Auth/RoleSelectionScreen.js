@@ -255,9 +255,6 @@ const RoleSelectionScreen = ({ navigation }) => {
               },
             ]}
           >
-            <Text style={{ color: 'red', fontSize: 18, textAlign: 'center', marginBottom: 10 }}>
-              Selected: {selectedRole || 'none'}
-            </Text>
             <TouchableOpacity
               style={[
                 styles.continueButton,
@@ -310,7 +307,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: 24,
-    paddingBottom: 20,
+    paddingBottom: 16,
   },
   backButton: {
     position: 'absolute',
@@ -330,8 +327,8 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   header: {
-    marginTop: 80,
-    marginBottom: 32,
+    marginTop: 60,
+    marginBottom: 20,
   },
   title: {
     fontSize: 32,
@@ -347,10 +344,10 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
   rolesContainer: {
-    marginBottom: 32,
+    marginBottom: 20,
   },
   roleCard: {
-    marginBottom: 20,
+    marginBottom: 12,
     borderRadius: 20,
     overflow: 'hidden',
     shadowColor: '#000',
@@ -366,12 +363,12 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   cardGradient: {
-    padding: 24,
+    padding: 18,
   },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   iconContainer: {
     width: 64,
@@ -419,7 +416,7 @@ const styles = StyleSheet.create({
   },
   footer: {
     marginTop: 'auto',
-    paddingTop: 20,
+    paddingTop: 12,
   },
   continueButton: {
     marginBottom: 16,

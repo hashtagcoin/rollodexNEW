@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -7,19 +7,25 @@ import {
   Animated,
   Dimensions,
   Image,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { supabase } from '../../lib/supabaseClient';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width, height } = Dimensions.get('window');
 
 const OnboardingSuccess = ({ navigation, route }) => {
-  const { userType } = route.params || { userType: 'participant' };
+  const { userType, onboardingData, profileData } = route.params || { userType: 'participant' };
+  const [loading, setLoading] = useState(false);
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const buttonPulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     // Animate elements
@@ -42,22 +48,121 @@ const OnboardingSuccess = ({ navigation, route }) => {
           useNativeDriver: true,
         }),
       ]),
+      // Start button pulse animation for explore services button
       Animated.loop(
         Animated.sequence([
-          Animated.timing(pulseAnim, {
-            toValue: 1.1,
-            duration: 1000,
+          Animated.timing(buttonPulseAnim, {
+            toValue: 1.05,
+            duration: 1200,
             useNativeDriver: true,
           }),
-          Animated.timing(pulseAnim, {
+          Animated.timing(buttonPulseAnim, {
             toValue: 1,
-            duration: 1000,
+            duration: 1200,
             useNativeDriver: true,
           }),
         ])
       ),
     ]).start();
   }, []);
+
+  const handleContinue = async () => {
+    setLoading(true);
+    
+    try {
+      // Check if user is authenticated and has a profile
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (user) {
+        // Fetch the user profile to ensure it's loaded
+        const { data: profile } = await supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+        
+        if (profile) {
+          // Save profile to AsyncStorage for immediate access
+          await AsyncStorage.setItem('user_profile', JSON.stringify(profile));
+        } else if (profileData) {
+          // Use the profile data passed from AccountSetup
+          await AsyncStorage.setItem('user_profile', JSON.stringify(profileData));
+        }
+      }
+      
+      // Navigate to the appropriate dashboard
+      if (userType === 'provider') {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'ProviderStack' }]
+        });
+      } else {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'MainApp' }]
+        });
+      }
+    } catch (error) {
+      console.error('Error navigating to dashboard:', error);
+      // Navigate anyway
+      if (userType === 'provider') {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'ProviderStack' }]
+        });
+      } else {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'MainApp' }]
+        });
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSkipProfile = async () => {
+    setLoading(true);
+    
+    try {
+      // Check if user is authenticated and has a profile
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (user) {
+        // Fetch the user profile to ensure it's loaded
+        const { data: profile } = await supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+        
+        if (profile) {
+          // Save profile to AsyncStorage for immediate access
+          await AsyncStorage.setItem('user_profile', JSON.stringify(profile));
+        } else if (profileData) {
+          // Use the profile data passed from AccountSetup
+          await AsyncStorage.setItem('user_profile', JSON.stringify(profileData));
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching profile:', error);
+    }
+    
+    // Navigate to dashboard
+    if (userType === 'provider') {
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'ProviderStack' }]
+      });
+    } else {
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'MainApp' }]
+      });
+    }
+    
+    setLoading(false);
+  };
 
   const getSuccessContent = () => {
     if (userType === 'participant') {
@@ -128,18 +233,15 @@ const OnboardingSuccess = ({ navigation, route }) => {
               {
                 transform: [
                   { scale: scaleAnim },
-                  { scale: pulseAnim },
                 ],
               },
             ]}
           >
-            <View style={styles.iconCircle}>
-              <Image 
-                source={require('../../assets/images/placeholder.png')}
-                style={styles.logoImage}
-                resizeMode="contain"
-              />
-            </View>
+            <Image 
+              source={require('../../assets/images/placeholder.png')}
+              style={styles.logoImage}
+              resizeMode="contain"
+            />
           </Animated.View>
 
           <Animated.View
@@ -201,19 +303,33 @@ const OnboardingSuccess = ({ navigation, route }) => {
               },
             ]}
           >
-            <TouchableOpacity
-              style={styles.primaryButton}
-              onPress={() => navigation.navigate('SignIn')}
-              activeOpacity={0.8}
+            <Animated.View
+              style={{
+                transform: [{ scale: buttonPulseAnim }],
+              }}
             >
-              <Text style={styles.primaryButtonText}>{content.primaryButton}</Text>
-              <Ionicons name="arrow-forward" size={20} color={content.gradient[0]} />
-            </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.primaryButton, loading && styles.disabledButton]}
+                onPress={handleContinue}
+                activeOpacity={0.8}
+                disabled={loading}
+              >
+              {loading ? (
+                <ActivityIndicator color={content.gradient[0]} size="small" />
+              ) : (
+                <>
+                  <Text style={styles.primaryButtonText}>{content.primaryButton}</Text>
+                  <Ionicons name="arrow-forward" size={20} color={content.gradient[0]} />
+                </>
+              )}
+              </TouchableOpacity>
+            </Animated.View>
 
             <TouchableOpacity
-              style={styles.secondaryButton}
-              onPress={() => navigation.navigate('SignIn')}
+              style={[styles.secondaryButton, loading && styles.disabledButton]}
+              onPress={handleSkipProfile}
               activeOpacity={0.7}
+              disabled={loading}
             >
               <Text style={styles.secondaryButtonText}>{content.secondaryButton}</Text>
             </TouchableOpacity>
@@ -253,50 +369,40 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   successIcon: {
-    marginBottom: 32,
-  },
-  iconCircle: {
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 3,
-    borderColor: 'rgba(255, 255, 255, 1)',
+    marginBottom: 24,
   },
   logoImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
   },
   textContainer: {
     alignItems: 'center',
-    marginBottom: 40,
+    marginBottom: 24,
   },
   title: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: 'bold',
     color: '#FFFFFF',
     textAlign: 'center',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   subtitle: {
-    fontSize: 18,
+    fontSize: 16,
     color: 'rgba(255, 255, 255, 0.9)',
     textAlign: 'center',
-    lineHeight: 26,
+    lineHeight: 22,
   },
   featuresContainer: {
     width: '100%',
-    marginBottom: 40,
+    marginBottom: 24,
   },
   featureCard: {
     flexDirection: 'row',
     backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
     alignItems: 'center',
   },
   featureIcon: {
@@ -324,7 +430,7 @@ const styles = StyleSheet.create({
   },
   buttonContainer: {
     width: '100%',
-    marginBottom: 32,
+    marginBottom: 20,
   },
   primaryButton: {
     flexDirection: 'row',
@@ -367,6 +473,9 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.8)',
     marginHorizontal: 8,
     textAlign: 'center',
+  },
+  disabledButton: {
+    opacity: 0.6,
   },
 });
 

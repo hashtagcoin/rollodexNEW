@@ -66,7 +66,7 @@ const ParticipantOnboarding = ({ navigation, route }) => {
     if (currentStep < totalSteps) {
       setCurrentStep(currentStep + 1);
     } else {
-      navigation.navigate('OnboardingSuccess', { userType: 'participant' });
+      navigation.navigate('AccountSetup', { userType: 'participant', formData });
     }
   };
 

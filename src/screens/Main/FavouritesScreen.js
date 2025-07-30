@@ -175,6 +175,16 @@ const FavouritesScreen = () => {
       if (isRefreshing) {
         setRefreshing(true);
       }
+      
+      // Add timeout to prevent infinite loading
+      const timeoutId = setTimeout(() => {
+        if (isMounted.current) {
+          setLoading(false);
+          setRefreshing(false);
+          setLoadingMore(false);
+          debugTiming('FETCH_TIMEOUT', { category: selectedCategory, page: pageNum });
+        }
+      }, 10000); // 10 second timeout
 
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) {
@@ -424,8 +434,10 @@ const FavouritesScreen = () => {
 
     } catch (error) {
       console.error('[FavouritesScreen] fetchFavorites error:', error);
+      clearTimeout(timeoutId);
       // Alert.alert('Error', 'Could not fetch favorites.'); // Consider user-facing error
     } finally {
+      clearTimeout(timeoutId);
       fetchInProgressRef.current = false;
       setLoading(false);
       setRefreshing(false);

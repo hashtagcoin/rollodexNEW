@@ -35,7 +35,7 @@ const UserAvatar = ({ userId, avatarUrl, size = 48, style, disableNav = false })
       accessibilityLabel="User avatar"
     >
       <Image
-        source={{ uri: avatarUrl || 'https://via.placeholder.com/150' }}
+        source={avatarUrl ? { uri: avatarUrl } : require('../../assets/images/default-avatar.png')}
         style={[styles.avatar, { width: size, height: size, borderRadius: size / 2 }]}
         resizeMode="cover"
       />

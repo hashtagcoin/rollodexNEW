@@ -5,6 +5,7 @@ import SubmitClaimScreen from '../screens/Claims/SubmitClaimScreen';
 import ViewClaimsScreen from '../screens/Claims/ViewClaimsScreen';
 import BookingsScreen from '../screens/Main/BookingsScreen';
 import BookingDetailScreen from '../screens/Main/BookingDetailScreen';
+import AddPaymentMethodScreen from '../screens/Main/AddPaymentMethodScreen';
 import AppHeader from '../components/layout/AppHeader'; // Optional: if you want consistent headers
 
 const Stack = createStackNavigator();
@@ -71,6 +72,11 @@ const WalletStackNavigator = () => {
         component={BookingsScreen}
         initialParams={{ initialTab: 'past' }}
         options={{ headerShown: false }} // BookingsScreen already has AppHeader
+      />
+      <Stack.Screen
+        name="AddPaymentMethod"
+        component={AddPaymentMethodScreen}
+        options={{ headerShown: false }} // AddPaymentMethodScreen has AppHeader
       />
     </Stack.Navigator>
   );

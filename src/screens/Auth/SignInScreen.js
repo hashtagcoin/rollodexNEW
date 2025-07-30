@@ -225,7 +225,7 @@ const SignInScreen = () => {
             resizeMode="contain"
           />
           <Image
-            source={require('../../assets/images/rollodex-title.png')}
+            source={require('../../assets/images/rolladex-black.png')}
             style={styles.titleLogo}
             resizeMode="contain"
           />
@@ -365,7 +365,7 @@ const SignInScreen = () => {
             <Text style={styles.toggleText}>
               {isLogin ? 'Don\'t have an account?' : 'Already have an account?'}
             </Text>
-            <TouchableOpacity onPress={toggleForm}>
+            <TouchableOpacity onPress={isLogin ? () => navigation.navigate('RoleSelection') : toggleForm}>
               <Text style={styles.toggleLink}>
                 {isLogin ? 'Sign Up' : 'Sign In'}
               </Text>

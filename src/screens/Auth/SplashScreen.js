@@ -8,70 +8,72 @@ const { width, height } = Dimensions.get('window');
 const SplashScreen = ({ navigation, route }) => {
   const { isAuthenticated, userRole } = route.params || {};
   const [animationComplete, setAnimationComplete] = useState(false);
+  const [showGif, setShowGif] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.5)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const messageOpacity = useRef(new Animated.Value(0)).current;
   const heartbeatAnim = useRef(new Animated.Value(1)).current;
+  const gifFadeAnim = useRef(new Animated.Value(1)).current;
 
-  const welcomeMessages = [
-    "Your journey to independence starts here",
-    "Connecting you with support that understands",
-    "Building communities, one connection at a time",
-    "Where your needs come first"
-  ];
-  const [currentMessage] = useState(welcomeMessages[Math.floor(Math.random() * welcomeMessages.length)]);
+  const taglineText = "Connect. Explore. Thrive.";
 
   useEffect(() => {
-    // Initial animations
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 800,
-        useNativeDriver: true,
-      }),
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        friction: 4,
-        tension: 40,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 1,
-        duration: 1000,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      // Start pulse animation
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, {
-            toValue: 1.1,
-            duration: 1000,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-          Animated.timing(pulseAnim, {
-            toValue: 1,
-            duration: 1000,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
-
-      // Show message after main animation
+    // Animation sequence:
+    // 1. GIF appears instantly at center
+    // 2. GIF stays in place
+    // 3. After 1.5 seconds, logo fades in and throbs
+    // 4. Text fades in
+    
+    // Show GIF immediately
+    setShowGif(true);
+    
+    // After 1.5 seconds, start showing the logo
+    setTimeout(() => {
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 600,
+          useNativeDriver: true,
+        }),
+        Animated.spring(scaleAnim, {
+          toValue: 1,
+          friction: 4,
+          tension: 40,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        // Start pulse animation for the logo
+        Animated.loop(
+          Animated.sequence([
+            Animated.timing(pulseAnim, {
+              toValue: 1.1,
+              duration: 1000,
+              easing: Easing.inOut(Easing.ease),
+              useNativeDriver: true,
+            }),
+            Animated.timing(pulseAnim, {
+              toValue: 1,
+              duration: 1000,
+              easing: Easing.inOut(Easing.ease),
+              useNativeDriver: true,
+            }),
+          ])
+        ).start();
+      });
+    }, 1500); // 1.5 second delay
+    
+    // After logo appears, fade in text
+    setTimeout(() => {
       Animated.timing(messageOpacity, {
         toValue: 1,
-        duration: 800,
-        delay: 500,
+        duration: 600,
         useNativeDriver: true,
       }).start(() => {
         setAnimationComplete(true);
       });
-    });
+    }, 2100); // Adjusted for new timing
 
     // Heartbeat animation
     Animated.loop(
@@ -124,11 +126,29 @@ const SplashScreen = ({ navigation, route }) => {
   return (
     <TouchableWithoutFeedback onPress={handleScreenPress}>
       <LinearGradient
-        colors={['#00CED1', '#48D1CC', '#40E0D0']}
+        colors={['#25D0CF', '#25D0CF']}
         style={styles.container}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       >
+        {/* Animated GIF Logo that appears first */}
+        {showGif && (
+          <Animated.Image 
+            source={require('../../assets/images/Animation.gif')}
+            style={[
+              styles.animatedLogo,
+              {
+                position: 'absolute',
+                top: (height - 80) / 2 - 60, // Position it at its final location (60px above center)
+                left: (width - 250) / 2, // Exact horizontal center: (screen width - GIF width) / 2
+                opacity: gifFadeAnim,
+              }
+            ]}
+            resizeMode="contain"
+          />
+        )}
+
+        {/* Main content that fades in after GIF */}
         <Animated.View
           style={[
             styles.centerContent,
@@ -160,17 +180,6 @@ const SplashScreen = ({ navigation, route }) => {
               resizeMode="contain"
             />
           </Animated.View>
-
-          <Animated.Image 
-            source={require('../../assets/images/rolladex-white.png')}
-            style={[
-              styles.logoImage,
-              {
-                opacity: fadeAnim,
-              }
-            ]}
-            resizeMode="contain"
-          />
           
           <Animated.Text
             style={[
@@ -180,7 +189,7 @@ const SplashScreen = ({ navigation, route }) => {
               },
             ]}
           >
-            {currentMessage}
+            {taglineText}
           </Animated.Text>
         </Animated.View>
 
@@ -256,7 +265,8 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
   iconContainer: {
-    marginBottom: 30,
+    marginTop: 120, // Space from the GIF above
+    marginBottom: 40, // Space to the text below
   },
   iconCircle: {
     width: 120,
@@ -292,12 +302,18 @@ const styles = StyleSheet.create({
     borderRadius: 60,
   },
   tagline: {
-    fontSize: 18,
+    fontSize: 20,
     color: 'rgba(255, 255, 255, 0.95)',
     textAlign: 'center',
     paddingHorizontal: 40,
-    lineHeight: 26,
-    fontWeight: '500',
+    lineHeight: 28,
+    fontWeight: '600',
+    letterSpacing: 1,
+  },
+  animatedLogo: {
+    width: 250,
+    height: 80,
+    alignSelf: 'center',
   },
   bottomContainer: {
     position: 'absolute',

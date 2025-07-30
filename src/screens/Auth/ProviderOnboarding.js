@@ -72,7 +72,7 @@ const ProviderOnboarding = ({ navigation, route }) => {
     if (currentStep < totalSteps) {
       setCurrentStep(currentStep + 1);
     } else {
-      navigation.navigate('OnboardingSuccess', { userType: 'provider' });
+      navigation.navigate('AccountSetup', { userType: 'provider', formData });
     }
   };
 
