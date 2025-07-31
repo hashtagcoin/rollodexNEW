@@ -43,6 +43,7 @@ export default function EditProfileScreen() {
     full_name: '', 
     bio: '', 
     avatar_url: '',
+    background: '',
     age: '',
     sex: '',
     address: '',
@@ -150,6 +151,7 @@ export default function EditProfileScreen() {
       setProfile({
         ...userProfile,
         // Ensure ALL fields are properly initialized
+        background: userProfile.background || '',
         mobility_aids: userProfile.mobility_aids || [],
         dietary_requirements: userProfile.dietary_requirements || [],
         accessibility_preferences: userProfile.accessibility_preferences || {},
@@ -174,6 +176,7 @@ export default function EditProfileScreen() {
         full_name: '',
         bio: '',
         avatar_url: '',
+        background: '',
         age: '',
         sex: '',
         address: '',
@@ -299,8 +302,17 @@ export default function EditProfileScreen() {
         return;
       }
       
+      let mediaTypesOption;
+      try {
+        // Try to use the new API
+        mediaTypesOption = [ImagePicker.MediaType.Image];
+      } catch (e) {
+        // Fall back to old API
+        mediaTypesOption = ImagePicker.MediaTypeOptions?.Images || 'Images';
+      }
+      
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: mediaTypesOption,
         allowsEditing: true,
         aspect: [3, 1],
         quality: 0.8,
@@ -313,6 +325,10 @@ export default function EditProfileScreen() {
       // Get the image URI
       const imageUri = result.assets[0].uri;
       
+      // Create a blob from the image
+      const response = await fetch(imageUri);
+      const blob = await response.blob();
+      
       // Generate a unique filename
       const fileExt = imageUri.split('.').pop();
       const fileName = `background_${Date.now()}.${fileExt}`;
@@ -321,13 +337,10 @@ export default function EditProfileScreen() {
       // Upload the image to Supabase Storage
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('backgrounds')
-        .upload(filePath, {
-          uri: imageUri,
-          type: `image/${fileExt}`,
-          name: fileName,
-        }, {
+        .upload(filePath, blob, {
           cacheControl: '3600',
-          upsert: true
+          upsert: true,
+          contentType: `image/${fileExt}`
         });
 
       if (uploadError) throw uploadError;
@@ -340,13 +353,15 @@ export default function EditProfileScreen() {
       // Update the user's profile with the new background URL
       const { error: updateError } = await supabase
         .from('user_profiles')
-        .update({ background_url: publicUrl })
+        .update({ background: publicUrl })
         .eq('id', profile.id);
 
       if (updateError) throw updateError;
       
-      // Update the local profile state
-      updateProfile({ background_url: publicUrl });
+      // Update the local profile state and context with just the background
+      setProfile(prev => ({ ...prev, background: publicUrl }));
+      // Update the global context with just the background change
+      await updateProfile({ ...profile, background: publicUrl });
       
       Alert.alert('Success', 'Background image updated successfully');
     } catch (error) {
@@ -398,7 +413,8 @@ export default function EditProfileScreen() {
         // Ensure text fields are defined
         bio: profile.bio || '',
         address: profile.address || '',
-        ndis_number: profile.ndis_number || '',
+        // Set ndis_number to null if empty to avoid unique constraint violations
+        ndis_number: profile.ndis_number && profile.ndis_number.trim() ? profile.ndis_number.trim() : null,
         sex: profile.sex || ''
       };
       

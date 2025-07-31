@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,10 @@ import { COLORS, FONTS } from '../../constants/theme';
 import { BUBBLE_COLORS } from '../../constants/chatConstants';
 import { format } from 'date-fns';
 
-const MessageBubble = ({ message, isOwnMessage }) => {
+const MessageBubble = ({ message, isOwnMessage, isBot = false, onPressAvatar }) => {
+  const [avatarError, setAvatarError] = useState(false);
+  const defaultAvatar = require('../../assets/images/default-avatar.png');
+  
   // Format time from ISO string to readable format (e.g., 10:30 AM)
   const formatTime = (dateString) => {
     try {
@@ -20,26 +23,34 @@ const MessageBubble = ({ message, isOwnMessage }) => {
     }
   };
 
+  const shouldUseDefaultAvatar = !message.sender?.avatar_url || avatarError;
+
   return (
     <View style={[
       styles.container,
       isOwnMessage ? styles.ownMessageContainer : styles.otherMessageContainer
     ]}>
       {!isOwnMessage && message.sender && (
-        <View style={styles.avatarContainer}>
-          {message.sender.avatar_url ? (
+        <TouchableOpacity 
+          style={styles.avatarContainer}
+          onPress={onPressAvatar}
+          disabled={!onPressAvatar}
+        >
+          {shouldUseDefaultAvatar ? (
             <Image 
-              source={{ uri: message.sender.avatar_url }} 
-              style={styles.avatar} 
+              source={defaultAvatar} 
+              style={styles.avatar}
+              defaultSource={defaultAvatar}
             />
           ) : (
-            <View style={styles.defaultAvatar}>
-              <Text style={styles.avatarText}>
-                {(message.sender.full_name || message.sender.username || '?').charAt(0)}
-              </Text>
-            </View>
+            <Image 
+              source={{ uri: message.sender.avatar_url }} 
+              style={styles.avatar}
+              onError={() => setAvatarError(true)}
+              defaultSource={defaultAvatar}
+            />
           )}
-        </View>
+        </TouchableOpacity>
       )}
       
       <View style={[
@@ -48,9 +59,11 @@ const MessageBubble = ({ message, isOwnMessage }) => {
       ]}>
         {/* Sender name for group chats */}
         {!isOwnMessage && message.sender && (
-          <Text style={styles.senderName}>
-            {message.sender.full_name || message.sender.username || 'Unknown'}
-          </Text>
+          <View style={styles.senderRow}>
+            <Text style={styles.senderName}>
+              {message.sender.full_name || message.sender.username || 'Unknown'}
+            </Text>
+          </View>
         )}
         
         {/* Message content */}
@@ -102,19 +115,6 @@ const styles = StyleSheet.create({
     height: 28,
     borderRadius: 14,
   },
-  defaultAvatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: COLORS.lightGray,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: COLORS.white,
-  },
   messageBubble: {
     borderRadius: 18,
     paddingHorizontal: 12,
@@ -129,10 +129,14 @@ const styles = StyleSheet.create({
     backgroundColor: BUBBLE_COLORS.RECEIVED,
     borderBottomLeftRadius: 4,
   },
+  senderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
   senderName: {
     fontSize: 11,
     fontWeight: '600',
-    marginBottom: 2,
     color: COLORS.darkGray,
   },
   messageText: {

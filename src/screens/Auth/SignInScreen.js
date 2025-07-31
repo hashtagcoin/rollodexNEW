@@ -19,6 +19,8 @@ import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../../lib/supabaseClient';
 import { COLORS } from '../../constants/theme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import ImagePreloadService from '../../services/ImagePreloadService';
+import { globalLoadedImages } from '../../components/common/CachedImage';
 
 const { width } = Dimensions.get('window');
 
@@ -59,6 +61,20 @@ const SignInScreen = () => {
     setLoading(true);
     
     try {
+      // Clear all cached user data before login to prevent stale data
+      await AsyncStorage.multiRemove(['user_profile', 'provider_mode', 'is_new_user']);
+      
+      // Clear all image caches
+      ImagePreloadService.clearAllCaches();
+      globalLoadedImages.clear();
+      
+      // Clear any image cache keys from AsyncStorage
+      const allKeys = await AsyncStorage.getAllKeys();
+      const imageCacheKeys = allKeys.filter(key => key.startsWith('ROLLODEX_IMAGE_CACHE_'));
+      if (imageCacheKeys.length > 0) {
+        await AsyncStorage.multiRemove(imageCacheKeys);
+      }
+      
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -104,6 +120,10 @@ const SignInScreen = () => {
     setLoading(true);
     
     try {
+      // First sign out any existing session and clear cached data
+      await supabase.auth.signOut();
+      await AsyncStorage.multiRemove(['user_profile', 'provider_mode']);
+      
       // Check if username is already taken
       const { data: existingUser, error: checkError } = await supabase
         .from('user_profiles')
@@ -145,24 +165,33 @@ const SignInScreen = () => {
       const isProvider = userType === 'provider';
       await AsyncStorage.setItem('provider_mode', JSON.stringify(isProvider));
       
+      // Mark this as a new user
+      await AsyncStorage.setItem('is_new_user', 'true');
+      
       // Wait a brief moment to ensure auth is fully processed
       await new Promise(resolve => setTimeout(resolve, 1000));
       
       // Create user profile with upsert to handle potential duplicates
+      const profileData = {
+        id: data.user.id,
+        username,
+        full_name: fullName,
+        email,
+        role: userType, // Use the selected user type as role
+        is_active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+      
       const { error: profileError } = await supabase
         .from('user_profiles')
-        .upsert({
-          id: data.user.id,
-          username,
-          full_name: fullName,
-          email,
-          role: userType, // Use the selected user type as role
-          is_active: true,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'id' });
+        .upsert(profileData, { onConflict: 'id' });
       
       if (profileError) throw profileError;
+      
+      // Save the profile data locally so it's immediately available
+      await AsyncStorage.setItem('user_profile', JSON.stringify(profileData));
+      console.log('[SignIn] Profile saved locally:', profileData);
       
       // Get the user that was just created
       const { data: checkUser } = await supabase.auth.getUser();

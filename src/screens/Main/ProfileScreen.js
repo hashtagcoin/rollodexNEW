@@ -28,6 +28,11 @@ const ProfileScreen = () => {
   // Get user profile from context - move this to the top
   const { user, profile: userProfile } = useUser();
   
+  // Log profile data
+  console.log('[ProfileScreen] Rendering with profile:', userProfile);
+  console.log('[ProfileScreen] Profile username:', userProfile?.username);
+  console.log('[ProfileScreen] Profile full_name:', userProfile?.full_name);
+  
   // UI state
   const [selectedTab, setSelectedTab] = useState('Posts');
   const scrollViewRef = useRef(null);
@@ -1165,7 +1170,16 @@ const ProfileScreen = () => {
           />
           
           <View style={styles.profileInfo}>
-            <Text style={styles.profileName}>{userProfile?.full_name || userProfile?.username || 'User'}</Text>
+            <Text style={styles.profileName}>
+              {(() => {
+                const displayName = userProfile?.full_name || userProfile?.username || 'User';
+                console.log('[ProfileScreen] Display name logic:');
+                console.log('  - userProfile?.full_name:', userProfile?.full_name);
+                console.log('  - userProfile?.username:', userProfile?.username);
+                console.log('  - Final display name:', displayName);
+                return displayName;
+              })()}
+            </Text>
             <Text style={styles.username}>@{userProfile?.username || 'username'}</Text>
             <Text style={styles.ndisParticipant}>NDIS Participant</Text>
           </View>

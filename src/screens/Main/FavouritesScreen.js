@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useContext } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   Dimensions,
   Alert
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image as ExpoImage } from 'expo-image';
 import { useScrollContext } from '../../context/ScrollContext';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -25,6 +26,8 @@ import ServiceCardComponent from '../../components/cards/ServiceCard';
 import HousingCardComponent from '../../components/cards/HousingCard';
 import EventFavoriteCard from '../../components/cards/EventFavoriteCard';
 import ShareTrayModal from '../../components/common/ShareTrayModal';
+import { useUser } from '../../context/UserContext';
+import { isNewUser } from '../../utils/defaultDataProvider';
 
 const { width } = Dimensions.get('window');
 
@@ -55,6 +58,7 @@ const PAGE_SIZE = 10; // Moved PAGE_SIZE to be a top-level constant
 const FavouritesScreen = () => {
   const { reportScroll } = useScrollContext();
   const navigation = useNavigation();
+  const { profile: userProfile } = useUser();
   const flatListRef = useRef(null);
   const [favorites, setFavorites] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -68,6 +72,7 @@ const FavouritesScreen = () => {
   const [loadingMore, setLoadingMore] = useState(false);
   const [shareModalVisible, setShareModalVisible] = useState(false);
   const [itemToShare, setItemToShare] = useState(null);
+  const [isUserNew, setIsUserNew] = useState(false);
 
   // Cache refs for performance optimization
   const cacheRef = useRef({}); // Cache favorites by category
@@ -76,13 +81,34 @@ const FavouritesScreen = () => {
   const fetchCounterRef = useRef(0); // Track latest fetch to ignore stale responses
   const isMounted = useRef(true); // Track component mount state
 
-  // Track component mount/unmount
+  // Track component mount/unmount and check for new user
   useEffect(() => {
     performanceTracker.mountTime = Date.now();
     performanceTracker.renders = 0;
     debugTiming('COMPONENT_MOUNTED');
     
     isMounted.current = true;
+    
+    // Check if user is new
+    const checkNewUser = async () => {
+      try {
+        // First check AsyncStorage flag
+        const newUserFlag = await AsyncStorage.getItem('is_new_user');
+        
+        if (newUserFlag === 'true' || isNewUser(userProfile)) {
+          setIsUserNew(true);
+          // For new users, immediately set loading to false and empty favorites
+          setLoading(false);
+          setFavorites([]);
+          setHasMore(false);
+        }
+      } catch (error) {
+        console.log('[FavouritesScreen] Error checking new user status:', error);
+      }
+    };
+    
+    checkNewUser();
+    
     return () => {
       isMounted.current = false;
       debugTiming('COMPONENT_UNMOUNTING', { 
@@ -91,7 +117,7 @@ const FavouritesScreen = () => {
         categoryChanges: performanceTracker.categoryChanges
       });
     };
-  }, []);
+  }, [userProfile]);
 
   // Track renders
   performanceTracker.renders++;
@@ -134,8 +160,17 @@ const FavouritesScreen = () => {
       search: searchTerm 
     });
     
-    // Prevent duplicate fetches
-    if (fetchInProgressRef.current && lastFetchCategoryRef.current === selectedCategory && !isRefreshing) {
+    // Skip fetch entirely for new users UNLESS they're refreshing (which means they might have added favorites)
+    if (isUserNew && !isRefreshing) {
+      debugTiming('FETCH_SKIPPED_NEW_USER');
+      setLoading(false);
+      setFavorites([]);
+      setHasMore(false);
+      return;
+    }
+    
+    // Prevent duplicate fetches - more robust check
+    if (fetchInProgressRef.current && !isRefreshing) {
       debugTiming('FETCH_PREVENTED_DUPLICATE', { 
         category: selectedCategory,
         isRefreshing,
@@ -227,21 +262,34 @@ const FavouritesScreen = () => {
         isStale: fetchId !== fetchCounterRef.current || categoryAtStart !== selectedCategory
       });
       
-      if (!isMounted.current) return;
+      if (!isMounted.current) {
+        clearTimeout(timeoutId);
+        fetchInProgressRef.current = false;
+        return;
+      }
       
       // Ignore if a newer fetch started or category has changed
       if (fetchId !== fetchCounterRef.current || categoryAtStart !== selectedCategory) {
         debugTiming('STALE_FETCH_IGNORED', { fetchId, currentFetchId: fetchCounterRef.current });
+        clearTimeout(timeoutId);
+        fetchInProgressRef.current = false;
         return;
       }
 
       if (error) {
         console.error('[FavouritesScreen] Fetch error:', error);
         if (isMounted.current) setFavorites([]);
+        clearTimeout(timeoutId);
+        fetchInProgressRef.current = false;
+        setLoading(false);
+        setRefreshing(false);
+        setLoadingMore(false);
         return;
       }
 
       if (!data) { // Handle null data case
+        clearTimeout(timeoutId);
+        fetchInProgressRef.current = false;
         setLoading(false);
         setRefreshing(false);
         setLoadingMore(false);
@@ -443,34 +491,134 @@ const FavouritesScreen = () => {
       setRefreshing(false);
       setLoadingMore(false);
     }
-  }, [selectedCategory, searchTerm, sortConfig, loading, hasMore, mapCategoryToItemType]);
+  }, [selectedCategory, searchTerm, sortConfig.field, sortConfig.direction, isUserNew]); // Removed circular dependencies
 
-  // Reset scroll, state, and fetch data when tab is focused or critical filters change
+  // Track if we need to fetch on focus
+  const shouldFetchOnFocusRef = useRef(true);
+  const lastFetchParamsRef = useRef({ category: null, search: null, sort: null });
+
+  // Reset scroll and check for new user favorites when tab is focused
   useFocusEffect(
     useCallback(() => {
       if (flatListRef.current) {
         flatListRef.current.scrollToOffset({ offset: 0, animated: false });
       }
-      // Reset page state and filters
-      setPage(0); // Reset page for new filter context
-      fetchFavorites(0, true); // Fetch on every focus event
-    }, []) // Runs on every focus event
+      
+      // Only fetch if params haven't changed or it's the first focus
+      const paramsChanged = 
+        lastFetchParamsRef.current.category !== selectedCategory ||
+        lastFetchParamsRef.current.search !== searchTerm ||
+        lastFetchParamsRef.current.sort !== sortConfig.field;
+      
+      if (shouldFetchOnFocusRef.current || paramsChanged) {
+        // Check if new user has added favorites
+        const checkNewUserFavorites = async () => {
+          if (isUserNew) {
+            try {
+              const { data: { user }, error: userError } = await supabase.auth.getUser();
+              if (!userError && user) {
+                // Quick check if user has any favorites
+                const { count, error } = await supabase
+                  .from('favorites')
+                  .select('*', { count: 'exact', head: true })
+                  .eq('user_id', user.id);
+                
+                if (!error && count > 0) {
+                  console.log('[FavouritesScreen] New user now has favorites, updating status');
+                  setIsUserNew(false);
+                  // Clear the new user flag
+                  await AsyncStorage.removeItem('is_new_user');
+                  // Fetch their favorites
+                  setPage(0);
+                  fetchFavorites(0, true);
+                }
+              }
+            } catch (error) {
+              console.log('[FavouritesScreen] Error checking new user favorites:', error);
+            }
+          } else {
+            // Not a new user, fetch normally
+            setPage(0);
+            fetchFavorites(0, true);
+          }
+        };
+        
+        checkNewUserFavorites();
+        shouldFetchOnFocusRef.current = false; // Don't fetch again until blur
+      }
+      
+      return () => {
+        // Re-enable fetch on next focus when screen loses focus
+        shouldFetchOnFocusRef.current = true;
+      };
+    }, [isUserNew, selectedCategory, searchTerm, sortConfig.field, fetchFavorites]) // Only re-run if these change
   );
 
   // Fetch data when selectedCategory, searchTerm, or sortConfig change
-  // This also covers the initial fetch after the reset effect sets category/term
+  // But NOT on initial mount or when returning to screen
   useEffect(() => {
-    console.log("[FavouritesScreen] Filters changed or initial mount, fetching page 0. Category:", selectedCategory, "Search:", searchTerm);
-    setPage(0); // Reset page when filters change
-    fetchFavorites(0, true); // Fetch with new filters, as a refresh
-  }, [selectedCategory, searchTerm, sortConfig]); // Note: fetchFavorites is not a dep here to avoid loop, it's called directly.
+    // Skip on initial mount
+    if (lastFetchParamsRef.current.category === null) {
+      lastFetchParamsRef.current = {
+        category: selectedCategory,
+        search: searchTerm,
+        sort: sortConfig.field
+      };
+      return;
+    }
+    
+    // Skip fetch for new users
+    if (isUserNew) {
+      console.log("[FavouritesScreen] Skipping fetch for new user");
+      return;
+    }
+    
+    // Check if params actually changed
+    const paramsChanged = 
+      lastFetchParamsRef.current.category !== selectedCategory ||
+      lastFetchParamsRef.current.search !== searchTerm ||
+      lastFetchParamsRef.current.sort !== sortConfig.field;
+    
+    if (paramsChanged) {
+      console.log("[FavouritesScreen] Filters changed, fetching page 0. Category:", selectedCategory, "Search:", searchTerm);
+      lastFetchParamsRef.current = {
+        category: selectedCategory,
+        search: searchTerm,
+        sort: sortConfig.field
+      };
+      setPage(0); // Reset page when filters change
+      fetchFavorites(0, true); // Fetch with new filters, as a refresh
+    }
+  }, [selectedCategory, searchTerm, sortConfig.field, isUserNew]); // Using specific field instead of whole object
 
-  const onRefresh = useCallback(() => {
+  const onRefresh = useCallback(async () => {
     debugTiming('MANUAL_REFRESH_TRIGGERED');
     setRefreshing(true);
     setPage(0);
+    
+    // If new user, check if they now have favorites
+    if (isUserNew) {
+      try {
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        if (!userError && user) {
+          const { count, error } = await supabase
+            .from('favorites')
+            .select('*', { count: 'exact', head: true })
+            .eq('user_id', user.id);
+          
+          if (!error && count > 0) {
+            console.log('[FavouritesScreen] New user refreshed and has favorites');
+            setIsUserNew(false);
+            await AsyncStorage.removeItem('is_new_user');
+          }
+        }
+      } catch (error) {
+        console.log('[FavouritesScreen] Error checking favorites on refresh:', error);
+      }
+    }
+    
     fetchFavorites(0, true, false);
-  }, [fetchFavorites]);
+  }, [fetchFavorites, isUserNew]);
 
   const loadMore = useCallback(() => {
     debugTiming('LOAD_MORE_TRIGGERED', {
@@ -951,8 +1099,22 @@ const FavouritesScreen = () => {
       ) : !loading && favorites.length === 0 ? ( // Show empty only if not loading and no favorites
         <View style={styles.emptyContainer}>
           <Ionicons name="heart-dislike-outline" size={80} color={COLORS.gray} />
-          <Text style={styles.emptyText}>You haven't favorited anything yet.</Text>
-          <Text style={styles.emptySubText}>Tap the heart on items to add them here!</Text>
+          <Text style={styles.emptyText}>
+            {isUserNew ? "Welcome! Start exploring to find your favorites" : "You haven't favorited anything yet."}
+          </Text>
+          <Text style={styles.emptySubText}>
+            {isUserNew ? "Browse services, events, and housing to save what you love!" : "Tap the heart on items to add them here!"}
+          </Text>
+          {isUserNew && (
+            <TouchableOpacity
+              style={styles.exploreCTA}
+              onPress={() => navigation.navigate('Explore', {
+                screen: 'ProviderDiscovery'
+              })}
+            >
+              <Text style={styles.exploreCTAText}>Start Exploring</Text>
+            </TouchableOpacity>
+          )}
         </View>
       ) : (
         <FlatList
@@ -1022,6 +1184,19 @@ const styles = StyleSheet.create({
     marginTop: SIZES.base,
     color: COLORS.gray,
     textAlign: 'center',
+  },
+  exploreCTA: {
+    marginTop: SIZES.large,
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SIZES.large * 2,
+    paddingVertical: SIZES.medium,
+    borderRadius: SIZES.radius,
+    ...SHADOWS.medium,
+  },
+  exploreCTAText: {
+    color: COLORS.white,
+    fontSize: SIZES.body2,
+    fontFamily: FONTS.medium,
   },
   gridContainer: {
     paddingBottom: SIZES.large, // Use theme sizes

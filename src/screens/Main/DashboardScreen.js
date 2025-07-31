@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, FlatList, ActivityIndicator, ImageBackground } from 'react-native';
 import { Image } from 'expo-image';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Feather from 'react-native-vector-icons/Feather'; 
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons'; 
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -21,16 +22,24 @@ import ServiceCard from '../../components/cards/ServiceCard';
 
 const DashboardScreen = () => {
   const { reportScroll } = useScrollContext();
-  const { profile, isProviderMode, toggleProviderMode } = useUser();
+  const { profile, isProviderMode, toggleProviderMode, refreshProfile } = useUser();
   const navigation = useNavigation();
   const scrollViewRef = useRef(null);
   const { showNotificationTray, unreadCount } = useNotifications();
+  
+  // Log profile data when component renders
+  console.log('[DashboardScreen] Rendering with profile:', profile);
+  console.log('[DashboardScreen] Profile username:', profile?.username);
+  console.log('[DashboardScreen] Profile full_name:', profile?.full_name);
+  console.log('[DashboardScreen] Profile created_at:', profile?.created_at);
   
   const [wallet, setWallet] = useState(null);
   const [upcomingBookings, setUpcomingBookings] = useState([]);
   const [recommendations, setRecommendations] = useState([]);
   const [events, setEvents] = useState([]);
-  const [isNewUserStatus, setIsNewUserStatus] = useState(false);
+  const [isNewUserStatus, setIsNewUserStatus] = useState(true); // Default to true for new users
+  const [activeEventIndex, setActiveEventIndex] = useState(0);
+  const [activeRecommendationIndex, setActiveRecommendationIndex] = useState(0);
   const [loading, setLoading] = useState({
     wallet: true,
     bookings: true,
@@ -48,6 +57,7 @@ const DashboardScreen = () => {
   });
   const fetchInProgressRef = useRef(false);
   const lastFetchUserRef = useRef(null);
+  const lastFetchTimeRef = useRef(0);
 
   // Cache timeout (5 minutes)
   const CACHE_TIMEOUT = 5 * 60 * 1000;
@@ -60,36 +70,74 @@ const DashboardScreen = () => {
   // Use useFocusEffect to scroll to top when screen comes into focus
   useFocusEffect(
     React.useCallback(() => {
-      // When the screen is focused, scroll to top
-      if (scrollViewRef.current) {
-        scrollViewRef.current.scrollTo({ x: 0, y: 0, animated: true });
-      }
+      const checkNewUserStatus = async () => {
+        // When the screen is focused, scroll to top
+        if (scrollViewRef.current) {
+          scrollViewRef.current.scrollTo({ x: 0, y: 0, animated: true });
+        }
 
-      // Check if user is new first
-      if (profile) {
-        const userIsNew = isNewUser(profile);
-        console.log('[Dashboard] Profile created_at:', profile.created_at);
-        console.log('[Dashboard] Is new user:', userIsNew);
+
+        // Check if user is new first
+        let userIsNew = true; // Default to true
+        
+        // First check AsyncStorage flag
+        const newUserFlag = await AsyncStorage.getItem('is_new_user');
+        
+        if (profile) {
+          if (newUserFlag === 'true') {
+            userIsNew = true;
+            // Clear the flag after first check
+            await AsyncStorage.removeItem('is_new_user');
+          } else {
+            // Fall back to profile check
+            userIsNew = isNewUser(profile);
+          }
+          console.log('[Dashboard] Profile:', profile);
+          console.log('[Dashboard] Profile created_at:', profile.created_at);
+          console.log('[Dashboard] New user flag:', newUserFlag);
+          console.log('[Dashboard] Is new user:', userIsNew);
+        } else {
+          // No profile yet - definitely a new user
+          console.log('[Dashboard] No profile yet - treating as new user');
+          userIsNew = true;
+        }
+        
         setIsNewUserStatus(userIsNew);
-      }
 
-      // Check cache for instant loading on focus
-      const cache = cacheRef.current;
-      const userChanged = lastFetchUserRef.current !== profile?.id;
-      const cacheExpired = cache.timestamp && Date.now() - cache.timestamp > CACHE_TIMEOUT;
+        // Check cache for instant loading on focus
+        const cache = cacheRef.current;
+        const userChanged = lastFetchUserRef.current !== profile?.id;
+        const cacheExpired = cache.timestamp && Date.now() - cache.timestamp > CACHE_TIMEOUT;
+        
+        if (!userChanged && !cacheExpired && cache.recommendations) {
+          console.log('[Dashboard] Using cached data for instant loading');
+          // For new users, only use recommendations cache
+          if (userIsNew) {
+            setRecommendations(cache.recommendations);
+            setWallet(null);
+            setUpcomingBookings([]);
+            setLoading({
+              wallet: false,
+              bookings: false,
+              recommendations: false,
+              events: false
+            });
+          } else if (cache.wallet && cache.bookings) {
+            // For existing users, use all cached data
+            setWallet(cache.wallet);
+            setUpcomingBookings(cache.bookings);
+            setRecommendations(cache.recommendations);
+            setLoading({
+              wallet: false,
+              bookings: false,
+              recommendations: false,
+              events: false
+            });
+          }
+        }
+      };
       
-      if (cache.wallet && cache.bookings && cache.recommendations && !userChanged && !cacheExpired) {
-        console.log('[Dashboard] Using cached data for instant loading');
-        setWallet(cache.wallet);
-        setUpcomingBookings(cache.bookings);
-        setRecommendations(cache.recommendations);
-        setLoading({
-          wallet: false,
-          bookings: false,
-          recommendations: false,
-          events: false
-        });
-      }
+      checkNewUserStatus();
       
       return () => {};
     }, [profile?.id])
@@ -163,7 +211,7 @@ const DashboardScreen = () => {
         .select('*')
         .gte('end_time', new Date().toISOString())
         .order('end_time', { ascending: true })
-        .limit(5);
+        .limit(20);
         
       if (eventsError) throw eventsError;
       
@@ -220,10 +268,8 @@ const DashboardScreen = () => {
 
   // Fetch recommendations - random services from the services table
   const fetchRecommendations = useCallback(async () => {
-    if (!profile?.id) {
-      setLoading(prevState => ({ ...prevState, recommendations: false }));
-      return;
-    }
+    // Allow fetching recommendations even without profile for new users
+    console.log('[Dashboard] Fetching recommendations, profile:', profile?.id || 'no profile');
     
     setLoading(prevState => ({ ...prevState, recommendations: true }));
     
@@ -242,10 +288,10 @@ const DashboardScreen = () => {
         
       if (servicesError) throw servicesError;
       
-      // Shuffle and take 3 random services
+      // Shuffle and take 13 random services (10 more than before)
       if (services && services.length > 0) {
         const shuffled = shuffleArray([...services]);
-        const randomServices = shuffled.slice(0, 3);
+        const randomServices = shuffled.slice(0, 13);
         setRecommendations(randomServices);
         
         // Update cache
@@ -274,7 +320,21 @@ const DashboardScreen = () => {
   }, [isProviderMode, navigation]);
 
   // Fetch all data when component mounts or profile changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
+    // If no profile yet, just fetch events and recommendations for new users
+    if (!profile && !isProviderMode) {
+      console.log('[Dashboard] No profile yet - fetching only events and recommendations');
+      fetchEvents();
+      fetchRecommendations();
+      setLoading(prevState => ({ 
+        ...prevState, 
+        wallet: false,
+        bookings: false 
+      }));
+      return;
+    }
+    
     if (profile?.id && !isProviderMode) {
       const fetchAllData = async () => {
         const startTime = Date.now();
@@ -285,15 +345,34 @@ const DashboardScreen = () => {
           return;
         }
         
+        // Debounce: Don't fetch if we just fetched within 2 seconds
+        const now = Date.now();
+        if (now - lastFetchTimeRef.current < 2000) {
+          console.log('[Dashboard] Debouncing fetch - too soon since last fetch');
+          return;
+        }
+        lastFetchTimeRef.current = now;
+        
+        // Check if user is new first
+        const userIsNew = isNewUser(profile);
+        console.log('[Dashboard] Fetch - Profile created_at:', profile.created_at);
+        console.log('[Dashboard] Fetch - Is new user:', userIsNew);
+        setIsNewUserStatus(userIsNew);
+        
         // Check if useFocusEffect already loaded cached data
         const cache = cacheRef.current;
         const userChanged = lastFetchUserRef.current !== profile.id;
         const cacheExpired = !cache.timestamp || Date.now() - cache.timestamp > CACHE_TIMEOUT;
         
-        // Skip fetch if we have valid cached data (useFocusEffect already handled this)
-        if (cache.wallet && cache.bookings && cache.recommendations && !userChanged && !cacheExpired) {
-          console.log('[Dashboard] Skipping useEffect fetch - useFocusEffect already loaded cached data');
-          return;
+        // Skip fetch if we have valid cached data based on user type
+        if (!userChanged && !cacheExpired) {
+          if (userIsNew && cache.recommendations) {
+            console.log('[Dashboard] New user - using cached recommendations');
+            return;
+          } else if (!userIsNew && cache.wallet && cache.bookings && cache.recommendations) {
+            console.log('[Dashboard] Existing user - using all cached data');
+            return;
+          }
         }
         
         fetchInProgressRef.current = true;
@@ -301,26 +380,25 @@ const DashboardScreen = () => {
         try {
           console.log('[Dashboard] Fetching fresh data from useEffect');
           
-          // Check if user is new first
-          const userIsNew = isNewUser(profile);
-          console.log('[Dashboard] Fetch - Profile created_at:', profile.created_at);
-          console.log('[Dashboard] Fetch - Is new user:', userIsNew);
-          setIsNewUserStatus(userIsNew);
-          
           // Fetch data based on user status
           if (userIsNew) {
-            console.log('[Dashboard] Fetching events for new user');
-            // For new users, fetch events instead of wallet
+            console.log('[Dashboard] New user detected - only fetching events and recommendations');
+            // For new users, only fetch events and recommendations
             await Promise.all([
               fetchEvents(),
-              fetchUpcomingBookings(), 
               fetchRecommendations()
             ]);
-            // Set wallet loading to false since we're not fetching it
-            setLoading(prevState => ({ ...prevState, wallet: false }));
+            // Set wallet and bookings to default states for new users
+            setWallet(null);
+            setUpcomingBookings([]);
+            setLoading(prevState => ({ 
+              ...prevState, 
+              wallet: false,
+              bookings: false 
+            }));
           } else {
-            console.log('[Dashboard] Fetching wallet and events for existing user');
-            // For existing users, fetch wallet data AND events
+            console.log('[Dashboard] Existing user - fetching all data');
+            // For existing users, fetch all data
             await Promise.all([
               fetchWalletData(),
               fetchEvents(),
@@ -342,7 +420,7 @@ const DashboardScreen = () => {
 
       fetchAllData();
     }
-  }, [profile?.id, isProviderMode, fetchWalletData, fetchUpcomingBookings, fetchRecommendations, fetchEvents]);
+  }, [profile?.id, isProviderMode]);
   
   // Helper function to format dates for upcoming bookings
   const formatBookingDate = (dateString) => {
@@ -358,11 +436,15 @@ const DashboardScreen = () => {
     }
   };
   // Use the user's custom background image if available, otherwise fall back to default
-  const backgroundImageSource = profile?.background_url 
-    ? { uri: profile.background_url } 
+  const backgroundImageSource = profile?.background 
+    ? { uri: profile.background } 
     : require('../../assets/images/MegaTron.jpg');
 
   console.log('[Dashboard] Rendering - Profile:', profile);
+  console.log('[Dashboard] Rendering - Profile full_name:', profile?.full_name);
+  console.log('[Dashboard] Rendering - Profile username:', profile?.username);
+  console.log('[Dashboard] Rendering - Profile background:', profile?.background);
+  console.log('[Dashboard] Rendering - Background source:', backgroundImageSource);
   console.log('[Dashboard] Rendering - Is new user:', isNewUserStatus);
   console.log('[Dashboard] Rendering - Loading states:', loading);
 
@@ -371,6 +453,11 @@ const DashboardScreen = () => {
       source={backgroundImageSource}
       style={styles.wallpaper}
       resizeMode="cover"
+      onError={(error) => {
+        console.error('[Dashboard] Background image loading error:', error);
+        console.log('[Dashboard] Failed to load background URL:', profile?.background);
+      }}
+      defaultSource={require('../../assets/images/MegaTron.jpg')}
     >
       <ScrollView
         ref={scrollViewRef}
@@ -409,10 +496,23 @@ const DashboardScreen = () => {
         {/* Welcome Header with Avatar */}
         <View style={styles.welcomeContainer}>
           <View style={styles.welcomeTextContainer}>
-            <Text style={styles.welcomeTitleText}>Welcome back,</Text>
-            <Text style={styles.userNameText}>{profile?.full_name || profile?.username || 'User'}</Text>
+            <Text style={styles.welcomeTitleText}>{isNewUserStatus ? 'Welcome,' : 'Welcome back,'}</Text>
+            <Text style={styles.userNameText}>
+              {(() => {
+                const displayName = profile?.full_name || profile?.username || 'Friend';
+                console.log('[DashboardScreen] Display name logic:');
+                console.log('  - profile?.full_name:', profile?.full_name);
+                console.log('  - profile?.username:', profile?.username);
+                console.log('  - Final display name:', displayName);
+                console.log('  - Is new user:', isNewUserStatus);
+                return displayName;
+              })()}
+            </Text>
           </View>
-          <View style={styles.avatarContainer}>
+          <TouchableOpacity 
+            style={styles.avatarContainer}
+            onPress={() => navigation.navigate('Profile')}
+          >
             <Image
               source={
                 profile?.avatar_url
@@ -422,48 +522,119 @@ const DashboardScreen = () => {
               style={styles.avatar}
               contentFit="cover"
             />
-          </View>
+          </TouchableOpacity>
         </View>
 
-        {/* New User Events Section or Wallet */}
-        {isNewUserStatus ? (
-          <View style={styles.eventsSection}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.carouselTitle}>Discover Community Events</Text>
-              <TouchableOpacity onPress={() => navigation.navigate('Social', { screen: 'Events' })}>
-                <Text style={styles.viewAllText}>See All</Text>
+        {/* Community Events Section - Show for ALL users */}
+        <View style={styles.eventsSection}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.carouselTitle}>Community Events</Text>
+            <TouchableOpacity onPress={() => navigation.navigate('Social', { screen: 'Events' })}>
+              <Text style={styles.viewAllText}>See All</Text>
+            </TouchableOpacity>
+          </View>
+          {loading.events ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="small" color="#3A76F0" />
+            </View>
+          ) : events.length > 0 ? (
+            <FlatList
+              data={events}
+              horizontal={true}
+              showsHorizontalScrollIndicator={false}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <TouchableOpacity 
+                  style={{ width: 320, height: 140, marginRight: 8 }}
+                  onPress={() => navigation.navigate('EventDetail', { eventId: item.id })}
+                >
+                  <EventCard
+                    event={item}
+                    onPress={() => navigation.navigate('EventDetail', { eventId: item.id })}
+                    listView={true}
+                  />
+                </TouchableOpacity>
+              )}
+              contentContainerStyle={{ paddingLeft: 16, paddingRight: 16 }}
+            />
+          ) : (
+            <View style={styles.emptyStateContainer}>
+              <Ionicons name="calendar-outline" size={48} color="#007AFF" style={{ marginBottom: 12 }} />
+              <Text style={styles.emptyStateText}>No Upcoming Events</Text>
+              <Text style={[styles.emptyStateText, { fontSize: 14, color: '#666', marginTop: 4 }]}>Check back later for community events</Text>
+            </View>
+          )}
+        </View>
+
+        {/* Upcoming Appointments - Show for ALL users */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.carouselTitle}>Upcoming Appointments</Text>
+          <TouchableOpacity onPress={() => navigation.navigate('Wallet', { screen: 'BookingsScreen' })}>
+            <Text style={styles.viewAllText}>View All</Text>
+          </TouchableOpacity>
+        </View>
+        
+        {loading.bookings ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="small" color="#3A76F0" />
+          </View>
+        ) : upcomingBookings.length > 0 ? (
+          <FlatList
+            data={upcomingBookings}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyExtractor={item => item.booking_id}
+            contentContainerStyle={styles.carouselList}
+            renderItem={({ item }) => {
+              const dateObj = new Date(item.scheduled_at);
+              const dateStr = dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+              const timeStr = dateObj.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+              return (
+                <TouchableOpacity 
+                  style={styles.appointmentCard}
+                  onPress={() => navigation.navigate('Wallet', { screen: 'BookingDetailScreen', params: { bookingId: item.booking_id } })}
+                  activeOpacity={0.85}
+                >
+                  <View style={styles.appointmentCardContent}>
+                    <View style={styles.appointmentCardLeft}>
+                      <Text style={styles.appointmentCardDate}>{dateStr}</Text>
+                      <Text style={styles.appointmentCardTime}>{timeStr}</Text>
+                    </View>
+                    <View style={styles.appointmentCardRight}>
+                      <Text style={styles.appointmentCardService} numberOfLines={1}>{item.service_title}</Text>
+                      <Text style={styles.appointmentCardProvider} numberOfLines={1}>{item.user_full_name || item.service_provider || 'Provider'}</Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            }}
+          />
+        ) : (
+          <View style={[styles.emptyStateContainer, styles.compactEmptyState, isNewUserStatus && { backgroundColor: '#1a1a1a' }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                <Ionicons name="calendar-outline" size={32} color={isNewUserStatus ? "#4A90E2" : "#007AFF"} style={{ marginRight: 12 }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.emptyStateText, { marginBottom: 2, fontSize: 15, color: isNewUserStatus ? '#FFFFFF' : '#333' }]}>
+                    {isNewUserStatus ? 'Start Your Journey!' : 'No Appointments'}
+                  </Text>
+                  <Text style={[styles.emptyStateText, { fontSize: 12, color: isNewUserStatus ? '#B0B0B0' : '#666', marginTop: 0 }]}>
+                    {isNewUserStatus ? 'Book your first service' : 'Book a service'}
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity 
+                style={[styles.emptyStateButton, { backgroundColor: isNewUserStatus ? '#4A90E2' : '#007AFF', paddingHorizontal: 16, paddingVertical: 8, marginLeft: 12 }]}
+                onPress={() => navigation.navigate('Explore', { screen: 'ProviderDiscovery' })}
+              >
+                <Text style={[styles.emptyStateButtonText, { fontSize: 14, fontWeight: '600' }]}>Browse</Text>
               </TouchableOpacity>
             </View>
-            {loading.events ? (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="small" color="#3A76F0" />
-              </View>
-            ) : events.length > 0 ? (
-              <FlatList
-                data={events}
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                keyExtractor={item => item.id}
-                contentContainerStyle={styles.eventsCarousel}
-                renderItem={({ item }) => (
-                  <View style={{ marginRight: 12 }}>
-                    <EventCard
-                      event={item}
-                      onPress={() => navigation.navigate('EventDetail', { eventId: item.id })}
-                      listView={false}
-                    />
-                  </View>
-                )}
-              />
-            ) : (
-              <View style={styles.emptyStateContainer}>
-                <Ionicons name="calendar-outline" size={48} color="#007AFF" style={{ marginBottom: 12 }} />
-                <Text style={styles.emptyStateText}>No Upcoming Events</Text>
-                <Text style={[styles.emptyStateText, { fontSize: 14, color: '#666', marginTop: 4 }]}>Check back later for community events</Text>
-              </View>
-            )}
           </View>
-        ) : (
+        )}
+
+        {/* Wallet Section - Show only for existing users */}
+        {!isNewUserStatus && (
         <View style={styles.financialGroup}>
           {/* Wallet Card */}
           {loading.wallet ? (
@@ -571,168 +742,72 @@ const DashboardScreen = () => {
           </TouchableOpacity>
         </View>
         )}
-        
-        {/* Upcoming Appointments Carousel */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.carouselTitle}>Upcoming Appointments</Text>
-          <TouchableOpacity onPress={() => navigation.navigate('Wallet', { screen: 'BookingsScreen' })}>
-            <Text style={styles.viewAllText}>View All</Text>
-          </TouchableOpacity>
-        </View>
-        
-        {loading.bookings ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="small" color="#3A76F0" />
-          </View>
-        ) : upcomingBookings.length > 0 ? (
-          <FlatList
-            data={upcomingBookings}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            keyExtractor={item => item.booking_id}
-            contentContainerStyle={styles.carouselList}
-            renderItem={({ item }) => {
-              // Format date and time from item.scheduled_at
-              const dateObj = new Date(item.scheduled_at);
-              const dateStr = dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-              const timeStr = dateObj.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-              return (
-                <TouchableOpacity 
-                  style={styles.appointmentCard}
-                  onPress={() => navigation.navigate('Wallet', { screen: 'BookingDetailScreen', params: { bookingId: item.booking_id } })}
-                  activeOpacity={0.85}
-                >
-                  <View style={styles.appointmentCardContent}>
-                    <View style={styles.appointmentCardLeft}>
-                      <Text style={styles.appointmentCardDate}>{dateStr}</Text>
-                      <Text style={styles.appointmentCardTime}>{timeStr}</Text>
-                    </View>
-                    <View style={styles.appointmentCardRight}>
-                      <Text style={styles.appointmentCardService} numberOfLines={1}>{item.service_title}</Text>
-                      <Text style={styles.appointmentCardProvider} numberOfLines={1}>{item.user_full_name || item.service_provider || 'Provider'}</Text>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              );
-            }}
-          />
-        ) : (
-          <View style={styles.emptyStateContainer}>
-            <Ionicons name="calendar-outline" size={48} color="#007AFF" style={{ marginBottom: 12 }} />
-            <Text style={styles.emptyStateText}>Book Services Now!</Text>
-            <Text style={[styles.emptyStateText, { fontSize: 14, color: '#666', marginTop: 4 }]}>Find support that fits your needs</Text>
-            <TouchableOpacity 
-              style={[styles.emptyStateButton, { backgroundColor: '#007AFF', paddingHorizontal: 24, paddingVertical: 12 }]}
-              onPress={() => navigation.navigate('Explore', { screen: 'ProviderDiscovery' })}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Text style={[styles.emptyStateButtonText, { fontSize: 16, fontWeight: '600' }]}>Book Now</Text>
-                <Ionicons name="arrow-forward" size={18} color="white" style={{ marginLeft: 6 }} />
-              </View>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* Community Events Section - for existing users */}
-        {!isNewUserStatus && (
-          <View style={styles.eventsSection}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.carouselTitle}>Community Events</Text>
-              <TouchableOpacity onPress={() => navigation.navigate('Social', { screen: 'Events' })}>
-                <Text style={styles.viewAllText}>See All</Text>
-              </TouchableOpacity>
-            </View>
-            {loading.events ? (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="small" color="#3A76F0" />
-              </View>
-            ) : events.length > 0 ? (
-              <FlatList
-                data={events}
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                keyExtractor={item => item.id}
-                contentContainerStyle={styles.eventsCarousel}
-                renderItem={({ item }) => (
-                  <View style={{ marginRight: 12 }}>
-                    <EventCard
-                      event={item}
-                      onPress={() => navigation.navigate('EventDetail', { eventId: item.id })}
-                      listView={false}
-                    />
-                  </View>
-                )}
-              />
-            ) : (
-              <View style={styles.emptyStateContainer}>
-                <Ionicons name="calendar-outline" size={48} color="#007AFF" style={{ marginBottom: 12 }} />
-                <Text style={styles.emptyStateText}>No Upcoming Events</Text>
-                <Text style={[styles.emptyStateText, { fontSize: 14, color: '#666', marginTop: 4 }]}>Check back later for community events</Text>
-              </View>
-            )}
-          </View>
-        )}
 
         {/* Recommended Services */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.carouselTitle}>Recommended for You</Text>
-          <TouchableOpacity onPress={() => navigation.navigate('Explore', { screen: 'ProviderDiscovery' })}>
-            <Text style={styles.viewAllText}>See More</Text>
-          </TouchableOpacity>
-        </View>
-        
-        {loading.recommendations ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="small" color="#3A76F0" />
-          </View>
-        ) : recommendations.length > 0 ? (
-          <FlatList
-            data={recommendations}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            keyExtractor={item => item.id}
-            contentContainerStyle={styles.recommendationsList}
-            renderItem={({ item }) => (
-              <View style={styles.recommendationCard}>
-                <ServiceCard
-                  item={item}
-                  onPress={() => navigation.navigate('Explore', { screen: 'ServiceDetail', params: { serviceId: item.id } })}
-                  isFavorited={false}
-                  onToggleFavorite={() => {}}
-                  displayAs="grid"
-                />
-              </View>
-            )}
-          />
-        ) : (
-          <View style={styles.emptyStateContainer}>
-            <Ionicons name="sparkles" size={48} color="#CCC" style={{ marginBottom: 12 }} />
-            <Text style={styles.emptyStateText}>No services available</Text>
-            <Text style={[styles.emptyStateText, { fontSize: 14, color: '#888', marginTop: 4 }]}>Check back later for new services</Text>
-            <TouchableOpacity 
-              style={styles.emptyStateButton}
-              onPress={() => navigation.navigate('Explore', { screen: 'ProviderDiscovery' })}
-            >
-              <Text style={styles.emptyStateButtonText}>Browse All Services</Text>
+        <View style={styles.servicesSection}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.carouselTitle}>Recommended for You</Text>
+            <TouchableOpacity onPress={() => navigation.navigate('Explore', { screen: 'ProviderDiscovery' })}>
+              <Text style={styles.viewAllText}>See More</Text>
             </TouchableOpacity>
           </View>
-        )}
+          
+          {loading.recommendations ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="small" color="#3A76F0" />
+            </View>
+          ) : recommendations.length > 0 ? (
+            <FlatList
+              data={recommendations}
+              horizontal={true}
+              showsHorizontalScrollIndicator={false}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <TouchableOpacity 
+                  style={{ width: 320, height: 152, marginRight: 8 }}
+                  onPress={() => navigation.navigate('Explore', { screen: 'ServiceDetail', params: { serviceId: item.id } })}
+                >
+                  <ServiceCard
+                    item={item}
+                    onPress={() => navigation.navigate('Explore', { screen: 'ServiceDetail', params: { serviceId: item.id } })}
+                    isFavorited={false}
+                    onToggleFavorite={() => {}}
+                    displayAs="list"
+                  />
+                </TouchableOpacity>
+              )}
+              contentContainerStyle={{ paddingLeft: 16, paddingRight: 16 }}
+            />
+          ) : (
+            <View style={styles.emptyStateContainer}>
+              <Ionicons name="sparkles" size={48} color="#CCC" style={{ marginBottom: 12 }} />
+              <Text style={styles.emptyStateText}>No services available</Text>
+              <Text style={[styles.emptyStateText, { fontSize: 14, color: '#888', marginTop: 4 }]}>Check back later for new services</Text>
+              <TouchableOpacity 
+                style={styles.emptyStateButton}
+                onPress={() => navigation.navigate('Explore', { screen: 'ProviderDiscovery' })}
+              >
+                <Text style={styles.emptyStateButtonText}>Browse All Services</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
 
         {/* Action Buttons Row */}
         <View style={styles.actionRow}>
           <TouchableOpacity 
-            style={styles.actionCard}
+            style={[styles.actionCard, { backgroundColor: '#1a1a1a' }]}
             onPress={() => navigation.navigate('Wallet', { screen: 'BookingHistoryScreen' })}
           >
-            <AntDesign name="clockcircleo" size={22} color={'#007AFF'} style={styles.actionCardIcon} />
-            <Text style={styles.actionCardText}>Booking History</Text>
+            <AntDesign name="clockcircleo" size={22} color={'#4A90E2'} style={styles.actionCardIcon} />
+            <Text style={[styles.actionCardText, { color: '#FFFFFF' }]}>Booking History</Text>
           </TouchableOpacity>
           <TouchableOpacity 
-            style={styles.actionCard}
+            style={[styles.actionCard, { backgroundColor: '#1a1a1a' }]}
             onPress={() => navigation.navigate('Explore', { screen: 'ProviderDiscovery' })}
           >
-            <MaterialIcons name="search" size={24} color={'#007AFF'} style={styles.actionCardIcon} />
-            <Text style={styles.actionCardText}>Explore Services</Text>
+            <MaterialIcons name="search" size={24} color={'#4A90E2'} style={styles.actionCardIcon} />
+            <Text style={[styles.actionCardText, { color: '#FFFFFF' }]}>Explore Services</Text>
           </TouchableOpacity>
         </View>
         
@@ -764,6 +839,7 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
     height: '100%',
+    backgroundColor: '#f5f5f5', // Fallback color in case image doesn't load
   },
   switchButton: {
     backgroundColor: COLORS.primary,
@@ -826,6 +902,12 @@ const styles = StyleSheet.create({
     paddingVertical: 24,
     paddingHorizontal: 20,
   },
+  compactEmptyState: {
+    minHeight: 70,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginBottom: 12,
+  },
   emptyStateText: {
     color: '#333',
     marginBottom: 8,
@@ -844,20 +926,28 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 15,
   },
-  recommendationsList: {
-    paddingHorizontal: 16,
-    paddingBottom: 16,
+  dotsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 12,
   },
-  recommendationCard: {
-    width: 280,
-    marginRight: 12,
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#E0E0E0',
+    marginHorizontal: 4,
+  },
+  activeDot: {
+    backgroundColor: '#3A76F0',
+    width: 20,
   },
   eventsSection: {
     marginBottom: 24,
   },
-  eventsCarousel: {
-    paddingHorizontal: 16,
-    paddingBottom: 16,
+  servicesSection: {
+    marginBottom: 24,
   },
   errorText: {
     color: '#666',
@@ -890,8 +980,8 @@ const styles = StyleSheet.create({
   appointmentCardContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 28,
-    paddingHorizontal: 18,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     width: '100%',
   },
   appointmentCardLeft: {
@@ -900,14 +990,14 @@ const styles = StyleSheet.create({
     minWidth: 70,
   },
   appointmentCardDate: {
-    fontSize: 22,
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: '600',
     color: '#3B4A6B',
-    marginBottom: 2,
+    marginBottom: 0,
     letterSpacing: 0.2,
   },
   appointmentCardTime: {
-    fontSize: 15,
+    fontSize: 12,
     fontWeight: '500',
     color: '#7B8BB2',
   },
@@ -918,13 +1008,13 @@ const styles = StyleSheet.create({
     paddingLeft: 6,
   },
   appointmentCardService: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
     color: '#28324B',
-    marginBottom: 3,
+    marginBottom: 1,
   },
   appointmentCardProvider: {
-    fontSize: 13,
+    fontSize: 11,
     color: '#9CA6B8',
     fontWeight: '400',
   },

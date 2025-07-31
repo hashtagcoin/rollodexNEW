@@ -247,6 +247,17 @@ class ImagePreloadService {
       }
     }
   }
+
+  /**
+   * Clear all cached data - call this on logout or user change
+   */
+  clearAllCaches() {
+    console.log('[ImagePreload] Clearing all caches');
+    this.preloadedCategories.clear();
+    this.preloadingInProgress.clear();
+    this.imageCache.clear();
+    this.failedUrls.clear();
+  }
 }
 
 // Export singleton instance

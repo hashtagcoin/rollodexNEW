@@ -17,6 +17,7 @@ const SwipeCardDeck = ({
   containerStyle,
   cardStyle,
   emptyView,
+  onSwiperRef,
 }) => {
   const swipedCardIdsRef = useRef(new Set());
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -27,6 +28,13 @@ const SwipeCardDeck = ({
     setCurrentIndex(0);
     swipedCardIdsRef.current = new Set();
   }, [data]);
+
+  // Expose swiper ref to parent
+  useEffect(() => {
+    if (onSwiperRef && swiperRef.current) {
+      onSwiperRef(swiperRef.current);
+    }
+  }, [onSwiperRef]);
 
   // Handle when no cards are available
   if (!data || data.length === 0) {
@@ -147,6 +155,7 @@ SwipeCardDeck.propTypes = {
   onSwipeRight: PropTypes.func,
   infinite: PropTypes.bool,
   stackSize: PropTypes.number,
+  onSwiperRef: PropTypes.func,
   containerStyle: PropTypes.object,
   cardStyle: PropTypes.object,
   emptyView: PropTypes.element,

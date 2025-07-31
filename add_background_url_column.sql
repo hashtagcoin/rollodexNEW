@@ -1,0 +1,2 @@
+-- The background column already exists in user_profiles table
+-- This file is kept for reference but no action needed

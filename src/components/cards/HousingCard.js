@@ -2,6 +2,7 @@ import React, { memo, useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'; 
 import { Image } from 'expo-image';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getValidImageUrl, getOptimizedImageUrl } from '../../utils/imageHelper';
 import { COLORS, SIZES } from '../../constants/theme';
@@ -38,6 +39,11 @@ const styles = StyleSheet.create({
   },
   gridContent: {
     padding: 12,
+    flex: 1,
+    justifyContent: 'space-between',
+  },
+  gridContentTop: {
+    flex: 1,
   },
   gridTitle: {
     fontSize: 14,
@@ -53,7 +59,6 @@ const styles = StyleSheet.create({
   gridDetailsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
   },
   gridDetailItem: {
     flexDirection: 'row',
@@ -69,6 +74,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: COLORS.primary,
+  },
+  gridPriceBottom: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#000',
+    textAlign: 'right',
+    marginTop: 8,
   },
   
   // List styles
@@ -127,13 +139,13 @@ const styles = StyleSheet.create({
   },
   listPriceRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
     alignItems: 'center',
   },
   listPrice: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: COLORS.primary,
+    color: '#000',
   },
   
   // Common styles
@@ -148,6 +160,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     elevation: 2,
+  },
+  listFavoriteButton: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 2,
+    zIndex: 1,
   },
   groupBadge: {
     position: 'absolute',
@@ -300,19 +325,21 @@ const HousingCard = memo(({
             </TouchableOpacity>
           </View>
           <View style={styles.gridContent}>
-            <Text style={styles.gridTitle} numberOfLines={1}>{title}</Text>
-            <Text style={styles.gridLocation} numberOfLines={1}>{suburb}</Text>
-            <View style={styles.gridDetailsRow}>
-              <View style={styles.gridDetailItem}>
-                <Ionicons name="bed-outline" size={14} color="#666" />
-                <Text style={styles.gridDetailText}>{bedrooms}</Text>
-              </View>
-              <View style={styles.gridDetailItem}>
-                <Ionicons name="water-outline" size={14} color="#666" />
-                <Text style={styles.gridDetailText}>{bathrooms}</Text>
+            <View style={styles.gridContentTop}>
+              <Text style={styles.gridTitle} numberOfLines={1}>{title}</Text>
+              <Text style={styles.gridLocation} numberOfLines={1}>{suburb}</Text>
+              <View style={styles.gridDetailsRow}>
+                <View style={styles.gridDetailItem}>
+                  <Ionicons name="bed-outline" size={14} color="#666" />
+                  <Text style={styles.gridDetailText}>{bedrooms}</Text>
+                </View>
+                <View style={styles.gridDetailItem}>
+                  <MaterialCommunityIcons name="shower" size={14} color="#666" />
+                  <Text style={styles.gridDetailText}>{bathrooms}</Text>
+                </View>
               </View>
             </View>
-            <Text style={styles.gridPrice}>{price}</Text>
+            <Text style={styles.gridPriceBottom}>{price}</Text>
           </View>
         </TouchableOpacity>
       </View>
@@ -342,6 +369,17 @@ const HousingCard = memo(({
                 <Text style={styles.groupBadgeText}>Match</Text>
               </View>
             )}
+            <TouchableOpacity 
+              style={styles.listFavoriteButton}
+              onPress={onToggleFavorite}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons 
+                name={isFavorited ? "heart" : "heart-outline"} 
+                size={20} 
+                color={isFavorited ? "red" : "#666"} 
+              />
+            </TouchableOpacity>
           </View>
           <View style={styles.listContent}>
             <View>
@@ -353,23 +391,13 @@ const HousingCard = memo(({
                   <Text style={styles.listDetailText}>{bedrooms} bed</Text>
                 </View>
                 <View style={styles.listDetailItem}>
-                  <Ionicons name="water-outline" size={14} color="#666" />
+                  <MaterialCommunityIcons name="shower" size={14} color="#666" />
                   <Text style={styles.listDetailText}>{bathrooms} bath</Text>
                 </View>
               </View>
             </View>
             <View style={styles.listPriceRow}>
               <Text style={styles.listPrice}>{price}</Text>
-              <TouchableOpacity 
-                onPress={onToggleFavorite}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <Ionicons 
-                  name={isFavorited ? "heart" : "heart-outline"} 
-                  size={20} 
-                  color={isFavorited ? "red" : "#666"} 
-                />
-              </TouchableOpacity>
             </View>
           </View>
         </View>

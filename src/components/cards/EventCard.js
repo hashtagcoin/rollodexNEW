@@ -152,12 +152,12 @@ const EventCard = ({ event, onPress, listView = true, testID, onFavoriteUpdate }
   if (listView) {
     return (
       <TouchableOpacity 
-        style={CardStyles.listCardContainer}
+        style={[CardStyles.listCardContainer, {backgroundColor: '#FFF8E7'}]}
         onPress={onPress ? () => onPress(event) : undefined}
         activeOpacity={0.8}
         testID={testID}
       >
-        <View style={CardStyles.listCardInner}>
+        <View style={[CardStyles.listCardInner, {height: 140, backgroundColor: '#FFF8E7'}]}>
           <View style={CardStyles.listImageContainer}>
             {!imageLoaded && <View style={CardStyles.loaderContainer} />}
             <Image
@@ -178,30 +178,20 @@ const EventCard = ({ event, onPress, listView = true, testID, onFavoriteUpdate }
             )}
           </View>
           
-          {/* Action buttons row */}
-          <View style={styles.actionRow}>
-            <TouchableOpacity 
-              style={styles.actionButton} 
-              onPress={toggleFavorite}
-              testID={`favorite-button-${event.id}`}
-            >
-              <View style={isFavorited ? CardStyles.iconCircleActive : CardStyles.iconCircle}>
-                <Ionicons 
-                  name={isFavorited ? "heart" : "heart-outline"} 
-                  size={16} 
-                  style={isFavorited ? CardStyles.favoriteIconActive : CardStyles.favoriteIcon} 
-                />
-              </View>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.actionButton} 
-              onPress={handleShare}
-              testID={`share-button-${event.id}`}
-            >
-              <Feather name="share-2" size={18} color={COLORS.darkGray} />
-            </TouchableOpacity>
-          </View>
+          {/* Favorite button - moved to top right */}
+          <TouchableOpacity 
+            style={styles.favoriteButton}
+            onPress={toggleFavorite}
+            testID={`favorite-button-${event.id}`}
+          >
+            <View style={isFavorited ? CardStyles.iconCircleActive : CardStyles.iconCircle}>
+              <Ionicons 
+                name={isFavorited ? "heart" : "heart-outline"} 
+                size={18} 
+                style={isFavorited ? CardStyles.favoriteIconActive : CardStyles.favoriteIcon} 
+              />
+            </View>
+          </TouchableOpacity>
           
           {/* Event details */}
           <View style={styles.contentList}>
@@ -246,7 +236,7 @@ const EventCard = ({ event, onPress, listView = true, testID, onFavoriteUpdate }
           activeOpacity={0.8}
           testID={testID}
         >
-          <View style={CardStyles.gridCardInner}>
+          <View style={[CardStyles.gridCardInner, {height: 286}]}>
             <View style={CardStyles.gridImageContainer}>
               {!imageLoaded && <View style={CardStyles.loaderContainer} />}
               <Image
@@ -267,12 +257,12 @@ const EventCard = ({ event, onPress, listView = true, testID, onFavoriteUpdate }
               )}
             </View>
             
-            <View style={{padding: 8, paddingBottom: 32}}>
+            <View style={{padding: 12}}>
               <View style={styles.categoryContainer}>
                 <Feather name={getCategoryIcon(event.category)} size={14} color={COLORS.black} />
                 <Text style={styles.category}>{event.category || 'Event'}</Text>
               </View>
-              <Text style={[CardStyles.title, {marginBottom:4}]} numberOfLines={2}>{event.title}</Text>
+              <Text style={[CardStyles.title, {marginBottom:6}]} numberOfLines={2}>{event.title}</Text>
               <View style={styles.dateContainer}>
                 <Feather name="clock" size={13} color={COLORS.black} />
                 <Text style={styles.date}>{formatEventDate(event.start_time)}</Text>
@@ -294,34 +284,34 @@ const styles = StyleSheet.create({
   categoryContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   title: {
-    fontSize: 16,
+    fontSize: 15,
     fontFamily: FONTS.semiBold,
     color: COLORS.black,
-    marginBottom: 8,
+    marginBottom: 4,
   },
   dateContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   date: {
-    fontSize: 12,
+    fontSize: 11,
     color: COLORS.black,
-    marginLeft: 6,
+    marginLeft: 4,
     fontFamily: FONTS.regular,
   },
   locationContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 3,
   },
   location: {
-    fontSize: 12,
+    fontSize: 11,
     color: COLORS.black,
-    marginLeft: 6,
+    marginLeft: 4,
     fontFamily: FONTS.regular,
   },
   participantsContainer: {
@@ -329,27 +319,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   participants: {
-    fontSize: 12,
+    fontSize: 11,
     color: COLORS.black,
-    marginLeft: 6,
+    marginLeft: 4,
     fontFamily: FONTS.regular,
   },
   category: {
-    fontSize: 14,
+    fontSize: 12,
     color: COLORS.black,
     marginLeft: 4,
     fontFamily: FONTS.medium,
-  },
-  
-  // Action buttons
-  actionRow: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    flexDirection: 'row',
-  },
-  actionButton: {
-    marginHorizontal: 2,
   },
   
   // Joined indicator
@@ -372,8 +351,17 @@ const styles = StyleSheet.create({
   },
   contentList: {
     flex: 1,
-    padding: 12,
+    paddingTop: 4,
+    paddingRight: 8,
+    paddingBottom: 8,
+    paddingLeft: 8,
     justifyContent: 'space-between',
+  },
+  favoriteButton: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    zIndex: 2,
   },
 });
 

@@ -158,10 +158,21 @@ const SocialFeedScreen = () => {
       } else {
         // Fetch immediately if no fresh cache
         InteractionManager.runAfterInteractions(() => {
-          fetchPosts();
+          // Add timeout to prevent infinite loading
+          const fetchTimeout = setTimeout(() => {
+            if (loading && isMounted.current) {
+              console.log('[SocialFeed] Fetch timeout - resetting loading state');
+              updateUIState({ loading: false });
+              setPosts([]);
+            }
+          }, 10000); // 10 second timeout
+          
+          fetchPosts().finally(() => {
+            clearTimeout(fetchTimeout);
+          });
         });
       }
-    }, [])
+    }, [loading, fetchPosts, updateUIState])
   );
 
   // Optimized fetch with better error handling and caching
@@ -186,6 +197,14 @@ const SocialFeedScreen = () => {
         updateUIState({ refreshing: true });
       }
       
+      // Check if user is authenticated first
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.log('[SocialFeed] No authenticated user');
+        setPosts([]);
+        return;
+      }
+      
       // Optimized query with only needed fields
       const { data, error } = await supabase
         .from('posts')
@@ -201,7 +220,13 @@ const SocialFeedScreen = () => {
       
       if (!isMounted.current || fetchId !== fetchCounterRef.current) return;
       
-      if (error) throw error;
+      if (error) {
+        console.error('[SocialFeed] Query error:', error);
+        // Set empty posts on error to prevent infinite loading
+        setPosts([]);
+        cacheRef.current = [];
+        return;
+      }
       
       const newPosts = data || [];
       
@@ -218,12 +243,18 @@ const SocialFeedScreen = () => {
           .map(p => getOptimizedImageUrl(p.media_urls[0], 400, 70));
         
         // Batch prefetch images
-        Promise.all(imagesToPrefetch.map(url => Image.prefetch(url)));
+        Promise.all(imagesToPrefetch.map(url => Image.prefetch(url))).catch(err => {
+          console.log('[SocialFeed] Image prefetch error:', err);
+        });
       }
       
     } catch (error) {
       console.error('[SocialFeed] Error fetching posts:', error);
+      // Set empty posts on error to prevent infinite loading
+      setPosts([]);
+      cacheRef.current = [];
     } finally {
+      // Always reset loading states
       if (isMounted.current) {
         updateUIState({
           loading: false,

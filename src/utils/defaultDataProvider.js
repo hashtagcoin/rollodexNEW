@@ -185,13 +185,36 @@ export const defaultDataProvider = {
 
 // Utility function to check if user is new (for determining when to show defaults)
 export const isNewUser = (profile) => {
-  if (!profile) return true;
+  if (!profile) {
+    console.log('[isNewUser] No profile provided, returning true');
+    return true;
+  }
   
-  // Check if profile was created within the last 7 days
-  const profileCreatedAt = new Date(profile.created_at);
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  console.log('[isNewUser] Checking profile:', {
+    created_at: profile.created_at,
+    ndis_number: profile.ndis_number,
+    username: profile.username,
+    full_name: profile.full_name
+  });
   
-  return profileCreatedAt > sevenDaysAgo;
+  // Multiple checks for new user:
+  // 1. No NDIS number (most reliable indicator)
+  // 2. No full_name set (might be just username from signup)
+  // 3. Profile is very minimal (no bio, no preferences, etc)
+  const hasNoNDIS = !profile.ndis_number || profile.ndis_number === '';
+  const hasNoBio = !profile.bio || profile.bio === '';
+  const hasNoPreferences = (!profile.preferred_categories || profile.preferred_categories.length === 0) &&
+                           (!profile.preferred_service_formats || profile.preferred_service_formats.length === 0);
+  
+  console.log('[isNewUser] Has no NDIS?', hasNoNDIS);
+  console.log('[isNewUser] Has no bio?', hasNoBio);
+  console.log('[isNewUser] Has no preferences?', hasNoPreferences);
+  
+  // User is new if they have no NDIS and haven't filled out their profile
+  const isNew = hasNoNDIS && (hasNoBio || hasNoPreferences);
+  console.log('[isNewUser] Result:', isNew);
+  
+  return isNew;
 };
 
 // Shuffle array utility for randomizing default content

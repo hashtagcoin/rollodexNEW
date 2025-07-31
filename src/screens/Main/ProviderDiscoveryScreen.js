@@ -17,6 +17,8 @@ import ServiceCard from '../../components/cards/ServiceCard';
 import HousingCard from '../../components/cards/HousingCard';
 import AppHeader from '../../components/layout/AppHeader';
 import SearchComponent from '../../components/common/SearchComponent';
+import SwipeCardDeck from '../../components/common/SwipeCardDeck';
+import SwipeCard from '../../components/common/SwipeCard';
 import { 
   COLORS, 
   SIZES, 
@@ -37,8 +39,7 @@ import useHousingImageCache from '../../hooks/useHousingImageCache';
 const { width, height } = Dimensions.get('window');
 
 // Constants
-const CATEGORIES = ['Therapy', 'Housing', 'Support', 'Transport', 'Tech', 'Personal', 'Social'];
-const VIEW_MODES = ['Grid', 'List', 'Swipe'];
+const CATEGORIES = ['All', 'Therapy', 'Housing', 'Support', 'Transport', 'Tech', 'Personal', 'Social'];
 const PAGE_SIZE = 20;
 
 // Pre-warm the image cache
@@ -46,45 +47,19 @@ Image.prefetch([
   'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=400&h=300&fit=crop'
 ]);
 
-// Memoized category tab component
-const CategoryTab = memo(({ item, isSelected, onPress }) => (
-  <TouchableOpacity
-    style={[
-      styles.categoryTab,
-      isSelected && styles.activeCategoryTab
-    ]}
-    onPress={() => onPress(item)}
-  >
-    <Text style={[
-      styles.categoryText,
-      isSelected && styles.activeCategoryText
-    ]}>
-      {item}
-    </Text>
-  </TouchableOpacity>
-));
 
 const ProviderDiscoveryScreen = ({ route }) => {  
   const initialParams = route?.params || {};
   const navigation = useNavigation();
   
-  // Consolidated state management to reduce re-renders
-  const [uiState, setUIState] = useState({
-    selectedCategory: CATEGORIES[0],
-    viewMode: VIEW_MODES[0],
-    searchTerm: '',
-    loading: true,
-    refreshing: false,
-    loadingMore: false
-  });
-  
-  // Destructure for easier access
-  const { selectedCategory, viewMode, searchTerm, loading, refreshing, loadingMore } = uiState;
-  
-  // Helper to update UI state
-  const updateUIState = useCallback((updates) => {
-    setUIState(prev => ({ ...prev, ...updates }));
-  }, []);
+  // State management - matching FavouritesScreen pattern
+  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [viewMode, setViewMode] = useState('Grid');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortConfig, setSortConfig] = useState({ field: 'created_at', direction: 'desc' });
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   
   // Data cache - persists across category changes
   const dataCache = useRef({});
@@ -102,6 +77,14 @@ const ProviderDiscoveryScreen = ({ route }) => {
   const flatListRef = useRef(null);
   const isMounted = useRef(true);
   const fetchController = useRef(null);
+  const swiperRef = useRef(null);
+  
+  // Store previous view state for back navigation from swipe view
+  const [previousViewState, setPreviousViewState] = useState({
+    viewMode: 'Grid',
+    scrollPosition: 0,
+    category: 'Services'
+  });
   
   // Housing image cache hook
   const { preloadHousingItems, cacheStats } = useHousingImageCache();
@@ -137,7 +120,7 @@ const ProviderDiscoveryScreen = ({ route }) => {
       setCurrentFavorites(favoritesCache.current[category]);
       setCurrentPage(pageCache.current[category]);
       setHasMore(hasMoreCache.current[category]);
-      updateUIState({ loading: false });
+      setLoading(false);
       return;
     }
     
@@ -150,7 +133,7 @@ const ProviderDiscoveryScreen = ({ route }) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        updateUIState({ loading: false });
+        setLoading(false);
         return;
       }
 
@@ -239,18 +222,21 @@ const ProviderDiscoveryScreen = ({ route }) => {
       }
     } finally {
       if (isMounted.current) {
-        updateUIState({ 
-          loading: false,
-          refreshing: false,
-          loadingMore: false
-        });
+        setLoading(false);
+        setRefreshing(false);
+        setLoadingMore(false);
       }
     }
-  }, [selectedCategory, searchTerm, updateUIState, preloadHousingItems]);
+  }, [selectedCategory, searchTerm, preloadHousingItems]);
 
   // Handle category change
   useEffect(() => {
     initializeCategoryCache(selectedCategory);
+    
+    // Scroll to top when category changes
+    if (flatListRef.current && viewMode !== 'Swipe') {
+      flatListRef.current.scrollToOffset({ offset: 0, animated: true });
+    }
     
     // Show cached data immediately
     if (dataCache.current[selectedCategory].length > 0) {
@@ -258,11 +244,11 @@ const ProviderDiscoveryScreen = ({ route }) => {
       setCurrentFavorites(favoritesCache.current[selectedCategory]);
       setCurrentPage(pageCache.current[selectedCategory]);
       setHasMore(hasMoreCache.current[selectedCategory]);
-      updateUIState({ loading: false });
+      setLoading(false);
     } else {
       fetchData();
     }
-  }, [selectedCategory]);
+  }, [selectedCategory, viewMode]);
 
   // Optimized toggle favorite
   const toggleFavorite = useCallback(async (item, itemType) => {
@@ -318,16 +304,44 @@ const ProviderDiscoveryScreen = ({ route }) => {
 
   // Refresh handler
   const onRefresh = useCallback(() => {
-    updateUIState({ refreshing: true });
+    setRefreshing(true);
     fetchData(true, 0, false);
-  }, [fetchData, updateUIState]);
+  }, [fetchData]);
 
   // Load more handler
   const handleLoadMore = useCallback(() => {
     if (!hasMore || loadingMore || loading) return;
-    updateUIState({ loadingMore: true });
+    setLoadingMore(true);
     fetchData(false, currentPage + 1, true);
-  }, [hasMore, loadingMore, loading, currentPage, fetchData, updateUIState]);
+  }, [hasMore, loadingMore, loading, currentPage, fetchData]);
+  
+  // Handle view mode change with state preservation
+  const handleViewModeChange = useCallback((newMode) => {
+    if (newMode === 'Swipe' && viewMode !== 'Swipe') {
+      // Store current state before switching to swipe
+      const scrollPosition = flatListRef.current?._listRef?._scrollMetrics?.offset || 0;
+      setPreviousViewState({
+        viewMode: viewMode,
+        scrollPosition: scrollPosition,
+        category: selectedCategory
+      });
+    }
+    setViewMode(newMode);
+  }, [viewMode, selectedCategory]);
+  
+  // Handle back from swipe view
+  const handleBackFromSwipe = useCallback(() => {
+    setViewMode(previousViewState.viewMode);
+    // Restore scroll position after a short delay
+    setTimeout(() => {
+      if (flatListRef.current && previousViewState.scrollPosition > 0) {
+        flatListRef.current.scrollToOffset({ 
+          offset: previousViewState.scrollPosition, 
+          animated: false 
+        });
+      }
+    }, 100);
+  }, [previousViewState]);
 
   // Render item - memoized
   const renderItem = useCallback(({ item }) => {
@@ -384,53 +398,103 @@ const ProviderDiscoveryScreen = ({ route }) => {
 
   return (
     <View style={styles.container}>
-      <AppHeader title="Explore" navigation={navigation} />
-      
-      {/* Category tabs */}
-      <View style={styles.categoryContainer}>
-        <FlatList
-          horizontal
-          data={CATEGORIES}
-          keyExtractor={(item) => item}
-          showsHorizontalScrollIndicator={false}
-          renderItem={({ item }) => (
-            <CategoryTab
-              item={item}
-              isSelected={selectedCategory === item}
-              onPress={(category) => updateUIState({ selectedCategory: category })}
-            />
-          )}
-          extraData={selectedCategory}
+      {viewMode === 'Swipe' ? (
+        <AppHeader 
+          title="Swipe Mode" 
+          navigation={navigation}
+          showBackButton={true}
+          onBackPressOverride={handleBackFromSwipe}
         />
-      </View>
+      ) : (
+        <>
+          <AppHeader title="Explore" navigation={navigation} />
+          
+          <SearchComponent
+            categories={CATEGORIES}
+            selectedCategory={selectedCategory}
+            onCategoryChange={setSelectedCategory}
+            searchTerm={searchTerm}
+            onSearchChange={setSearchTerm}
+            viewMode={viewMode}
+            onViewModeChange={handleViewModeChange}
+            sortConfig={sortConfig}
+            onSortChange={setSortConfig}
+            showSortOptions={true}
+          />
+        </>
+      )}
 
       {/* Main content */}
-      <FlatList
-        ref={flatListRef}
-        data={currentData}
-        renderItem={renderItem}
-        keyExtractor={keyExtractor}
-        numColumns={viewMode === 'Grid' ? 2 : 1}
-        key={viewMode} // Only change key when view mode changes
-        contentContainerStyle={viewMode === 'Grid' ? styles.gridContainer : styles.listContainer}
-        showsVerticalScrollIndicator={false}
-        initialNumToRender={viewMode === 'Grid' ? 8 : 6}
-        maxToRenderPerBatch={viewMode === 'Grid' ? 8 : 6}
-        windowSize={21}
-        removeClippedSubviews={Platform.OS === 'android'}
-        getItemLayout={viewMode !== 'Swipe' ? getItemLayout : undefined}
-        updateCellsBatchingPeriod={50}
-        legacyImplementation={false}
-        maintainVisibleContentPosition={{
-          minIndexForVisible: 0,
-        }}
-        onEndReached={handleLoadMore}
-        onEndReachedThreshold={0.5}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            colors={[COLORS.primary]}
+      {viewMode === 'Swipe' ? (
+        <SwipeCardDeck
+          data={currentData}
+          renderCard={(item) => (
+            <SwipeCard
+              item={item}
+              isHousing={selectedCategory === 'Housing'}
+              onPress={() => handlePress(item)}
+              onLike={() => {
+                // Handle favorite button press - swipe right programmatically
+                if (swiperRef.current) {
+                  swiperRef.current.swipeRight();
+                }
+              }}
+              onDismiss={() => {
+                // Handle skip button press - swipe left programmatically
+                if (swiperRef.current) {
+                  swiperRef.current.swipeLeft();
+                }
+              }}
+            />
+          )}
+          onSwipeLeft={(item) => {
+            // Handle left swipe (pass/dislike)
+            console.log('Swiped left on:', item.title);
+          }}
+          onSwipeRight={(item) => {
+            // Handle right swipe (like/favorite)
+            toggleFavorite(item, selectedCategory === 'Housing' ? 'housing_listing' : 'service_provider');
+            console.log('Swiped right on:', item.title);
+          }}
+          stackSize={3}
+          infinite={false}
+          containerStyle={styles.swipeContainer}
+          onSwiperRef={(ref) => {
+            swiperRef.current = ref;
+          }}
+          emptyView={
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>No more items to swipe</Text>
+            </View>
+          }
+        />
+      ) : (
+        <FlatList
+          ref={flatListRef}
+          data={currentData}
+          renderItem={renderItem}
+          keyExtractor={keyExtractor}
+          numColumns={viewMode === 'Grid' ? 2 : 1}
+          key={viewMode} // Only change key when view mode changes
+          contentContainerStyle={viewMode === 'Grid' ? styles.gridContainer : styles.listContainer}
+          showsVerticalScrollIndicator={false}
+          initialNumToRender={viewMode === 'Grid' ? 8 : 6}
+          maxToRenderPerBatch={viewMode === 'Grid' ? 8 : 6}
+          windowSize={21}
+          removeClippedSubviews={Platform.OS === 'android'}
+          getItemLayout={viewMode !== 'Swipe' ? getItemLayout : undefined}
+          updateCellsBatchingPeriod={50}
+          legacyImplementation={false}
+          maintainVisibleContentPosition={{
+            minIndexForVisible: 0,
+          }}
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.5}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={[COLORS.primary]}
           />
         }
         ListEmptyComponent={
@@ -444,6 +508,7 @@ const ProviderDiscoveryScreen = ({ route }) => {
           ) : null
         }
       />
+      )}
     </View>
   );
 };
@@ -457,30 +522,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  categoryContainer: {
-    backgroundColor: 'white',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-  },
-  categoryTab: {
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    marginHorizontal: 5,
-    borderRadius: 20,
-    backgroundColor: '#f0f0f0',
-  },
-  activeCategoryTab: {
-    backgroundColor: COLORS.primary,
-  },
-  categoryText: {
-    fontSize: 14,
-    color: '#666',
-  },
-  activeCategoryText: {
-    color: 'white',
-    fontWeight: '600',
   },
   gridContainer: {
     padding: 5,
@@ -498,6 +539,17 @@ const styles = StyleSheet.create({
   },
   footerLoader: {
     marginVertical: 20,
+  },
+  swipeContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
   },
 });
 

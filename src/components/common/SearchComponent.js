@@ -63,13 +63,18 @@ const SearchComponent = ({
     <View style={styles.container}>
       {/* Search Bar */}
       <View style={styles.searchBarContainer}>
-        <TextInput
-          style={styles.searchInput}
-          placeholder={`Search in ${selectedCategory || contentType}...`}
-          value={searchTerm}
-          onChangeText={onSearchChange}
-          returnKeyType="search"
-        />
+        <View style={styles.searchInputWrapper}>
+          <Feather name="search" size={20} color="#999" style={styles.searchIcon} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder={`Search in ${selectedCategory || contentType}...`}
+            placeholderTextColor="#999"
+            value={searchTerm}
+            onChangeText={onSearchChange}
+            returnKeyType="search"
+            underlineColorAndroid="transparent"
+          />
+        </View>
       </View>
 
       {/* Categories Section */}
@@ -193,13 +198,24 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E0E0E0',
   },
-  searchInput: {
-    backgroundColor: '#F0F0F0',
-    borderRadius: 20,
+  searchInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F5F5F5',
+    borderRadius: 25,
     paddingHorizontal: 15,
-    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  searchIcon: {
+    marginRight: 10,
+  },
+  searchInput: {
+    flex: 1,
+    paddingVertical: 12,
     fontSize: 16,
     color: '#333333',
+    backgroundColor: 'transparent',
   },
   categoryContainer: {
     paddingVertical: 10,

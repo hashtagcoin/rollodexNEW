@@ -11,7 +11,8 @@ import {
   Platform,
   Keyboard,
   StatusBar,
-  ActivityIndicator
+  ActivityIndicator,
+  Alert
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
@@ -21,6 +22,7 @@ import ChatDetail from './ChatDetail';
 import NewConversation from './NewConversation';
 import ChatRoomsList from './ChatRoomsList';
 import CreateChatRoom from './CreateChatRoom';
+import ChatRoomView from './ChatRoomView';
 import useChat from '../../hooks/useChat';
 
 const { height } = Dimensions.get('window');
@@ -29,9 +31,10 @@ const ChatModal = ({ visible, onClose, initialUser = null }) => {
   const insets = useSafeAreaInsets();
   const slideAnim = useRef(new Animated.Value(height)).current;
   const [isKeyboardVisible, setKeyboardVisible] = useState(false);
-  const [activeView, setActiveView] = useState('list'); // 'list', 'detail', 'new', 'rooms', 'createRoom'
+  const [activeView, setActiveView] = useState('list'); // 'list', 'detail', 'new', 'rooms', 'createRoom', 'roomDetail'
   const [activeTab, setActiveTab] = useState('chats'); // 'chats' or 'rooms'
   const [selectedConversation, setSelectedConversation] = useState(null);
+  const [selectedRoom, setSelectedRoom] = useState(null);
   const [newConversationUsers, setNewConversationUsers] = useState([]);
   const [isCreatingConversation, setIsCreatingConversation] = useState(false);
   
@@ -147,6 +150,84 @@ const ChatModal = ({ visible, onClose, initialUser = null }) => {
   const handleBackToList = () => {
     setActiveView('list');
     setSelectedConversation(null);
+    setSelectedRoom(null);
+  };
+  
+  const handleBackToRooms = (action, user) => {
+    console.log('[ChatModal] handleBackToRooms called with:', action, user);
+    if (action === 'private_message' && user) {
+      // User clicked on another user to send private message
+      console.log('[ChatModal] Starting private message with user:', user);
+      handlePrivateMessageFromRoom(user);
+    } else {
+      setActiveView('rooms');
+      setSelectedRoom(null);
+    }
+  };
+  
+  const handlePrivateMessageFromRoom = async (user) => {
+    console.log('[ChatModal] handlePrivateMessageFromRoom called with user:', user);
+    console.log('[ChatModal] Current activeView:', activeView, 'activeTab:', activeTab);
+    
+    try {
+      setIsCreatingConversation(true);
+      
+      // First, let's create a temporary conversation object for immediate navigation
+      const tempConversation = {
+        id: `temp-${Date.now()}`,
+        participant_id: user.id,
+        participant_name: user.name,
+        is_group_chat: false,
+        participants: [
+          { id: user.id, full_name: user.name, avatar_url: user.avatar }
+        ]
+      };
+      
+      console.log('[ChatModal] Created temp conversation:', tempConversation);
+      
+      // Navigate immediately with temp conversation
+      setSelectedConversation(tempConversation);
+      setSelectedRoom(null);
+      setActiveView('detail');
+      setActiveTab('chats');
+      
+      console.log('[ChatModal] Navigation set to detail view with chats tab');
+      
+      // Now check if a real conversation exists or create one
+      await fetchConversations();
+      
+      const existingConversation = conversations.find(conv => {
+        if (!conv.is_group_chat && conv.participants && conv.participants.length >= 2) {
+          return conv.participants.some(p => p.id === user.id);
+        }
+        return false;
+      });
+      
+      if (existingConversation) {
+        // Replace temp with existing conversation
+        setSelectedConversation(existingConversation);
+      } else {
+        // Create a new conversation
+        const conversationId = await createConversation([user.id], false);
+        if (conversationId) {
+          // Fetch updated conversations
+          await fetchConversations();
+          
+          // Find the newly created conversation
+          setTimeout(() => {
+            const newConversation = conversations.find(conv => conv.id === conversationId);
+            if (newConversation) {
+              setSelectedConversation(newConversation);
+            }
+          }, 100);
+        }
+      }
+    } catch (error) {
+      console.error('Error creating private conversation from room:', error);
+      Alert.alert('Error', 'Could not start private conversation');
+    } finally {
+      setIsCreatingConversation(false);
+    }
   };
 
   const handleStartNewConversation = () => {
@@ -154,8 +235,8 @@ const ChatModal = ({ visible, onClose, initialUser = null }) => {
   };
 
   const handleSelectRoom = (room) => {
-    setSelectedConversation(room);
-    setActiveView('detail');
+    setSelectedRoom(room);
+    setActiveView('roomDetail');
   };
 
   const handleCreateRoom = () => {
@@ -270,6 +351,8 @@ const ChatModal = ({ visible, onClose, initialUser = null }) => {
             </TouchableOpacity>
           </View>
         );
+      case 'roomDetail':
+        return null; // ChatRoomView has its own header
     }
   };
 
@@ -317,6 +400,13 @@ const ChatModal = ({ visible, onClose, initialUser = null }) => {
           <CreateChatRoom
             onClose={() => setActiveView('rooms')}
             onRoomCreated={handleRoomCreated}
+          />
+        );
+      case 'roomDetail':
+        return (
+          <ChatRoomView
+            room={selectedRoom}
+            onBack={handleBackToRooms}
           />
         );
     }

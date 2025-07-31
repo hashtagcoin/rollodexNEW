@@ -179,7 +179,7 @@ const GroupsListScreen = () => {
   
 
 
-  const fetchGroups = async (forceRefresh = false) => {
+  const fetchGroups = useCallback(async (forceRefresh = false) => {
     // Prevent duplicate fetches
     if (fetchInProgressRef.current && !forceRefresh) {
       debugTiming('FETCH_PREVENTED_DUPLICATE', {
@@ -356,7 +356,7 @@ const GroupsListScreen = () => {
       }
       fetchInProgressRef.current = false;
     }
-  };
+  }, [filter, userId, fetchUserMembershipStatus]);
   
   // Helper function to filter groups based on selected filter
   const getFilteredGroups = (allGroups, filterType) => {
@@ -377,7 +377,7 @@ const GroupsListScreen = () => {
   };
   
   // Fetch user's membership status for housing groups
-  const fetchUserMembershipStatus = async (housingGroupIds) => {
+  const fetchUserMembershipStatus = useCallback(async (housingGroupIds) => {
     if (!userId || housingGroupIds.length === 0) return;
     
     // Check cache first
@@ -413,7 +413,7 @@ const GroupsListScreen = () => {
     } catch (e) {
       console.error('[GroupsListScreen] Error fetching membership status:', e);
     }
-  };
+  }, [userId]);
 
   // Handle filter changes
   useEffect(() => {
@@ -454,7 +454,7 @@ const GroupsListScreen = () => {
       debugTiming('NO_CACHE_FETCHING_FOR_FILTER', { filter });
       fetchGroups();
     }
-  }, [filter]);
+  }, [filter, fetchGroups]);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -486,7 +486,7 @@ const GroupsListScreen = () => {
           debugTiming('SCREEN_UNFOCUSED');
         };
       }
-    }, [filter])
+    }, [filter, fetchGroups])
   );
 
   const GroupCard = React.memo(({ item, navigation, userId, userRole }) => {

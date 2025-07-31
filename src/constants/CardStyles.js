@@ -56,7 +56,7 @@ export const CardStyles = {
     borderRadius: 12,
     overflow: 'hidden',
     backgroundColor: COLORS.white,
-    height: 270,
+    height: 260,
   },
   
   gridImageContainer: {
@@ -75,8 +75,7 @@ export const CardStyles = {
   // ===== LIST VIEW STYLES =====
   listCardContainer: {
     width: '100%',
-    marginTop: 2,
-    marginBottom: 4,
+    height: '100%',
     backgroundColor: COLORS.white,
     borderRadius: 8,
     ...SHADOWS.medium,
@@ -89,16 +88,18 @@ export const CardStyles = {
     flexDirection: 'row',
     backgroundColor: COLORS.white,
     overflow: 'hidden',
-    paddingTop: 8,
-    paddingRight: 12,
-    paddingBottom: 6,
-    paddingLeft: 12,
+    paddingTop: 14,
+    paddingRight: 14,
+    paddingBottom: 14,
+    paddingLeft: 14,
     borderRadius: 8,
+    height: '100%',
+    alignItems: 'flex-start',
   },
   
   listImageContainer: {
-    width: 100,
-    height: 100,
+    width: 110,
+    height: 110,
     position: 'relative',
     borderRadius: 8,
     overflow: 'hidden',
@@ -140,13 +141,13 @@ export const CardStyles = {
     fontSize: SIZES.h3,
     fontWeight: 'bold',
     color: COLORS.black,
-    marginBottom: 2,
+    marginBottom: 0,
   },
   
   subtitle: {
     fontSize: SIZES.body4,
     color: COLORS.black,
-    marginBottom: 2,
+    marginBottom: 0,
   },
   
   price: {

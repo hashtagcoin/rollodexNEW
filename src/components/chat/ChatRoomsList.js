@@ -7,15 +7,19 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  TextInput,
+  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { CHAT_ROOM_TOPICS, EMPTY_STATES, LOADING_STATES, ERROR_MESSAGES } from '../../constants/chatConstants';
+import { CHAT_ROOM_TOPICS, EMPTY_STATES, LOADING_STATES, ERROR_MESSAGES, CHAT_ROOM_CATEGORIES } from '../../constants/chatConstants';
 import useChat from '../../hooks/useChat';
+import { COLORS, FONTS } from '../../constants/theme';
 
 export default function ChatRoomsList({ onSelectRoom, onCreateRoom }) {
   const [chatRooms, setChatRooms] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [selectedTopic, setSelectedTopic] = useState(null);
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const { fetchChatRooms, joinChatRoom } = useChat();
 
   useEffect(() => {
@@ -36,38 +40,69 @@ export default function ChatRoomsList({ onSelectRoom, onCreateRoom }) {
   };
 
   const handleJoinRoom = async (room) => {
+    // If it's a simulated room, just open it directly
+    if (room.isSimulated) {
+      onSelectRoom(room);
+      return;
+    }
+    
     if (room.is_joined) {
       // Already joined, just open the room
       onSelectRoom(room);
     } else {
-      // Join the room first
-      const success = await joinChatRoom(room.id);
-      if (success) {
-        onSelectRoom(room);
-        // Reload rooms to update join status
-        loadChatRooms();
-      } else {
-        Alert.alert('Error', ERROR_MESSAGES.FAILED_TO_JOIN_ROOM);
+      // Join the room first (only for real rooms from database)
+      try {
+        const success = await joinChatRoom(room.id);
+        if (success) {
+          onSelectRoom(room);
+          // Reload rooms to update join status
+          loadChatRooms();
+        } else {
+          Alert.alert('Error', ERROR_MESSAGES.FAILED_TO_JOIN_ROOM);
+        }
+      } catch (error) {
+        console.error('Error joining room:', error);
+        Alert.alert('Error', 'Could not join the chat room. Please try again.');
       }
     }
   };
 
-  const filteredRooms = selectedTopic
-    ? chatRooms.filter(room => room.room_topic_id === selectedTopic)
-    : chatRooms;
+  // For demo purposes, we'll use the topic IDs as identifiers
+  // In production, these would be actual UUID room IDs from the database
+  const simulatedRooms = CHAT_ROOM_TOPICS.map(topic => ({
+    id: `room-${topic.id}`, // This is just for display
+    room_name: topic.name,
+    room_description: topic.description,
+    room_topic_id: topic.id,
+    participant_count: topic.memberCount,
+    is_joined: false,
+    topic_icon: topic.icon,
+    category: topic.category,
+    isSimulated: true // Flag to identify simulated rooms
+  }));
 
-  const renderTopicFilter = ({ item }) => (
+  const displayRooms = chatRooms.length > 0 ? chatRooms : simulatedRooms;
+
+  const filteredRooms = displayRooms.filter(room => {
+    const matchesCategory = selectedCategory === 'all' || room.category === selectedCategory;
+    const matchesSearch = searchQuery === '' || 
+      room.room_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      room.room_description.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesCategory && matchesSearch;
+  });
+
+  const renderCategoryFilter = ({ item }) => (
     <TouchableOpacity
       style={[
-        styles.topicChip,
-        selectedTopic === item.id && styles.topicChipActive
+        styles.categoryChip,
+        selectedCategory === item.id && styles.categoryChipActive
       ]}
-      onPress={() => setSelectedTopic(selectedTopic === item.id ? null : item.id)}
+      onPress={() => setSelectedCategory(item.id)}
     >
-      <Text style={styles.topicIcon}>{item.icon}</Text>
+      <Text style={styles.categoryIcon}>{item.icon}</Text>
       <Text style={[
-        styles.topicText,
-        selectedTopic === item.id && styles.topicTextActive
+        styles.categoryText,
+        selectedCategory === item.id && styles.categoryTextActive
       ]}>
         {item.name}
       </Text>
@@ -76,35 +111,44 @@ export default function ChatRoomsList({ onSelectRoom, onCreateRoom }) {
 
   const renderRoom = ({ item }) => {
     const topic = CHAT_ROOM_TOPICS.find(t => t.id === item.room_topic_id);
+    const isActive = item.participant_count > 100;
     
     return (
       <TouchableOpacity
         style={styles.roomCard}
         onPress={() => handleJoinRoom(item)}
       >
-        <View style={styles.roomHeader}>
-          <Text style={styles.roomIcon}>{topic?.icon || '💬'}</Text>
-          <View style={styles.roomInfo}>
+        <View style={styles.roomLeft}>
+          <Text style={styles.roomIcon}>{item.topic_icon || topic?.icon || '💬'}</Text>
+        </View>
+        <View style={styles.roomCenter}>
+          <View style={styles.roomTitleRow}>
             <Text style={styles.roomName}>{item.room_name}</Text>
-            <Text style={styles.roomDescription} numberOfLines={2}>
-              {item.room_description}
-            </Text>
+            {isActive && (
+              <View style={styles.activeDot} />
+            )}
+          </View>
+          <Text style={styles.roomDescription} numberOfLines={1}>
+            {item.room_description}
+          </Text>
+          <View style={styles.roomStats}>
+            <View style={styles.participantInfo}>
+              <Ionicons name="people" size={14} color="#666" />
+              <Text style={styles.participantCount}>
+                {item.participant_count} online
+              </Text>
+            </View>
+            <Text style={styles.roomCategory}>• {topic?.category || item.category}</Text>
           </View>
         </View>
-        <View style={styles.roomFooter}>
-          <View style={styles.participantInfo}>
-            <Ionicons name="people-outline" size={16} color="#666" />
-            <Text style={styles.participantCount}>
-              {item.participant_count} {item.participant_count === 1 ? 'member' : 'members'}
-            </Text>
-          </View>
+        <View style={styles.roomRight}>
           {item.is_joined ? (
             <View style={styles.joinedBadge}>
-              <Text style={styles.joinedText}>Joined</Text>
+              <Ionicons name="checkmark" size={16} color={COLORS.primary} />
             </View>
           ) : (
             <TouchableOpacity style={styles.joinButton}>
-              <Text style={styles.joinButtonText}>Join</Text>
+              <Ionicons name="arrow-forward" size={20} color={COLORS.primary} />
             </TouchableOpacity>
           )}
         </View>
@@ -123,16 +167,51 @@ export default function ChatRoomsList({ onSelectRoom, onCreateRoom }) {
 
   return (
     <View style={styles.container}>
-      {/* Topic Filter */}
-      <View style={styles.topicFilterContainer}>
-        <FlatList
+      {/* Search Bar */}
+      <View style={styles.searchContainer}>
+        <View style={styles.searchBar}>
+          <Ionicons name="search" size={20} color="#666" />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search chat rooms..."
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholderTextColor="#999"
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <Ionicons name="close-circle" size={20} color="#999" />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
+      {/* Category Filter */}
+      <View style={styles.categoryFilterContainer}>
+        <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          data={CHAT_ROOM_TOPICS}
-          renderItem={renderTopicFilter}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.topicsList}
-        />
+          contentContainerStyle={styles.categoriesList}
+        >
+          {CHAT_ROOM_CATEGORIES.map((category) => (
+            <TouchableOpacity
+              key={category.id}
+              style={[
+                styles.categoryChip,
+                selectedCategory === category.id && styles.categoryChipActive
+              ]}
+              onPress={() => setSelectedCategory(category.id)}
+            >
+              <Text style={styles.categoryIcon}>{category.icon}</Text>
+              <Text style={[
+                styles.categoryText,
+                selectedCategory === category.id && styles.categoryTextActive
+              ]}>
+                {category.name}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       </View>
 
       {/* Rooms List */}
@@ -141,21 +220,15 @@ export default function ChatRoomsList({ onSelectRoom, onCreateRoom }) {
         renderItem={renderRoom}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.roomsList}
+        showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Ionicons name="chatbubbles-outline" size={64} color="#ccc" />
-            <Text style={styles.emptyText}>{EMPTY_STATES.NO_CHAT_ROOMS}</Text>
+            <Text style={styles.emptyText}>No chat rooms found</Text>
+            <Text style={styles.emptySubText}>Try adjusting your search or filters</Text>
           </View>
         }
       />
-
-      {/* Create Room Button */}
-      <TouchableOpacity
-        style={styles.createRoomButton}
-        onPress={onCreateRoom}
-      >
-        <Ionicons name="add-circle" size={56} color="#1E90FF" />
-      </TouchableOpacity>
     </View>
   );
 }
@@ -175,113 +248,150 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666',
   },
-  topicFilterContainer: {
+  searchContainer: {
     backgroundColor: '#fff',
-    paddingVertical: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
   },
-  topicsList: {
-    paddingHorizontal: 15,
-  },
-  topicChip: {
+  searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    height: 40,
+  },
+  searchInput: {
+    flex: 1,
+    marginLeft: 8,
+    fontSize: 16,
+    color: '#333',
+  },
+  categoryFilterContainer: {
+    backgroundColor: '#fff',
     paddingVertical: 8,
-    marginRight: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  categoriesList: {
+    paddingHorizontal: 12,
+  },
+  categoryChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    marginHorizontal: 4,
     borderRadius: 20,
     backgroundColor: '#f0f0f0',
     borderWidth: 1,
     borderColor: '#e0e0e0',
   },
-  topicChipActive: {
+  categoryChipActive: {
     backgroundColor: '#e8f0ff',
-    borderColor: '#1E90FF',
+    borderColor: COLORS.primary,
   },
-  topicIcon: {
-    fontSize: 16,
-    marginRight: 6,
-  },
-  topicText: {
+  categoryIcon: {
     fontSize: 14,
-    color: '#333',
+    marginRight: 4,
   },
-  topicTextActive: {
-    color: '#1E90FF',
-    fontWeight: '600',
+  categoryText: {
+    fontSize: 13,
+    color: '#666',
+    fontFamily: FONTS.regular,
+  },
+  categoryTextActive: {
+    color: COLORS.primary,
+    fontFamily: FONTS.medium,
   },
   roomsList: {
-    padding: 15,
+    paddingVertical: 8,
   },
   roomCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  roomHeader: {
     flexDirection: 'row',
-    marginBottom: 12,
+    backgroundColor: '#fff',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  roomLeft: {
+    width: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   roomIcon: {
-    fontSize: 32,
-    marginRight: 12,
+    fontSize: 28,
   },
-  roomInfo: {
+  roomCenter: {
     flex: 1,
+    marginLeft: 12,
+  },
+  roomTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   roomName: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '600',
     color: '#333',
-    marginBottom: 4,
+    fontFamily: FONTS.medium,
+  },
+  activeDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#4CAF50',
+    marginLeft: 8,
   },
   roomDescription: {
     fontSize: 14,
     color: '#666',
-    lineHeight: 20,
+    marginTop: 2,
+    fontFamily: FONTS.regular,
   },
-  roomFooter: {
+  roomStats: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    marginTop: 4,
   },
   participantInfo: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   participantCount: {
-    fontSize: 14,
-    color: '#666',
-    marginLeft: 6,
+    fontSize: 12,
+    color: '#999',
+    marginLeft: 4,
+    fontFamily: FONTS.regular,
+  },
+  roomCategory: {
+    fontSize: 12,
+    color: '#999',
+    marginLeft: 8,
+    fontFamily: FONTS.regular,
+  },
+  roomRight: {
+    justifyContent: 'center',
+    marginLeft: 12,
   },
   joinButton: {
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    backgroundColor: '#1E90FF',
+    width: 40,
+    height: 40,
     borderRadius: 20,
-  },
-  joinButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 14,
+    backgroundColor: '#f0f0f0',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   joinedBadge: {
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    backgroundColor: '#e8f0ff',
+    width: 40,
+    height: 40,
     borderRadius: 20,
-  },
-  joinedText: {
-    color: '#1E90FF',
-    fontWeight: '600',
-    fontSize: 14,
+    backgroundColor: '#e8f0ff',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   emptyContainer: {
     flex: 1,
@@ -293,10 +403,12 @@ const styles = StyleSheet.create({
     marginTop: 16,
     fontSize: 16,
     color: '#999',
+    fontFamily: FONTS.medium,
   },
-  createRoomButton: {
-    position: 'absolute',
-    bottom: 20,
-    right: 20,
+  emptySubText: {
+    marginTop: 8,
+    fontSize: 14,
+    color: '#aaa',
+    fontFamily: FONTS.regular,
   },
 });

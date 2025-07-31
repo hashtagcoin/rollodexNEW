@@ -48,8 +48,17 @@ export default function ModernImagePicker({
       }
       
       // Launch image picker - adjust parameters based on whether it's an avatar or gallery
+      let mediaTypesOption;
+      try {
+        // Try to use the new API
+        mediaTypesOption = [ImagePicker.MediaType.Image];
+      } catch (e) {
+        // Fall back to old API
+        mediaTypesOption = ImagePicker.MediaTypeOptions?.Images || 'Images';
+      }
+      
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images, // Keep this for now until we update expo-image-picker
+        mediaTypes: mediaTypesOption,
         allowsEditing: avatar ? true : false, // Only enable editing for avatar
         aspect: avatar ? [1, 1] : undefined, // Square aspect ratio for avatar only
         quality: 0.8, 

@@ -43,24 +43,24 @@ import { HOUSING_TYPES, SDA_CATEGORIES, ACCESSIBILITY_FEATURES, PROPERTY_FEATURE
 // const SDA_CATEGORIES = [ /* Content moved to formOptions.js */ ]; // Moved to formOptions.js
 
 // Date dropdown options
-const DAYS = Array.from({ length: 31 }, (_, i) => ({ label: <Text>{String(i + 1).padStart(2, '0')}</Text>, value: String(i + 1).padStart(2, '0') }));
+const DAYS = Array.from({ length: 31 }, (_, i) => ({ label: String(i + 1).padStart(2, '0'), value: String(i + 1).padStart(2, '0') }));
 const MONTHS = [
-  { label: <Text>January</Text>, value: '01' },
-  { label: <Text>February</Text>, value: '02' },
-  { label: <Text>March</Text>, value: '03' },
-  { label: <Text>April</Text>, value: '04' },
-  { label: <Text>May</Text>, value: '05' },
-  { label: <Text>June</Text>, value: '06' },
-  { label: <Text>July</Text>, value: '07' },
-  { label: <Text>August</Text>, value: '08' },
-  { label: <Text>September</Text>, value: '09' },
-  { label: <Text>October</Text>, value: '10' },
-  { label: <Text>November</Text>, value: '11' },
-  { label: <Text>December</Text>, value: '12' },
+  { label: 'January', value: '01' },
+  { label: 'February', value: '02' },
+  { label: 'March', value: '03' },
+  { label: 'April', value: '04' },
+  { label: 'May', value: '05' },
+  { label: 'June', value: '06' },
+  { label: 'July', value: '07' },
+  { label: 'August', value: '08' },
+  { label: 'September', value: '09' },
+  { label: 'October', value: '10' },
+  { label: 'November', value: '11' },
+  { label: 'December', value: '12' },
 ];
 const YEARS = Array.from({ length: 6 }, (_, i) => {
   const year = new Date().getFullYear() + i;
-  return { label: <Text>{String(year)}</Text>, value: String(year) };
+  return { label: String(year), value: String(year) };
 });
 
 // const ACCESSIBILITY_FEATURES = [ /* Content moved to formOptions.js */ ]; // Moved to formOptions.js
@@ -76,7 +76,7 @@ const CreateHousingListingScreen = ({ navigation }) => {
   const [formData, setFormData] = useState({
     title: '',
     description: '',
-    housingType: HOUSING_TYPES[0],
+    housingType: HOUSING_TYPES[0].value,
     bedrooms: '',
     bathrooms: '',
     price: '',
@@ -430,7 +430,7 @@ const CreateHousingListingScreen = ({ navigation }) => {
                   maxHeight={300}
                   labelField="label"
                   valueField="value"
-                  placeholder={<Text style={styles.placeholderStyle}>Select housing type</Text>}
+                  placeholder="Select housing type"
                   value={formData.housingType}
                   onChange={item => handleChange('housingType', item.value)}
                 />
@@ -519,7 +519,7 @@ const CreateHousingListingScreen = ({ navigation }) => {
                     maxHeight={300}
                     labelField="label"
                     valueField="value"
-                    placeholder={<Text style={styles.placeholderStyle}>Select SDA category</Text>}
+                    placeholder="Select SDA category"
                     value={formData.sdaCategory}
                     onChange={item => handleChange('sdaCategory', item.value)}
                   />
@@ -606,14 +606,14 @@ const CreateHousingListingScreen = ({ navigation }) => {
                     key={feature.value}
                     style={[
                       styles.featureItem,
-                      formData.accessibilityFeatures.includes(feature.value) && styles.featureSelected
+                      formData.accessibilityFeatures.includes(feature.value) ? styles.featureSelected : null
                     ]}
                     onPress={() => toggleFeature(feature.value, 'accessibilityFeatures')}
                   >
                     <Text 
                       style={[
                         styles.featureText,
-                        formData.accessibilityFeatures.includes(feature.value) && styles.featureTextSelected
+                        formData.accessibilityFeatures.includes(feature.value) ? styles.featureTextSelected : null
                       ]}
                     >
                       {feature.value}
@@ -631,14 +631,14 @@ const CreateHousingListingScreen = ({ navigation }) => {
                     key={feature.value}
                     style={[
                       styles.featureItem,
-                      formData.propertyFeatures.includes(feature.value) && styles.featureSelected
+                      formData.propertyFeatures.includes(feature.value) ? styles.featureSelected : null
                     ]}
                     onPress={() => toggleFeature(feature.value, 'propertyFeatures')}
                   >
                     <Text 
                       style={[
                         styles.featureText,
-                        formData.propertyFeatures.includes(feature.value) && styles.featureTextSelected
+                        formData.propertyFeatures.includes(feature.value) ? styles.featureTextSelected : null
                       ]}
                     >
                       {feature.value}
@@ -679,14 +679,14 @@ const CreateHousingListingScreen = ({ navigation }) => {
                 <TouchableOpacity
                   style={[
                     styles.switchOption,
-                    formData.available ? styles.switchActive : null,
+                    formData.available ? styles.switchActive : undefined
                   ]}
                   onPress={() => handleChange('available', true)}
                 >
                   <Text
                     style={[
                       styles.switchText,
-                      formData.available ? styles.switchTextActive : null,
+                      formData.available ? styles.switchTextActive : undefined
                     ]}
                   >
                     Available
@@ -696,14 +696,14 @@ const CreateHousingListingScreen = ({ navigation }) => {
                 <TouchableOpacity
                   style={[
                     styles.switchOption,
-                    !formData.available ? styles.switchActive : null,
+                    !formData.available ? styles.switchActive : undefined
                   ]}
                   onPress={() => handleChange('available', false)}
                 >
                   <Text
                     style={[
                       styles.switchText,
-                      !formData.available ? styles.switchTextActive : null,
+                      !formData.available ? styles.switchTextActive : undefined
                     ]}
                   >
                     Not Available
@@ -726,7 +726,7 @@ const CreateHousingListingScreen = ({ navigation }) => {
                       maxHeight={250}
                       labelField="label"
                       valueField="value"
-                      placeholder={<Text style={styles.placeholderStyle}>Day</Text>}
+                      placeholder="Day"
                       value={formData.availableDay}
                       onChange={item => handleChange('availableDay', item.value)}
                     />
@@ -741,7 +741,7 @@ const CreateHousingListingScreen = ({ navigation }) => {
                       maxHeight={250}
                       labelField="label"
                       valueField="value"
-                      placeholder={<Text style={styles.placeholderStyle}>Month</Text>}
+                      placeholder="Month"
                       value={formData.availableMonth}
                       onChange={item => handleChange('availableMonth', item.value)}
                     />
@@ -756,7 +756,7 @@ const CreateHousingListingScreen = ({ navigation }) => {
                       maxHeight={200}
                       labelField="label"
                       valueField="value"
-                      placeholder={<Text style={styles.placeholderStyle}>Year</Text>}
+                      placeholder="Year"
                       value={formData.availableYear}
                       onChange={item => handleChange('availableYear', item.value)}
                     />

@@ -32,6 +32,8 @@ const ChatDetail = ({ conversation, onBack }) => {
     fetchConversations
   } = useChat();
   
+  const defaultAvatar = require('../../assets/images/default-avatar.png');
+  
   const [messageText, setMessageText] = useState('');
   const [sending, setSending] = useState(false);
   const flatListRef = useRef(null);
@@ -57,8 +59,11 @@ const ChatDetail = ({ conversation, onBack }) => {
         console.log('Temporary conversation, skipping message fetch');
       }
       
-      // Subscribe to real-time updates for this conversation
-      const subscription = subscribeToConversation(conversation.id);
+      // Subscribe to real-time updates for this conversation (only for real conversations)
+      let subscription = null;
+      if (!isTempConversation && !conversation.isSimulated) {
+        subscription = subscribeToConversation(conversation.id);
+      }
       
       return () => {
         if (subscription) {
@@ -169,20 +174,29 @@ const ChatDetail = ({ conversation, onBack }) => {
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.participantsList}
-          renderItem={({ item }) => (
-            <View style={styles.participantItem}>
-              {item.avatar_url ? (
-                <Image source={{ uri: item.avatar_url }} style={styles.participantAvatar} />
-              ) : (
-                <View style={styles.defaultAvatar}>
-                  <Text style={styles.avatarText}>{item.full_name?.[0] || item.username?.[0] || '?'}</Text>
-                </View>
-              )}
-              <Text style={styles.participantName} numberOfLines={1}>
-                {item.full_name || item.username || 'Unknown'}
-              </Text>
-            </View>
-          )}
+          renderItem={({ item }) => {
+            const [avatarError, setAvatarError] = React.useState(false);
+            return (
+              <View style={styles.participantItem}>
+                {item.avatar_url && !avatarError ? (
+                  <Image 
+                    source={{ uri: item.avatar_url }} 
+                    style={styles.participantAvatar}
+                    onError={() => setAvatarError(true)}
+                    defaultSource={defaultAvatar}
+                  />
+                ) : (
+                  <Image 
+                    source={defaultAvatar} 
+                    style={styles.participantAvatar}
+                  />
+                )}
+                <Text style={styles.participantName} numberOfLines={1}>
+                  {item.full_name || item.username || 'Unknown'}
+                </Text>
+              </View>
+            );
+          }}
         />
       </View>
     );
@@ -375,20 +389,6 @@ const styles = StyleSheet.create({
     height: 50,
     borderRadius: 25,
     marginBottom: 5,
-  },
-  defaultAvatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: COLORS.lightGray,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 5,
-  },
-  avatarText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: COLORS.white,
   },
   participantName: {
     fontSize: 12,

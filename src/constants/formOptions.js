@@ -1,44 +1,41 @@
-import React from 'react';
-import { Text } from 'react-native';
-
 export const HOUSING_TYPES = [
-  { label: <Text>House</Text>, value: 'House' },
-  { label: <Text>Apartment</Text>, value: 'Apartment' },
-  { label: <Text>Unit</Text>, value: 'Unit' },
-  { label: <Text>Townhouse</Text>, value: 'Townhouse' },
-  { label: <Text>Villa</Text>, value: 'Villa' },
-  { label: <Text>Studio</Text>, value: 'Studio' },
-  { label: <Text>Granny Flat</Text>, value: 'Granny Flat' },
-  { label: <Text>Shared Accommodation</Text>, value: 'Shared Accommodation' },
+  { label: 'House', value: 'House' },
+  { label: 'Apartment', value: 'Apartment' },
+  { label: 'Unit', value: 'Unit' },
+  { label: 'Townhouse', value: 'Townhouse' },
+  { label: 'Villa', value: 'Villa' },
+  { label: 'Studio', value: 'Studio' },
+  { label: 'Granny Flat', value: 'Granny Flat' },
+  { label: 'Shared Accommodation', value: 'Shared Accommodation' },
 ];
 
 export const SDA_CATEGORIES = [
-  { label: <Text>Improved Liveability</Text>, value: 'Improved Liveability' },
-  { label: <Text>Fully Accessible</Text>, value: 'Fully Accessible' },
-  { label: <Text>High Physical Support</Text>, value: 'High Physical Support' },
-  { label: <Text>Robust</Text>, value: 'Robust' },
+  { label: 'Improved Liveability', value: 'Improved Liveability' },
+  { label: 'Fully Accessible', value: 'Fully Accessible' },
+  { label: 'High Physical Support', value: 'High Physical Support' },
+  { label: 'Robust', value: 'Robust' },
 ];
 
 export const ACCESSIBILITY_FEATURES = [
-  { label: <Text>Wheelchair Accessible</Text>, value: 'Wheelchair Accessible' },
-  { label: <Text>Step-free Access</Text>, value: 'Step-free Access' },
-  { label: <Text>Accessible Bathroom</Text>, value: 'Accessible Bathroom' },
-  { label: <Text>Accessible Kitchen</Text>, value: 'Accessible Kitchen' },
-  { label: <Text>Hoists Available</Text>, value: 'Hoists Available' },
-  { label: <Text>Visual Aids</Text>, value: 'Visual Aids' },
-  { label: <Text>Auditory Aids</Text>, value: 'Auditory Aids' },
-  { label: <Text>Sensory Room</Text>, value: 'Sensory Room' },
-  { label: <Text>Quiet Space</Text>, value: 'Quiet Space' },
+  { label: 'Wheelchair Accessible', value: 'Wheelchair Accessible' },
+  { label: 'Step-free Access', value: 'Step-free Access' },
+  { label: 'Accessible Bathroom', value: 'Accessible Bathroom' },
+  { label: 'Accessible Kitchen', value: 'Accessible Kitchen' },
+  { label: 'Hoists Available', value: 'Hoists Available' },
+  { label: 'Visual Aids', value: 'Visual Aids' },
+  { label: 'Auditory Aids', value: 'Auditory Aids' },
+  { label: 'Sensory Room', value: 'Sensory Room' },
+  { label: 'Quiet Space', value: 'Quiet Space' },
 ];
 
 export const PROPERTY_FEATURES = [
-  { label: <Text>Furnished</Text>, value: 'Furnished' },
-  { label: <Text>Air Conditioning</Text>, value: 'Air Conditioning' },
-  { label: <Text>Heating</Text>, value: 'Heating' },
-  { label: <Text>Parking</Text>, value: 'Parking' },
-  { label: <Text>Laundry</Text>, value: 'Laundry' },
-  { label: <Text>Internet</Text>, value: 'Internet' },
-  { label: <Text>Pets Allowed</Text>, value: 'Pets Allowed' },
-  { label: <Text>Outdoor Area</Text>, value: 'Outdoor Area' },
-  { label: <Text>Public Transport</Text>, value: 'Public Transport' },
+  { label: 'Furnished', value: 'Furnished' },
+  { label: 'Air Conditioning', value: 'Air Conditioning' },
+  { label: 'Heating', value: 'Heating' },
+  { label: 'Parking', value: 'Parking' },
+  { label: 'Laundry', value: 'Laundry' },
+  { label: 'Internet', value: 'Internet' },
+  { label: 'Pets Allowed', value: 'Pets Allowed' },
+  { label: 'Outdoor Area', value: 'Outdoor Area' },
+  { label: 'Public Transport', value: 'Public Transport' },
 ];

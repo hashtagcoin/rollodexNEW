@@ -20,7 +20,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS } from '../../constants/theme';
 
 const AccountSetupScreen = ({ navigation, route }) => {
+  console.log('[AccountSetupScreen] Screen rendered');
+  console.log('[AccountSetupScreen] Route params:', route.params);
   const { userType, formData } = route.params || {};
+  console.log('[AccountSetupScreen] UserType:', userType);
+  console.log('[AccountSetupScreen] FormData received:', formData);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -79,8 +83,20 @@ const AccountSetupScreen = ({ navigation, route }) => {
       // Generate a username from the form data or email
       const username = formData?.preferredName || formData?.firstName || email.split('@')[0];
       const fullName = formData?.firstName || formData?.preferredName || username;
+      
+      console.log('[AccountSetupScreen] Generating user data:');
+      console.log('[AccountSetupScreen] - Username:', username);
+      console.log('[AccountSetupScreen] - Full name:', fullName);
+      console.log('[AccountSetupScreen] - First name from form:', formData?.firstName);
+      console.log('[AccountSetupScreen] - Preferred name from form:', formData?.preferredName);
 
       // Create new user with Supabase Auth
+      console.log('[AccountSetupScreen] Creating auth user with metadata:', {
+        username,
+        full_name: fullName,
+        role: userType
+      });
+      
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -117,6 +133,8 @@ const AccountSetupScreen = ({ navigation, route }) => {
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
+      
+      console.log('[AccountSetupScreen] Initial profile data before mapping:', profileData);
 
       // Map onboarding data to appropriate columns if available
       if (formData) {
@@ -147,11 +165,18 @@ const AccountSetupScreen = ({ navigation, route }) => {
         }
       }
 
+      console.log('[AccountSetupScreen] Saving profile to Supabase with data:', profileData);
+      
       const { error: profileError } = await supabase
         .from('user_profiles')
         .upsert(profileData, { onConflict: 'id' });
 
-      if (profileError) throw profileError;
+      if (profileError) {
+        console.error('[AccountSetupScreen] Profile save error:', profileError);
+        throw profileError;
+      }
+      
+      console.log('[AccountSetupScreen] Profile saved successfully to Supabase');
 
       // Sign in the user
       const { error: signInError } = await supabase.auth.signInWithPassword({
@@ -162,7 +187,12 @@ const AccountSetupScreen = ({ navigation, route }) => {
       if (signInError) throw signInError;
 
       // Save profile to AsyncStorage immediately for quick access
+      console.log('[AccountSetupScreen] Saving profile to AsyncStorage cache:', profileData);
       await AsyncStorage.setItem('user_profile', JSON.stringify(profileData));
+      
+      // Also set a flag to indicate this is a new user
+      await AsyncStorage.setItem('is_new_user', 'true');
+      console.log('[AccountSetupScreen] Set new user flag in AsyncStorage');
 
       // Navigate to success screen with profile data
       navigation.navigate('OnboardingSuccess', { 

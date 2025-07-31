@@ -3,7 +3,6 @@ import { View, FlatList, StyleSheet, TouchableOpacity, Text, Modal, Pressable, A
 import { WebView } from 'react-native-webview';
 import * as FileSystem from 'expo-file-system';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import AppHeader from '../../components/layout/AppHeader';
 import { getUserClaims } from '../../services/claimsService';
 import { COLORS, FONTS, SIZES } from '../../constants/theme';
 
@@ -77,12 +76,6 @@ const ClaimCard = ({ claim, onViewDocument }) => {
 };
 
 export default function ViewClaimsScreen({ navigation }) {
-  // Add AppHeader
-  React.useLayoutEffect(() => {
-    navigation.setOptions({
-      header: () => <AppHeader title="My Claims" />
-    });
-  }, [navigation]);
   const [claims, setClaims] = useState([]);
   const [filter, setFilter] = useState('All');
   const [loading, setLoading] = useState(true);

@@ -16,6 +16,7 @@ const ServiceAgreementsScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('active');
   const [searchQuery, setSearchQuery] = useState('');
+  const [isRegisteredProvider, setIsRegisteredProvider] = useState(true);
   
   // Fetch agreements when screen is focused
   useFocusEffect(
@@ -31,11 +32,34 @@ const ServiceAgreementsScreen = ({ navigation }) => {
     
     setLoading(true);
     try {
+      // First get the provider ID from service_providers table
+      const { data: providerData, error: providerError } = await supabase
+        .from('service_providers')
+        .select('id')
+        .eq('user_id', profile.id)
+        .maybeSingle();
+      
+      if (providerError) {
+        console.error('Error fetching provider ID:', providerError);
+        setAgreements([]);
+        return;
+      }
+      
+      if (!providerData) {
+        // User is not registered as a service provider
+        console.log('User is not registered as a service provider');
+        setAgreements([]);
+        setIsRegisteredProvider(false);
+        return;
+      }
+      
+      setIsRegisteredProvider(true);
+      
       // Get service agreements provided by this user
       let query = supabase
         .from('service_agreements')
-        .select('*, services(title), user_profiles!service_agreements_client_id_fkey(full_name)')
-        .eq('provider_id', profile.id);
+        .select('*, services(title)')
+        .eq('provider_id', providerData.id);
       
       if (activeTab === 'active') {
         query = query.in('status', ['active', 'pending']);
@@ -47,7 +71,24 @@ const ServiceAgreementsScreen = ({ navigation }) => {
       
       if (error) throw error;
       
-      setAgreements(data || []);
+      // Fetch client details separately for each agreement
+      const agreementsWithClients = await Promise.all((data || []).map(async (agreement) => {
+        if (agreement.client_id) {
+          const { data: clientData } = await supabase
+            .from('user_profiles')
+            .select('full_name')
+            .eq('id', agreement.client_id)
+            .single();
+          
+          return {
+            ...agreement,
+            client: clientData || { full_name: 'Unknown Client' }
+          };
+        }
+        return agreement;
+      }));
+      
+      setAgreements(agreementsWithClients);
     } catch (err) {
       console.error('Error fetching service agreements:', err);
       // Silent error handling - no alert when agreements fail to load
@@ -61,10 +102,30 @@ const ServiceAgreementsScreen = ({ navigation }) => {
     if (!profile?.id) return;
     
     try {
+      // First get the provider ID from service_providers table
+      const { data: providerData, error: providerError } = await supabase
+        .from('service_providers')
+        .select('id')
+        .eq('user_id', profile.id)
+        .maybeSingle();
+      
+      if (providerError) {
+        console.error('Error fetching provider ID:', providerError);
+        setTemplates([]);
+        return;
+      }
+      
+      if (!providerData) {
+        // User is not registered as a service provider
+        console.log('User is not registered as a service provider');
+        setTemplates([]);
+        return;
+      }
+      
       const { data, error } = await supabase
         .from('service_agreement_templates')
         .select('*')
-        .eq('provider_id', profile.id)
+        .eq('provider_id', providerData.id)
         .order('created_at', { ascending: false });
       
       if (error) throw error;
@@ -88,6 +149,17 @@ const ServiceAgreementsScreen = ({ navigation }) => {
       }
       
       setLoading(true);
+      
+      // First get the provider ID from service_providers table
+      const { data: providerData, error: providerError } = await supabase
+        .from('service_providers')
+        .select('id')
+        .eq('user_id', profile.id)
+        .single();
+      
+      if (providerError || !providerData) {
+        throw new Error('Unable to find your service provider profile');
+      }
       
       // Create a unique file name
       const fileName = `${profile.id}_${Date.now()}.pdf`;
@@ -123,7 +195,7 @@ const ServiceAgreementsScreen = ({ navigation }) => {
       const { error: templateError } = await supabase
         .from('service_agreement_templates')
         .insert({
-          provider_id: profile.id,
+          provider_id: providerData.id,
           title: document.assets[0].name || 'New Agreement Template',
           file_url: urlData.publicUrl,
           file_name: fileName
@@ -167,7 +239,7 @@ const ServiceAgreementsScreen = ({ navigation }) => {
     const lowerCaseQuery = searchQuery?.toLowerCase() || '';
     return (
       (agreement.services?.title || '').toLowerCase().includes(lowerCaseQuery) ||
-      (agreement.user_profiles?.full_name || '').toLowerCase().includes(lowerCaseQuery) ||
+      (agreement.client?.full_name || '').toLowerCase().includes(lowerCaseQuery) ||
       (agreement.agreement_number || '').toLowerCase().includes(lowerCaseQuery)
     );
   }) : [];
@@ -197,7 +269,7 @@ const ServiceAgreementsScreen = ({ navigation }) => {
         </View>
         
         <Text style={styles.agreementClient}>
-          <Ionicons name="person-outline" size={16} color="#666" /> {item.user_profiles?.full_name || 'Client'}
+          <Ionicons name="person-outline" size={16} color="#666" /> {item.client?.full_name || 'Client'}
         </Text>
         
         <Text style={styles.agreementNumber}>
@@ -278,6 +350,19 @@ const ServiceAgreementsScreen = ({ navigation }) => {
         </TouchableOpacity>
       </View>
       
+      {/* Show message if user is not registered as provider */}
+      {!isRegisteredProvider ? (
+        <View style={styles.emptyContainer}>
+          <Feather name="alert-circle" size={64} color="#ccc" />
+          <Text style={styles.emptyText}>
+            You need to be registered as a service provider to access this feature.
+          </Text>
+          <Text style={[styles.emptyText, { fontSize: 14, marginTop: 8 }]}>
+            Please complete your provider registration first.
+          </Text>
+        </View>
+      ) : (
+      <>
       {/* Agreements List */}
       {loading ? (
         <View style={styles.loadingContainer}>
@@ -356,6 +441,8 @@ const ServiceAgreementsScreen = ({ navigation }) => {
         >
           <Ionicons name="add" size={24} color="#FFFFFF" />
         </TouchableOpacity>
+      )}
+      </>
       )}
     </View>
   );

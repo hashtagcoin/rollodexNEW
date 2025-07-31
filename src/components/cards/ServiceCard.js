@@ -61,8 +61,6 @@ const ServiceCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', isFavor
         else if (credential.toLowerCase().includes('education') || credential.toLowerCase().includes('teacher')) color = COLORS.tertiary;
         credentialButtons.push({ name: credential, color: color });
       });
-    } else if (item.category) {
-      credentialButtons.push({ name: `${item.category} Provider`, color: COLORS.primary });
     }
     return credentialButtons;
   };
@@ -71,16 +69,16 @@ const ServiceCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', isFavor
   if (displayAs === 'list') {
     return (
       <TouchableOpacity 
-        style={CardStyles.listCardContainer} 
+        style={localStyles.listCardContainer}
         onPress={onPress ? () => onPress(item) : undefined} 
         activeOpacity={0.8}
       >
-        <View style={CardStyles.listCardInner}> 
-          <View style={[CardStyles.listImageContainer, {overflow: 'hidden'}]}> 
-            {!imageLoaded && <View style={CardStyles.loaderContainer} />}
+        <View style={localStyles.listCardInner}>
+          <View style={localStyles.listImageContainer}>
+            {!imageLoaded && <View style={localStyles.loaderContainer} />}
             <Image 
               source={{ uri: imageError ? 'https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/providerimages/default-service.png' : thumbUrl }}
-              style={[CardStyles.listImage, {resizeMode: 'cover'}]} 
+              style={localStyles.listImage}
               onLoad={() => {
                 setImageLoaded(true);
                 if (typeof onImageLoaded === 'function' && imageUrl && !imageError) onImageLoaded(imageUrl);
@@ -91,52 +89,43 @@ const ServiceCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', isFavor
               placeholder={placeholderImage}
               placeholderContentFit="cover"
             />
-            <TouchableOpacity 
-              style={CardStyles.iconContainer} 
-              onPress={onToggleFavorite}
-            >
-              <View style={isFavorited ? CardStyles.iconCircleActive : CardStyles.iconCircle}> 
-                <Ionicons name={isFavorited ? "heart" : "heart-outline"} size={16} style={isFavorited ? CardStyles.favoriteIconActive : CardStyles.favoriteIcon} />
+            {credentials.length > 0 && credentials[0].name.toLowerCase().includes('ndis') && (
+              <View style={localStyles.ndisBadge}>
+                <Text style={localStyles.ndisBadgeText}>NDIS</Text>
               </View>
-            </TouchableOpacity>
-            {/* Share button for List View - Placed near favorite icon for consistency */}
-            {onSharePress && (
-              <TouchableOpacity 
-                style={[CardStyles.iconContainer, { top: 40 }]} // Adjust position as needed
-                onPress={() => onSharePress(item)}
-              >
-                <View style={CardStyles.iconCircle}> 
-                  <Ionicons name="share-social-outline" size={16} style={CardStyles.favoriteIcon} />
-                </View>
-              </TouchableOpacity>
             )}
+            <TouchableOpacity 
+              style={localStyles.listFavoriteButton}
+              onPress={onToggleFavorite}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons 
+                name={isFavorited ? "heart" : "heart-outline"} 
+                size={20} 
+                color={isFavorited ? "red" : "#666"} 
+              />
+            </TouchableOpacity>
           </View>
           
-          <View style={CardStyles.listContentContainer}> 
-            <View style={CardStyles.topSection}> 
-              <Text style={[CardStyles.title, {flex: 1, paddingRight: 5}]} numberOfLines={1}>{item.title || 'Service Title'}</Text> 
-              {renderModernRating()}
-            </View>
-            <Text style={CardStyles.subtitle} numberOfLines={1}>{category}</Text> 
-            <Text style={[CardStyles.subtitle, {marginVertical: 4}]} numberOfLines={2}>{description}</Text> 
-            <View style={CardStyles.bottomSection}> 
-              <View style={{flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 5}}> 
-                <Ionicons name="location-outline" size={16} color={COLORS.black} />
-                <Text style={[CardStyles.subtitle, {marginLeft: 4}]} numberOfLines={1}>{suburb}</Text> 
+          <View style={localStyles.listContent}>
+            <View>
+              <Text style={localStyles.listTitle} numberOfLines={1}>{item.title || 'Service Title'}</Text>
+              <Text style={localStyles.listCategory} numberOfLines={1}>{category}</Text>
+              <View style={localStyles.listDetailsRow}>
+                <View style={localStyles.listDetailItem}>
+                  <Ionicons name="location-outline" size={14} color="#666" />
+                  <Text style={localStyles.listDetailText}>{suburb}</Text>
+                </View>
+                {item.rating && (
+                  <View style={localStyles.listDetailItem}>
+                    <Ionicons name="star" size={14} color="#666" />
+                    <Text style={localStyles.listDetailText}>{item.rating.toFixed(1)}</Text>
+                  </View>
+                )}
               </View>
-              <Text style={CardStyles.price}>{price}<Text style={{fontSize: CardStyles.subtitle.fontSize, color: COLORS.textSecondary}}> /hr</Text></Text> 
             </View>
-            <View style={localStyles.listCredentialsContainer}>
-              {credentials.slice(0, 2).map((credential, index) => (
-                <View key={`${credential.name}-${index}`} style={[localStyles.listCredentialButton, {backgroundColor: credential.color || COLORS.lightGray}]}>
-                  <Text style={localStyles.listCredentialText}>{credential.name}</Text>
-                </View>
-              ))}
-              {credentials.length > 2 && (
-                <View style={[localStyles.listCredentialButton, {backgroundColor: COLORS.lightGray}]}>
-                  <Text style={localStyles.listCredentialText}>+{credentials.length - 2} more</Text>
-                </View>
-              )}
+            <View style={localStyles.listPriceRow}>
+              <Text style={localStyles.listPrice}>{price}/hr</Text>
             </View>
           </View>
         </View>
@@ -164,14 +153,6 @@ const ServiceCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', isFavor
                 contentFit="cover"
                 cachePolicy="immutable"
               />
-              <TouchableOpacity 
-                style={CardStyles.iconContainer} 
-                onPress={onToggleFavorite}
-              >
-                <View style={isFavorited ? CardStyles.iconCircleActive : CardStyles.iconCircle}> 
-                  <Ionicons name={isFavorited ? "heart" : "heart-outline"} size={20} style={isFavorited ? CardStyles.favoriteIconActive : CardStyles.favoriteIcon} />
-                </View>
-              </TouchableOpacity>
               {/* Share button for Grid View - Placed near favorite icon */}
               {onSharePress && (
                 <TouchableOpacity 
@@ -183,17 +164,39 @@ const ServiceCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', isFavor
                   </View>
                 </TouchableOpacity>
               )}
+              
+              {/* Credentials labels at top left of image */}
+              <View style={localStyles.gridCredentialsContainer}>
+                {credentials.slice(0, 1).map((credential, index) => (
+                  <View key={`${credential.name}-${index}`} style={[localStyles.gridCredentialButton, {backgroundColor: credential.color || COLORS.lightGray}]}>
+                    <Text style={localStyles.gridCredentialText}>{credential.name}</Text>
+                  </View>
+                ))}
+              </View>
             </View>
             
-            <View style={{padding: 8}}> 
-              <Text style={[CardStyles.title, {marginBottom: 4}]} numberOfLines={2}>{item.title || 'Service Title'}</Text> 
-              <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4}}> 
+            <View style={{padding: 12}}> 
+              <Text style={[CardStyles.title, {marginBottom: 3, fontWeight: 'bold'}]} numberOfLines={2}>{item.title || 'Service Title'}</Text> 
+              <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3}}> 
                 <Text style={CardStyles.subtitle} numberOfLines={1}>{category}</Text> 
-                {renderModernRating()}
+                <TouchableOpacity 
+                  onPress={onToggleFavorite}
+                  style={{ padding: 2 }}
+                >
+                  <Ionicons 
+                    name={isFavorited ? "heart" : "heart-outline"} 
+                    size={18} 
+                    color={isFavorited ? "#FF3B30" : "#666"} 
+                  />
+                </TouchableOpacity>
               </View>
-              <View style={{flexDirection: 'row', alignItems: 'center'}}> 
+              <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 3}}> 
                 <Ionicons name="location-outline" size={16} color={COLORS.black} />
-                <Text style={[CardStyles.subtitle, {marginLeft: 4}]} numberOfLines={1}>{suburb}</Text> 
+                <Text style={[CardStyles.subtitle, {marginLeft: 4, flex: 1}]} numberOfLines={1}>{suburb}</Text> 
+                <Text style={[CardStyles.price, {marginLeft: 8}]}>{price}<Text style={{fontSize: CardStyles.subtitle.fontSize, color: COLORS.textSecondary}}> /hr</Text></Text>
+              </View>
+              <View style={{alignItems: 'flex-end'}}>
+                {renderModernRating()}
               </View>
             </View>
           </View>
@@ -205,6 +208,107 @@ const ServiceCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', isFavor
 
 // FIX: Wrapped the plain object in StyleSheet.create() for performance and correctness.
 const localStyles = StyleSheet.create({
+  // List view styles - matching HousingCard
+  listCardContainer: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 10,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  listCardInner: {
+    flexDirection: 'row',
+  },
+  listImageContainer: {
+    width: 120,
+    height: 100,
+    backgroundColor: '#f5f5f5',
+    position: 'relative',
+  },
+  listImage: {
+    width: '100%',
+    height: '100%',
+  },
+  listContent: {
+    flex: 1,
+    padding: 12,
+    justifyContent: 'space-between',
+  },
+  listTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  listCategory: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 8,
+  },
+  listDetailsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  listDetailItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 15,
+  },
+  listDetailText: {
+    fontSize: 12,
+    color: '#666',
+    marginLeft: 4,
+  },
+  listPriceRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+  },
+  listPrice: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#000',
+  },
+  listFavoriteButton: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 2,
+    zIndex: 1,
+  },
+  ndisBadge: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    backgroundColor: COLORS.success,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  ndisBadgeText: {
+    color: 'white',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  loaderContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#e0e0e0',
+  },
+  // Credential styles
   listCredentialsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -218,6 +322,25 @@ const localStyles = StyleSheet.create({
     marginBottom: 4,
   },
   listCredentialText: {
+    fontSize: 10,
+    color: COLORS.white,
+    fontWeight: '500',
+  },
+  gridCredentialsContainer: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  gridCredentialButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+    marginRight: 4,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+  },
+  gridCredentialText: {
     fontSize: 10,
     color: COLORS.white,
     fontWeight: '500',

@@ -15,7 +15,8 @@ import { MaterialCommunityIcons, Ionicons, FontAwesome5 } from '@expo/vector-ico
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const ParticipantOnboarding = ({ navigation, route }) => {
-  console.log('ParticipantOnboarding screen rendered');
+  console.log('[ParticipantOnboarding] Screen rendered');
+  console.log('[ParticipantOnboarding] Route params:', route.params);
   const { isAuthenticated, userRole } = route.params || {};
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState({
@@ -28,6 +29,11 @@ const ParticipantOnboarding = ({ navigation, route }) => {
     interests: [],
     communicationPreferences: [],
   });
+  
+  // Log initial form data
+  useEffect(() => {
+    console.log('[ParticipantOnboarding] Initial form data:', formData);
+  }, []);
   
   const slideAnim = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(1)).current;
@@ -63,9 +69,16 @@ const ParticipantOnboarding = ({ navigation, route }) => {
   }, [currentStep]);
 
   const handleNext = () => {
+    console.log('[ParticipantOnboarding] handleNext called at step:', currentStep);
+    console.log('[ParticipantOnboarding] Current form data:', formData);
+    
     if (currentStep < totalSteps) {
       setCurrentStep(currentStep + 1);
     } else {
+      console.log('[ParticipantOnboarding] Final step - navigating to AccountSetup with data:', {
+        userType: 'participant',
+        formData: formData
+      });
       navigation.navigate('AccountSetup', { userType: 'participant', formData });
     }
   };
@@ -80,6 +93,7 @@ const ParticipantOnboarding = ({ navigation, route }) => {
 
 
   const updateFormData = (field, value) => {
+    console.log(`[ParticipantOnboarding] Updating field '${field}' with value:`, value);
     setFormData({ ...formData, [field]: value });
   };
 

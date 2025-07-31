@@ -2,6 +2,8 @@ import React, { createContext, useState, useContext, useEffect } from 'react';
 import { Alert } from 'react-native';
 import { supabase } from '../lib/supabaseClient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import ImagePreloadService from '../services/ImagePreloadService';
+import { globalLoadedImages } from '../components/common/CachedImage';
 
 const UserContext = createContext(null);
 
@@ -13,32 +15,35 @@ export const UserProvider = ({ children }) => {
   
   // Function to fetch user profile from Supabase
   const fetchUserProfile = async (userId) => {
+    console.log('[UserContext] fetchUserProfile called for userId:', userId);
     try {
       const { data, error } = await supabase
         .from('user_profiles')
-        .select(`
-          id, username, full_name, avatar_url, background_url, bio, email, role, 
-          ndis_number, primary_disability, support_level, 
-          age, sex, address,
-          mobility_aids, dietary_requirements, accessibility_preferences,
-          comfort_traits, preferred_categories, preferred_service_formats,
-          points, is_active, created_at, updated_at
-        `)
+        .select('id, username, full_name, avatar_url, background, bio, email, role, ndis_number, primary_disability, support_level, age, sex, address, mobility_aids, dietary_requirements, accessibility_preferences, comfort_traits, preferred_categories, preferred_service_formats, points, is_active, created_at, updated_at')
         .eq('id', userId)
         .single();
       
-      if (error) throw error;
+      if (error) {
+        console.error('[UserContext] Error fetching profile from Supabase:', error);
+        throw error;
+      }
+      
+      console.log('[UserContext] Profile fetched from Supabase:', data);
+      console.log('[UserContext] - Username:', data?.username);
+      console.log('[UserContext] - Full name:', data?.full_name);
       
       if (data) {
         // Cache the profile data
+        console.log('[UserContext] Caching profile to AsyncStorage');
         await AsyncStorage.setItem('user_profile', JSON.stringify(data));
         setProfile(data);
         return data;
       }
       
+      console.log('[UserContext] No profile data returned from Supabase');
       return null;
     } catch (error) {
-      // Silent error handling
+      console.error('[UserContext] fetchUserProfile error:', error);
       return null;
     }
   };
@@ -65,13 +70,11 @@ export const UserProvider = ({ children }) => {
       setLoading(true);
       
       try {
-        // Try to get cached profile first for immediate UI display
-        const cachedProfile = await AsyncStorage.getItem('user_profile');
-        if (cachedProfile) {
-          setProfile(JSON.parse(cachedProfile));
-        }
+        // Clear state on mount to prevent stale data
+        setProfile(null);
+        setUser(null);
         
-        // Get current authenticated user
+        // Get current authenticated user first
         const { data: { user: authUser }, error } = await supabase.auth.getUser();
         
         if (error) {
@@ -81,9 +84,34 @@ export const UserProvider = ({ children }) => {
         }
         
         if (authUser) {
+          console.log('[UserContext] loadUserData - Auth user found:', authUser.id);
           setUser(authUser);
-          // Fetch fresh profile data (even if we have cached data)
-          await fetchUserProfile(authUser.id);
+          
+          // Try to get cached profile but validate it belongs to current user
+          const cachedProfile = await AsyncStorage.getItem('user_profile');
+          if (cachedProfile) {
+            const profileData = JSON.parse(cachedProfile);
+            console.log('[UserContext] Found cached profile:', profileData);
+            console.log('[UserContext] Cached profile username:', profileData?.username);
+            console.log('[UserContext] Cached profile full_name:', profileData?.full_name);
+            
+            // Only use cache if it matches current user
+            if (profileData.id === authUser.id) {
+              console.log('[UserContext] Cache matches current user, using cached data');
+              setProfile(profileData);
+            } else {
+              console.log('[UserContext] Cache user ID mismatch - cached:', profileData.id, 'current:', authUser.id);
+              // Clear mismatched cache
+              await AsyncStorage.removeItem('user_profile');
+            }
+          } else {
+            console.log('[UserContext] No cached profile found');
+          }
+          
+          // Always fetch fresh profile data from server
+          console.log('[UserContext] Fetching fresh profile from server');
+          const freshProfile = await fetchUserProfile(authUser.id);
+          console.log('[UserContext] Fresh profile fetch result:', freshProfile ? 'Success' : 'Failed');
         }
       } catch (error) {
         // Silent error handling
@@ -96,13 +124,59 @@ export const UserProvider = ({ children }) => {
     
     // Subscribe to auth changes
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('[UserContext] Auth state changed:', event, 'User:', session?.user?.id);
+      
       if (event === 'SIGNED_IN' && session?.user) {
+        console.log('[UserContext] SIGNED_IN event - User ID:', session.user.id);
         setUser(session.user);
+        
+        // First try to load profile from local storage (for new users)
+        try {
+          const cachedProfile = await AsyncStorage.getItem('user_profile');
+          if (cachedProfile) {
+            const profileData = JSON.parse(cachedProfile);
+            console.log('[UserContext] Auth change - found cached profile:', profileData);
+            console.log('[UserContext] Cached username:', profileData?.username);
+            console.log('[UserContext] Cached full_name:', profileData?.full_name);
+            
+            // If the cached profile matches this user, use it immediately
+            if (profileData.id === session.user.id) {
+              console.log('[UserContext] Using cached profile for immediate display');
+              setProfile(profileData);
+              // Then fetch latest from server in background
+              fetchUserProfile(session.user.id);
+              return;
+            } else {
+              console.log('[UserContext] Cached profile ID mismatch - clearing cache');
+              // Clear mismatched cache
+              await AsyncStorage.removeItem('user_profile');
+            }
+          } else {
+            console.log('[UserContext] No cached profile found during auth change');
+          }
+        } catch (error) {
+          console.log('[UserContext] Error loading cached profile:', error);
+        }
+        
+        // If no valid cache, fetch from server
+        console.log('[UserContext] Fetching profile from server after sign in');
         await fetchUserProfile(session.user.id);
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
         setProfile(null);
         await AsyncStorage.removeItem('user_profile');
+        await AsyncStorage.removeItem('provider_mode');
+        
+        // Clear all image caches on sign out
+        ImagePreloadService.clearAllCaches();
+        globalLoadedImages.clear();
+        
+        // Clear any image cache keys from AsyncStorage
+        const allKeys = await AsyncStorage.getAllKeys();
+        const imageCacheKeys = allKeys.filter(key => key.startsWith('ROLLODEX_IMAGE_CACHE_'));
+        if (imageCacheKeys.length > 0) {
+          await AsyncStorage.multiRemove(imageCacheKeys);
+        }
       }
     });
     
@@ -263,7 +337,8 @@ export const UserProvider = ({ children }) => {
         age: profileData.age || null,
         sex: profileData.sex || null,
         address: profileData.address || '',
-        ndis_number: profileData.ndis_number || '',
+        // Set ndis_number to null if empty to avoid unique constraint violations
+        ndis_number: profileData.ndis_number && profileData.ndis_number.trim() ? profileData.ndis_number.trim() : null,
         primary_disability: profileData.primary_disability || '',
         support_level: profileData.support_level || '',
         mobility_aids: Array.isArray(profileData.mobility_aids) ? profileData.mobility_aids : [],
@@ -279,6 +354,8 @@ export const UserProvider = ({ children }) => {
         username: updates.username,
         full_name: updates.full_name,
         bio: updates.bio,
+        background: updates.background,
+        avatar_url: updates.avatar_url,
         age: updates.age,
         sex: updates.sex,
         address: updates.address,
