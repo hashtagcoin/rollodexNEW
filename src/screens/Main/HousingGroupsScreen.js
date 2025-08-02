@@ -46,7 +46,7 @@ const PAGE_SIZE = 15;
 
 const HousingGroupsScreen = ({ navigation }) => {
   const { reportScroll } = useScrollContext();
-  const { preloadHousingImages, getCachedUrl, getCacheStats } = useHousingImageCache();
+  const { preloadHousingItems, getCachedUrl, cacheStats } = useHousingImageCache();
   // State management
   const [housingGroups, setHousingGroups] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -442,14 +442,13 @@ const HousingGroupsScreen = ({ navigation }) => {
     }));
     
     // Preload images with proper caching
-    preloadHousingImages(itemsToPreload);
+    preloadHousingItems(itemsToPreload);
     
     // Log cache stats in development
     if (__DEV__) {
-      const stats = getCacheStats();
-      console.log('[HousingGroups] Cache stats:', stats);
+      console.log('[HousingGroups] Cache stats:', cacheStats);
     }
-  }, [housingGroups, preloadHousingImages, getCacheStats]);
+  }, [housingGroups, preloadHousingItems, cacheStats]);
 
   // Handle creating a new housing group
   const handleCreateGroup = () => {
