@@ -55,6 +55,62 @@ const AccountSetupScreen = ({ navigation, route }) => {
     return re.test(email);
   };
 
+  // Helper function to check if username exists
+  const checkUsernameExists = async (username) => {
+    try {
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('username')
+        .eq('username', username)
+        .single();
+      
+      if (error && error.code !== 'PGRST116') {
+        // PGRST116 means no rows returned, which is what we want
+        throw error;
+      }
+      
+      return !!data; // Returns true if username exists, false if not
+    } catch (error) {
+      if (error.code === 'PGRST116') {
+        return false; // Username doesn't exist
+      }
+      throw error;
+    }
+  };
+
+  // Helper function to generate a unique username
+  const generateUniqueUsername = async (baseUsername) => {
+    let username = baseUsername.toLowerCase().replace(/[^a-z0-9]/g, ''); // Clean username
+    let counter = 0;
+    let isUnique = false;
+    
+    // If username is too short, use email prefix
+    if (username.length < 3) {
+      username = email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '');
+    }
+    
+    let candidateUsername = username;
+    
+    while (!isUnique) {
+      const exists = await checkUsernameExists(candidateUsername);
+      if (!exists) {
+        isUnique = true;
+        username = candidateUsername;
+      } else {
+        counter++;
+        candidateUsername = `${username}${counter}`;
+      }
+      
+      // Safety check to prevent infinite loops
+      if (counter > 999) {
+        candidateUsername = `${username}${Date.now()}`;
+        break;
+      }
+    }
+    
+    return candidateUsername;
+  };
+
   const handleCreateAccount = async () => {
     // Validation
     if (!email || !password || !confirmPassword) {
@@ -80,9 +136,12 @@ const AccountSetupScreen = ({ navigation, route }) => {
     setLoading(true);
 
     try {
-      // Generate a username from the form data or email
-      const username = formData?.preferredName || formData?.firstName || email.split('@')[0];
-      const fullName = formData?.firstName || formData?.preferredName || username;
+      // Generate a base username from the form data or email
+      const baseUsername = formData?.preferredName || formData?.firstName || email.split('@')[0];
+      const fullName = formData?.firstName || formData?.preferredName || baseUsername;
+      
+      // Generate a unique username
+      const username = await generateUniqueUsername(baseUsername);
       
       console.log('[AccountSetupScreen] Generating user data:');
       console.log('[AccountSetupScreen] - Username:', username);
@@ -173,6 +232,18 @@ const AccountSetupScreen = ({ navigation, route }) => {
 
       if (profileError) {
         console.error('[AccountSetupScreen] Profile save error:', profileError);
+        
+        // Handle specific duplicate username error
+        if (profileError.code === '23505' && profileError.message.includes('user_profiles_username_key')) {
+          Alert.alert(
+            'Username Already Taken',
+            `The username "${username}" is already taken. Please try again.`,
+            [{ text: 'OK' }]
+          );
+          setLoading(false);
+          return;
+        }
+        
         throw profileError;
       }
       

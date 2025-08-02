@@ -392,11 +392,8 @@ const CreateHousingListingScreen = ({ navigation }) => {
         navigation={navigation}
         canGoBack={true}
       />
-      {/* FIX 3: Removed style={styles.scrollView} as it's not defined */}
       <ScrollView keyboardShouldPersistTaps="handled">
-        {/* FIX 2: Changed style from styles.content to styles.scrollContent */}
         <View style={styles.scrollContent}>
-            {/* FIX 1: Added opening Card tag here */}
             <Card style={styles.card}>
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Listing Title*</Text>
@@ -538,7 +535,7 @@ const CreateHousingListingScreen = ({ navigation }) => {
                   />
                 </View>
               )}
-            </Card> {/* This was the original orphaned closing tag, now correctly paired */}
+            </Card>
 
             <View style={styles.addressContainer}>
               <Text style={styles.sectionTitle}>Property Address*</Text>

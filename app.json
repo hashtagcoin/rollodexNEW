@@ -17,8 +17,10 @@
       "bundleIdentifier": "com.boredbash.rollodexnew",
       "buildNumber": "1",
       "infoPlist": {
-        "NSCameraUsageDescription": "This app uses the camera to take photos for profiles and listings.",
-        "NSPhotoLibraryUsageDescription": "This app accesses your photo library to select images for profiles and listings."
+        "NSCameraUsageDescription": "This app needs access to the camera to allow you to take photos for your profile and service listings.",
+        "NSPhotoLibraryUsageDescription": "This app accesses your photo library to select images for your profile and service listings.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "This app uses location services to help you find nearby services and providers in your area.",
+        "NSLocationWhenInUseUsageDescription": "This app uses location services to help you find nearby services and providers in your area."
       }
     },
     "android": {
@@ -33,7 +35,21 @@
     },
     "plugins": [
       "expo-router",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "This app accesses your photo library to select images for your profile and service listings.",
+          "cameraPermission": "This app needs access to the camera to allow you to take photos for your profile and service listings."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "This app uses location services to help you find nearby services and providers in your area.",
+          "locationWhenInUsePermission": "This app uses location services to help you find nearby services and providers in your area."
+        }
+      ]
     ]
   }
 }
