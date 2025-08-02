@@ -75,7 +75,7 @@ export const CardStyles = {
   // ===== LIST VIEW STYLES =====
   listCardContainer: {
     width: '100%',
-    height: '100%',
+    minHeight: 120,
     backgroundColor: COLORS.white,
     borderRadius: 8,
     ...SHADOWS.medium,
@@ -93,7 +93,7 @@ export const CardStyles = {
     paddingBottom: 14,
     paddingLeft: 14,
     borderRadius: 8,
-    height: '100%',
+    minHeight: 120,
     alignItems: 'flex-start',
   },
   

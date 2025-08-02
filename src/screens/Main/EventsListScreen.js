@@ -216,11 +216,7 @@ const EventsListScreen = ({ navigation }) => {
           data={filteredEvents}
           renderItem={renderEvent}
           keyExtractor={item => item.id}
-          contentContainerStyle={{
-            padding: 16,
-            paddingTop: 8,
-            paddingBottom: viewMode === 'grid' ? 90 : 80 // Extra padding at bottom for FAB
-          }}
+          contentContainerStyle={viewMode === 'grid' ? styles.gridContainer : styles.listContainer}
           numColumns={viewMode === 'grid' ? 2 : 1}
           columnWrapperStyle={viewMode === 'grid' ? { justifyContent: 'space-between' } : null}
           showsVerticalScrollIndicator={false}
@@ -287,6 +283,14 @@ const styles = StyleSheet.create({
     bottom: 20, // Close to the bottom navbar
     right: 16, // Equal padding from right edge
     zIndex: 1000, // Ensure it's above all content
+  },
+  gridContainer: {
+    padding: 5,
+    paddingBottom: 100,
+  },
+  listContainer: {
+    padding: 10,
+    paddingBottom: 100,
   },
   listingCountContainer: {
     paddingHorizontal: 16,
@@ -408,9 +412,9 @@ const styles = StyleSheet.create({
   },
   eventCard: {
     flexDirection: 'row',
-    backgroundColor: '#f8f8f8',
+    backgroundColor: '#ffffff',
     borderRadius: 16,
-    marginBottom: 14,
+    marginBottom: 6,
     overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },

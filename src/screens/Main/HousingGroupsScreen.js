@@ -668,9 +668,9 @@ const HousingGroupsScreen = ({ navigation }) => {
             data={filteredGroups}
             renderItem={renderHousingGroup}
             keyExtractor={(item) => String(item.id)}
-            contentContainerStyle={{paddingHorizontal: 10, paddingBottom: 20}}
+            contentContainerStyle={styles.listContainer}
+            ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
             showsVerticalScrollIndicator={false}
-            ItemSeparatorComponent={() => <View style={{height: 10}} />}
             initialNumToRender={4}
             maxToRenderPerBatch={6}
             windowSize={7}
@@ -701,8 +701,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   listContainer: {
-    paddingBottom: 20,
-    paddingHorizontal: 10,
+    padding: 10,
+    paddingBottom: 100,
   },
   loaderContainer: {
     flex: 1,

@@ -1111,8 +1111,13 @@ const FavouritesScreen = () => {
               onPress={() => navigation.navigate('Explore', {
                 screen: 'ProviderDiscovery'
               })}
+              activeOpacity={0.8}
             >
-              <Text style={styles.exploreCTAText}>Start Exploring</Text>
+              <View style={styles.exploreCTAContent}>
+                <Ionicons name="compass" size={24} color={COLORS.white} style={styles.exploreCTAIcon} />
+                <Text style={styles.exploreCTAText}>Start Exploring</Text>
+                <Ionicons name="arrow-forward" size={20} color={COLORS.white} style={styles.exploreCTAArrow} />
+              </View>
             </TouchableOpacity>
           )}
         </View>
@@ -1189,14 +1194,34 @@ const styles = StyleSheet.create({
     marginTop: SIZES.large,
     backgroundColor: COLORS.primary,
     paddingHorizontal: SIZES.large * 2,
-    paddingVertical: SIZES.medium,
-    borderRadius: SIZES.radius,
+    paddingVertical: SIZES.medium + 4,
+    borderRadius: 25,
     ...SHADOWS.medium,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+    transform: [{ scale: 1 }],
+  },
+  exploreCTAContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  exploreCTAIcon: {
+    marginRight: 8,
   },
   exploreCTAText: {
     color: COLORS.white,
     fontSize: SIZES.body2,
-    fontFamily: FONTS.medium,
+    fontFamily: FONTS.bold,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+  },
+  exploreCTAArrow: {
+    marginLeft: 8,
+    opacity: 0.9,
   },
   gridContainer: {
     paddingBottom: SIZES.large, // Use theme sizes

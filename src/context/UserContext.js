@@ -2,6 +2,8 @@ import React, { createContext, useState, useContext, useEffect } from 'react';
 import { Alert } from 'react-native';
 import { supabase } from '../lib/supabaseClient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as FileSystem from 'expo-file-system';
+import { decode } from 'base64-arraybuffer';
 import ImagePreloadService from '../services/ImagePreloadService';
 import { globalLoadedImages } from '../components/common/CachedImage';
 
@@ -432,24 +434,35 @@ export const UserProvider = ({ children }) => {
       
       // Create a unique filename
       const fileExt = uri.split('.').pop() || 'jpg';
-      // Use a standardized path format to prevent double slashes
       const fileName = `avatar/${user.id}_${Date.now()}.${fileExt}`;
       
-      // Determine content type based on extension
+      // Use the exact same method as posts (which works perfectly on iOS)
+      let base64Data;
       let contentType = 'image/jpeg';
-      if (fileExt === 'png') contentType = 'image/png';
-      if (fileExt === 'gif') contentType = 'image/gif';
       
       console.log('Direct upload - preparing file:', fileName);
       
-      // Upload directly to Supabase Storage
+      try {
+        // Use expo-file-system to read the file (same as posts)
+        base64Data = await FileSystem.readAsStringAsync(uri, {
+          encoding: FileSystem.EncodingType.Base64
+        });
+        console.log('Direct upload - read as base64, length:', base64Data.length);
+      } catch (error) {
+        console.error('Error reading file:', error);
+        throw new Error('Failed to read image data');
+      }
+      
+      // Convert base64 to array buffer for upload (same as posts)
+      const arrayBuffer = decode(base64Data);
+      console.log('Direct upload - converted to arrayBuffer, byteLength:', arrayBuffer.byteLength);
+      
+      // Upload to Supabase Storage (iOS compatible - same as posts)
       const { data, error } = await supabase.storage
         .from('avatars')
-        .upload(fileName, {
-          uri: uri
-        }, {
+        .upload(fileName, arrayBuffer, {
+          contentType,
           upsert: true,
-          contentType: contentType
         });
       
       if (error) {

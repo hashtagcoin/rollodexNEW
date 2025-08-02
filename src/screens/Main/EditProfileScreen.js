@@ -8,6 +8,8 @@ import { supabase } from '../../lib/supabaseClient';
 import ModernImagePicker from '../../components/ModernImagePicker';
 import { useUser } from '../../context/UserContext';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
+import { decode } from 'base64-arraybuffer';
 
 // Define colors for UI elements
 const COLORS = {
@@ -331,22 +333,39 @@ export default function EditProfileScreen() {
       // Get the image URI
       const imageUri = result.assets[0].uri;
       
-      // Create a blob from the image
-      const response = await fetch(imageUri);
-      const blob = await response.blob();
+      // Use the same iOS-compatible method as posts and profile avatars
+      let base64Data;
+      let contentType = 'image/jpeg';
       
       // Generate a unique filename
-      const fileExt = imageUri.split('.').pop();
+      const fileExt = imageUri.split('.').pop() || 'jpg';
       const fileName = `background_${Date.now()}.${fileExt}`;
       const filePath = `user-backgrounds/${profile.id}/${fileName}`;
       
-      // Upload the image to Supabase Storage
+      console.log('Background upload - preparing file:', fileName);
+      
+      try {
+        // Use expo-file-system to read the file (same as posts and avatars)
+        base64Data = await FileSystem.readAsStringAsync(imageUri, {
+          encoding: FileSystem.EncodingType.Base64
+        });
+        console.log('Background upload - read as base64, length:', base64Data.length);
+      } catch (error) {
+        console.error('Error reading background image file:', error);
+        throw new Error('Failed to read background image data');
+      }
+      
+      // Convert base64 to array buffer for upload (same as posts and avatars)
+      const arrayBuffer = decode(base64Data);
+      console.log('Background upload - converted to arrayBuffer, byteLength:', arrayBuffer.byteLength);
+      
+      // Upload to Supabase Storage (iOS compatible - same as posts and avatars)
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('backgrounds')
-        .upload(filePath, blob, {
+        .upload(filePath, arrayBuffer, {
+          contentType,
           cacheControl: '3600',
           upsert: true,
-          contentType: `image/${fileExt}`
         });
 
       if (uploadError) throw uploadError;
@@ -364,10 +383,19 @@ export default function EditProfileScreen() {
 
       if (updateError) throw updateError;
       
-      // Update the local profile state and context with just the background
+      // Update the local profile state with the new background
       setProfile(prev => ({ ...prev, background: publicUrl }));
-      // Update the global context with just the background change
-      await updateProfile({ ...profile, background: publicUrl });
+      
+      // Update the global context using the current userProfile from context
+      // This ensures we have the latest profile data and the dashboard will refresh
+      const updatedProfileData = { ...userProfile, background: publicUrl };
+      const updateResult = await updateProfile(updatedProfileData);
+      
+      if (!updateResult.success) {
+        throw new Error(updateResult.message || 'Failed to update profile context');
+      }
+      
+      console.log('Background updated successfully in context:', updateResult.data?.background);
       
       Alert.alert('Success', 'Background image updated successfully');
     } catch (error) {

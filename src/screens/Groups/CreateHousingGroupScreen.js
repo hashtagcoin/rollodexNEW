@@ -132,12 +132,19 @@ const CreateHousingGroupScreen = () => {
       
       console.log('Preparing to upload housing group avatar:', fileName, 'Content type:', contentType);
       
-      // Upload directly to Supabase Storage using the URI
+      // Convert URI to blob for iOS compatibility
+      const response = await fetch(uri);
+      if (!response.ok) {
+        throw new Error('Failed to fetch image data');
+      }
+      const blob = await response.blob();
+      
+      console.log('Housing group avatar - converted to blob, size:', blob.size);
+      
+      // Upload blob to Supabase Storage (iOS compatible)
       const { data, error } = await supabase.storage
         .from('housinggroupavatar')
-        .upload(fileName, {
-          uri: uri
-        }, {
+        .upload(fileName, blob, {
           upsert: true,
           contentType: contentType
         });

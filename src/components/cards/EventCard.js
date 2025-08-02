@@ -152,12 +152,12 @@ const EventCard = ({ event, onPress, listView = true, testID, onFavoriteUpdate }
   if (listView) {
     return (
       <TouchableOpacity 
-        style={[CardStyles.listCardContainer, {backgroundColor: '#FFF8E7'}]}
+        style={[CardStyles.listCardContainer, {backgroundColor: '#ffffff'}]}
         onPress={onPress ? () => onPress(event) : undefined}
         activeOpacity={0.8}
         testID={testID}
       >
-        <View style={[CardStyles.listCardInner, {height: 140, backgroundColor: '#FFF8E7'}]}>
+        <View style={[CardStyles.listCardInner, {height: 140, backgroundColor: '#ffffff'}]}>
           <View style={CardStyles.listImageContainer}>
             {!imageLoaded && <View style={CardStyles.loaderContainer} />}
             <Image

@@ -188,7 +188,7 @@ const OnboardingSuccess = ({ navigation, route }) => {
         ],
         primaryButton: "Explore services",
         secondaryButton: "Complete my profile",
-        gradient: ['#1E90FF', '#4A6FA5', '#6495ED'],
+        gradient: ['#FF6B6B', '#4ECDC4', '#45B7D1'],
       };
     } else {
       return {

@@ -35,7 +35,7 @@ const DynamicLogo = ({ isDark, isLight, backgroundImage, style, imageStyle, resi
       return;
     }
     
-    // If no background image, default to light mode
+    // If no background image, default to black logo (light mode = false)
     if (!backgroundImage) {
       setUseDarkMode(false);
       return;
@@ -62,22 +62,22 @@ const DynamicLogo = ({ isDark, isLight, backgroundImage, style, imageStyle, resi
         // We'll use a default on any error rather than complicated analysis
         // The full analysis causes more problems on many devices than it solves
         
-        // For simplicity in a React Native context, we'll use default logic
-        // based on naming convention
-        if (imageUri && imageUri.toLowerCase().includes('dark')) {
-          setUseDarkMode(true);
-        } else if (imageUri && (imageUri.toLowerCase().includes('margo') || 
-                  imageUri.toLowerCase().includes('background'))) {
-          // Hardcoded check for known dark backgrounds
+        // Default to black logo unless background is very bright
+        // Check for known bright backgrounds that need white logo
+        if (imageUri && (imageUri.toLowerCase().includes('white') || 
+                        imageUri.toLowerCase().includes('light') ||
+                        imageUri.toLowerCase().includes('bright'))) {
+          // Use white logo for very bright backgrounds
           setUseDarkMode(true);
         } else {
+          // Default to black logo for all other cases (including dark/normal backgrounds)
           setUseDarkMode(false);
         }
         
         console.log(`[DynamicLogo] Using ${useDarkMode ? 'white' : 'black'} logo`);
       } catch (error) {
         console.error('[DynamicLogo] Error analyzing background:', error);
-        setUseDarkMode(false); // Default to light mode on error
+        setUseDarkMode(false); // Default to black logo on error
       }
     };
     
