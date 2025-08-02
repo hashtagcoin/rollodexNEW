@@ -57,7 +57,6 @@ const MessageBubble = ({ message, isOwnMessage, isBot = false, onPressAvatar }) 
         styles.messageBubble,
         isOwnMessage ? styles.ownMessageBubble : styles.otherMessageBubble
       ]}>
-        {/* Sender name for group chats */}
         {!isOwnMessage && message.sender && (
           <View style={styles.senderRow}>
             <Text style={styles.senderName}>
@@ -66,7 +65,6 @@ const MessageBubble = ({ message, isOwnMessage, isBot = false, onPressAvatar }) 
           </View>
         )}
         
-        {/* Message content */}
         <Text style={[
           styles.messageText,
           isOwnMessage ? styles.ownMessageText : styles.otherMessageText
@@ -74,7 +72,6 @@ const MessageBubble = ({ message, isOwnMessage, isBot = false, onPressAvatar }) 
           {message.content}
         </Text>
         
-        {/* Time stamp */}
         <Text style={[
           styles.timeText,
           isOwnMessage ? styles.ownTimeText : styles.otherTimeText

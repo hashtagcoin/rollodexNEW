@@ -282,7 +282,7 @@ const ChatModal = ({ visible, onClose, initialUser = null }) => {
                 <Ionicons name="close" size={22} color={COLORS.darkGray} />
               </TouchableOpacity>
             </View>
-            {/* Tabs */}
+
             <View style={styles.tabsContainer}>
               <TouchableOpacity
                 style={[styles.tab, activeTab === 'chats' && styles.activeTab]}

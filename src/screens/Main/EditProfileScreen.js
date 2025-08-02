@@ -60,6 +60,7 @@ export default function EditProfileScreen() {
   
   // Local state for avatar preview
   const [avatar, setAvatar] = useState(null);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   
   // Support level options
   const supportLevelOptions = [
@@ -162,7 +163,10 @@ export default function EditProfileScreen() {
         primary_disability: userProfile.primary_disability || '',
         support_level: userProfile.support_level || ''
       });
-      setAvatar(userProfile.avatar_url);
+      // Only update avatar if we're not currently uploading a new one
+      if (!isUploadingAvatar) {
+        setAvatar(userProfile.avatar_url);
+      }
       setLoading(false);
       clearTimeout(timeoutId);
       // Store the original username to compare when checking availability
@@ -195,7 +199,7 @@ export default function EditProfileScreen() {
     }
 
     return () => clearTimeout(timeoutId);
-  }, [userProfile, user]);
+  }, [userProfile, user, isUploadingAvatar]);
   
   // State to store the original username for comparison
   const [originalUsername, setOriginalUsername] = useState('');
@@ -258,6 +262,7 @@ export default function EditProfileScreen() {
       // Show local preview immediately for better UX
       setAvatar(imageData.uri);
       setUploading(true);
+      setIsUploadingAvatar(true);
       
       console.log('Selected image details:', {
         uri: imageData.uri,
@@ -289,6 +294,7 @@ export default function EditProfileScreen() {
       setAvatar(profile.avatar_url);
     } finally {
       setUploading(false);
+      setIsUploadingAvatar(false);
     }
   };
 

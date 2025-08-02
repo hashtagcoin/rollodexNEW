@@ -418,7 +418,7 @@ export default function ChatRoomView({ room, onBack }) {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}
     >
-      {/* Header */}
+
       <View style={styles.header}>
         <TouchableOpacity onPress={onBack} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#333" />
@@ -440,7 +440,7 @@ export default function ChatRoomView({ room, onBack }) {
       </View>
 
       <View style={styles.content}>
-        {/* Users Panel */}
+
         {showUsersPanel && (
           <View style={styles.usersPanel}>
             <Text style={styles.usersPanelTitle}>Online Users</Text>
@@ -453,7 +453,7 @@ export default function ChatRoomView({ room, onBack }) {
           </View>
         )}
 
-        {/* Chat Area */}
+
         <View style={styles.chatArea}>
           <FlatList
             ref={flatListRef}
@@ -464,7 +464,7 @@ export default function ChatRoomView({ room, onBack }) {
             onContentSizeChange={() => flatListRef.current?.scrollToEnd()}
           />
 
-          {/* Message Input */}
+
           <View style={styles.inputContainer}>
             <TextInput
               style={styles.messageInput}
@@ -485,7 +485,7 @@ export default function ChatRoomView({ room, onBack }) {
         </View>
       </View>
 
-      {/* User Actions Modal */}
+
       <Modal
         visible={showUserActions}
         transparent

@@ -275,7 +275,7 @@ const ChatDetail = ({ conversation, onBack }) => {
       )}
 
       <View style={styles.inputContainer}>
-        {/* You could add attachment button here */}
+
         <TextInput
           style={styles.input}
           placeholder="Type a message..."

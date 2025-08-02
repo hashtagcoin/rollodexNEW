@@ -45,7 +45,7 @@ const ChatButton = () => {
         </TouchableOpacity>
       </Animated.View>
       
-      {/* Chat Modal */}
+
       <ChatModal 
         visible={isChatModalVisible} 
         onClose={handleCloseChat} 
