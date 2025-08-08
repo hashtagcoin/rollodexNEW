@@ -1,15 +1,67 @@
 {
   "expo": {
+    "name": "rollodexNEW",
+    "slug": "rollodexnew",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./src/assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./src/assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.boredbash.rollodexnew",
+      "buildNumber": "46",
+      "infoPlist": {
+        "NSCameraUsageDescription": "This app needs access to the camera to allow you to take photos for your profile and service listings.",
+        "NSPhotoLibraryUsageDescription": "This app accesses your photo library to select images for your profile and service listings.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "This app uses location services to help you find nearby services and providers in your area.",
+        "NSLocationWhenInUseUsageDescription": "This app uses location services to help you find nearby services and providers in your area.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./src/assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true,
+      "package": "com.boredbash.rollodexnew",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
+    },
+    "web": {
+      "favicon": "./src/assets/favicon.png"
+    },
+    "plugins": [
+      "expo-web-browser",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "This app accesses your photo library to select images for your profile and service listings.",
+          "cameraPermission": "This app needs access to the camera to allow you to take photos for your profile and service listings."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "This app uses location services to help you find nearby services and providers in your area.",
+          "locationWhenInUsePermission": "This app uses location services to help you find nearby services and providers in your area."
+        }
+      ]
+    ],
     "extra": {
       "eas": {
         "projectId": "ef24b784-c8d0-469f-9432-a54663b7476e"
       }
     },
-    "ios": {
-      "bundleIdentifier": "com.boredbash.rollodexnew",
-      "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
-      }
-    }
+    "owner": "boredbash"
   }
 }

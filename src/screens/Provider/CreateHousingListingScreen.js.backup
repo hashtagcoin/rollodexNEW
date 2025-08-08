@@ -1,0 +1,823 @@
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  Image,
+  ScrollView,
+  Alert,
+  Switch,
+  ActivityIndicator,
+  Platform,
+  KeyboardAvoidingView,
+  Keyboard,
+  TouchableWithoutFeedback,
+} from 'react-native';
+import { Feather, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
+import { Dropdown } from 'react-native-element-dropdown';
+import * as ImagePicker from 'expo-image-picker';
+
+// Function to generate a random string for filenames
+const generateRandomString = (length) => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let result = '';
+  for (let i = 0; i < length; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+};
+
+import { supabase } from '../../lib/supabaseClient';
+import { useUser } from '../../context/UserContext';
+import AppHeader from '../../components/layout/AppHeader';
+import Button from '../../components/common/Button';
+import Card from '../../components/common/Card';
+import { COLORS, FONTS } from '../../constants/theme';
+
+const HOUSING_TYPES = [
+  'House',
+  'Apartment',
+  'Unit',
+  'Townhouse',
+  'Villa',
+  'Studio',
+  'Granny Flat',
+  'Shared Accommodation',
+];
+
+// SDA categories
+const SDA_CATEGORIES = [
+  { label: 'Improved Liveability', value: 'Improved Liveability' },
+  { label: 'Fully Accessible', value: 'Fully Accessible' },
+  { label: 'High Physical Support', value: 'High Physical Support' },
+  { label: 'Robust', value: 'Robust' },
+];
+
+// Date dropdown options
+const DAYS = Array.from({ length: 31 }, (_, i) => ({ label: String(i + 1).padStart(2, '0'), value: String(i + 1).padStart(2, '0') }));
+const MONTHS = [
+  { label: 'January', value: '01' },
+  { label: 'February', value: '02' },
+  { label: 'March', value: '03' },
+  { label: 'April', value: '04' },
+  { label: 'May', value: '05' },
+  { label: 'June', value: '06' },
+  { label: 'July', value: '07' },
+  { label: 'August', value: '08' },
+  { label: 'September', value: '09' },
+  { label: 'October', value: '10' },
+  { label: 'November', value: '11' },
+  { label: 'December', value: '12' },
+];
+const YEARS = Array.from({ length: 6 }, (_, i) => {
+  const year = new Date().getFullYear() + i;
+  return { label: String(year), value: String(year) };
+});
+
+const ACCESSIBILITY_FEATURES = [
+  'Wheelchair Accessible',
+  'Step-free Access',
+  'Accessible Bathroom',
+  'Accessible Kitchen',
+  'Hoists Available',
+  'Visual Aids',
+  'Auditory Aids',
+  'Sensory Room',
+  'Quiet Space',
+];
+
+const PROPERTY_FEATURES = [
+  'Furnished',
+  'Air Conditioning',
+  'Heating',
+  'Parking',
+  'Laundry',
+  'Internet',
+  'Pets Allowed',
+  'Outdoor Area',
+  'Public Transport',
+];
+
+const CreateHousingListingScreen = ({ navigation }) => {
+  const { profile } = useUser();
+  const [loading, setLoading] = useState(false);
+  const [images, setImages] = useState([]);
+  const [uploadingImages, setUploadingImages] = useState(false);
+
+  const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    housingType: HOUSING_TYPES[0],
+    bedrooms: '',
+    bathrooms: '',
+    price: '',
+    bondAmount: '',
+    ndisEligible: false,
+    sdaApproved: false,
+    sdaCategory: '',
+    ndisCommission: '',
+    addressNumber: '',
+    addressStreet: '',
+    addressSuburb: '',
+    addressState: '',
+    addressPostcode: '',
+    available: true,
+    availableDay: new Date().getDate().toString().padStart(2, '0'),
+    availableMonth: (new Date().getMonth() + 1).toString().padStart(2, '0'),
+    availableYear: new Date().getFullYear().toString(),
+    accessibilityFeatures: [],
+    propertyFeatures: [],
+  });
+
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const keyboardDidShowListener = Keyboard.addListener(
+      'keyboardDidShow',
+      () => setKeyboardVisible(true)
+    );
+    const keyboardDidHideListener = Keyboard.addListener(
+      'keyboardDidHide',
+      () => setKeyboardVisible(false)
+    );
+
+    return () => {
+      keyboardDidShowListener.remove();
+      keyboardDidHideListener.remove();
+    };
+  }, []);
+
+  const handleChange = (field, value) => {
+    setFormData(prevData => ({
+      ...prevData,
+      [field]: value,
+    }));
+  };
+
+  const toggleFeature = (feature, list) => {
+    const updatedList = [...formData[list]];
+    const index = updatedList.indexOf(feature);
+    
+    if (index === -1) {
+      updatedList.push(feature);
+    } else {
+      updatedList.splice(index, 1);
+    }
+    
+    setFormData(prevData => ({
+      ...prevData,
+      [list]: updatedList,
+    }));
+  };
+
+  const validateForm = () => {
+    if (!formData.title.trim()) {
+      Alert.alert('Error', 'Title is required');
+      return false;
+    }
+    
+    if (!formData.description.trim()) {
+      Alert.alert('Error', 'Description is required');
+      return false;
+    }
+    
+    if (!formData.price) {
+      Alert.alert('Error', 'Weekly rent is required');
+      return false;
+    }
+    
+    if (isNaN(parseFloat(formData.price))) {
+      Alert.alert('Error', 'Weekly rent must be a valid number');
+      return false;
+    }
+    
+    if (formData.bedrooms && isNaN(parseInt(formData.bedrooms))) {
+      Alert.alert('Error', 'Bedrooms must be a valid number');
+      return false;
+    }
+    
+    if (formData.bathrooms && isNaN(parseInt(formData.bathrooms))) {
+      Alert.alert('Error', 'Bathrooms must be a valid number');
+      return false;
+    }
+    
+    if (formData.bondAmount && isNaN(parseFloat(formData.bondAmount))) {
+      Alert.alert('Error', 'Bond amount must be a valid number');
+      return false;
+    }
+    
+    if (formData.sdaApproved && !formData.sdaCategory) {
+      Alert.alert('Error', 'SDA Category is required when SDA Approved is enabled');
+      return false;
+    }
+    
+    if (!formData.addressStreet.trim() || !formData.addressSuburb.trim() || !formData.addressState.trim() || !formData.addressPostcode.trim()) {
+      Alert.alert('Error', 'Complete address is required');
+      return false;
+    }
+    
+    // Validate date format if provided
+    if (formData.availableFrom && formData.availableFrom.trim()) {
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      if (!dateRegex.test(formData.availableFrom.trim())) {
+        Alert.alert('Error', 'Available From date must be in YYYY-MM-DD format');
+        return false;
+      }
+    }
+    
+    return true;
+  };
+
+  const pickImage = async () => {
+    try {
+      // Request permissions
+      if (Platform.OS !== 'web') {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission needed', 'Please grant permission to access your photo library');
+          return;
+        }
+      }
+      
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.7,
+      });
+      
+      if (!result.canceled) {
+        // Add the new image to the list of images
+        setImages([...images, result.assets[0]]);
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to select image');
+    }
+  };
+
+  const removeImage = (index) => {
+    const updatedImages = [...images];
+    updatedImages.splice(index, 1);
+    setImages(updatedImages);
+  };
+
+  const uploadImages = async () => {
+    try {
+      setUploadingImages(true);
+      const uploadedUrls = [];
+      
+      for (const image of images) {
+        // Create a file name with random string to avoid conflicts
+        const fileExt = image.uri.split('.').pop();
+        const randomString = generateRandomString(32);
+        const fileName = `${randomString}.${fileExt}`;
+        const filePath = `housing-images/${fileName}`;
+        
+        // Convert the image to blob
+        const response = await fetch(image.uri);
+        const blob = await response.blob();
+        
+        // Upload to Supabase Storage
+        const { data, error } = await supabase.storage
+          .from('housing')
+          .upload(filePath, blob, {
+            contentType: `image/${fileExt}`,
+            cacheControl: '3600',
+          });
+        
+        if (error) {
+          throw error;
+        }
+        
+        // Get the public URL
+        const { data: { publicUrl } } = supabase.storage
+          .from('housing')
+          .getPublicUrl(filePath);
+        
+        uploadedUrls.push(publicUrl);
+      }
+      
+      return uploadedUrls;
+    } catch (error) {
+      console.error('Error uploading images:', error);
+      throw error;
+    } finally {
+      setUploadingImages(false);
+    }
+  };
+
+  const createHousingListing = async () => {
+    if (!validateForm()) {
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      
+      // For this table, the provider_id must come from the service_providers table
+      // The RLS policy expects auth.uid() = provider_id, but provider_id links to service_providers.id
+      // So we need to find the provider record that's linked to the current user
+      const { data: providerData, error: providerError } = await supabase
+        .from('service_providers')
+        .select('id')
+        .eq('user_id', profile.id)
+        .single();
+      
+      if (providerError) {
+        console.error('Error fetching provider ID:', providerError);
+        throw new Error('Unable to find your service provider profile. Please ensure you are registered as a service provider.');
+      }
+
+      if (!providerData) {
+        throw new Error('No service provider profile found. Please create a service provider profile first.');
+      }
+      
+      const providerId = providerData.id;
+      
+      // Upload images if any
+      let mediaUrls = [];
+      if (images.length > 0) {
+        mediaUrls = await uploadImages();
+      }
+      
+      // Create the housing listing
+      const currentDate = new Date();
+      const { error } = await supabase
+        .from('housing_listings')
+        .insert({
+          provider_id: providerId, // Using the authenticated user's ID to satisfy RLS policy
+          title: formData.title,
+          description: formData.description,
+          property_type: formData.housingType,
+          bedrooms: formData.bedrooms ? parseInt(formData.bedrooms) : 0,
+          bathrooms: formData.bathrooms ? parseInt(formData.bathrooms) : 0,
+          weekly_rent: parseFloat(formData.price),
+          bond_amount: formData.bondAmount ? parseFloat(formData.bondAmount) : null,
+          ndis_supported: formData.ndisEligible,
+          is_sda_certified: formData.sdaApproved,
+          sda_category: formData.sdaApproved ? formData.sdaCategory : '',
+          address: `${formData.addressNumber} ${formData.addressStreet}`.trim(),
+          suburb: formData.addressSuburb,
+          state: formData.addressState,
+          postcode: formData.addressPostcode,
+          // Make sure we always have a valid date for available_from (required field)
+          // Format as YYYY-MM-DD for PostgreSQL date type from individual dropdown values
+          available_from: `${formData.availableYear}-${formData.availableMonth}-${formData.availableDay}`,
+          accessibility_features: formData.accessibilityFeatures,
+          features: formData.propertyFeatures,
+          media_urls: mediaUrls,
+          created_at: currentDate,
+          updated_at: currentDate,
+          last_updated: currentDate,
+          pets_allowed: formData.propertyFeatures.includes('Pets Allowed'),
+          coordinates: null, // This would need to be set using a geocoding service
+        });
+      
+      if (error) throw error;
+      
+      Alert.alert('Success', 'Housing listing created successfully', [
+        { 
+          text: 'OK', 
+          onPress: () => navigation.navigate('ManageListings')
+        }
+      ]);
+    } catch (error) {
+      console.error('Error creating housing listing:', error);
+      Alert.alert('Error', error.message || 'Failed to create housing listing');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <KeyboardAvoidingView 
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+    >
+      <AppHeader 
+        title="Create Housing Listing"
+        navigation={navigation}
+        canGoBack={true}
+      />
+      <ScrollView style={styles.scrollView} keyboardShouldPersistTaps="handled">
+        <View style={styles.content}>
+          <Card style={styles.card}>
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>NDIS Commission (%)</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="e.g. 10"
+                  value={formData.ndisCommission}
+                  onChangeText={(text) => handleChange('ndisCommission', text)}
+                  keyboardType="numeric"
+                />
+              </View>
+            )}
+          </View>
+
+          <View style={styles.addressContainer}>
+            <Text style={styles.sectionTitle}>Property Address*</Text>
+            
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>Street Number</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Street Number"
+                value={formData.addressNumber}
+                onChangeText={(text) => handleChange('addressNumber', text)}
+              />
+            </View>
+            
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>Street*</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Street"
+                value={formData.addressStreet}
+                onChangeText={(text) => handleChange('addressStreet', text)}
+              />
+            </View>
+            
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>Suburb*</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Suburb"
+                value={formData.addressSuburb}
+                onChangeText={(text) => handleChange('addressSuburb', text)}
+              />
+            </View>
+            
+            <View style={styles.formRow}>
+              <View style={[styles.formGroup, { flex: 1, marginRight: 8 }]}>
+                <Text style={styles.label}>State*</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="State"
+                  value={formData.addressState}
+                  onChangeText={(text) => handleChange('addressState', text)}
+                />
+              </View>
+              
+              <View style={[styles.formGroup, { flex: 1, marginLeft: 8 }]}>
+                <Text style={styles.label}>Postcode*</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Postcode"
+                  value={formData.addressPostcode}
+                  onChangeText={(text) => handleChange('addressPostcode', text)}
+                  keyboardType="numeric"
+                  maxLength={4}
+                />
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.sectionTitle}>Accessibility Features</Text>
+            <View style={styles.featuresList}>
+              {ACCESSIBILITY_FEATURES.map((feature) => (
+                <TouchableOpacity 
+                  key={feature}
+                  style={[
+                    styles.featureItem,
+                    formData.accessibilityFeatures.includes(feature) && styles.featureSelected
+                  ]}
+                  onPress={() => toggleFeature(feature, 'accessibilityFeatures')}
+                >
+                  <Text 
+                    style={[
+                      styles.featureText,
+                      formData.accessibilityFeatures.includes(feature) && styles.featureTextSelected
+                    ]}
+                  >
+                    {feature}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.sectionTitle}>Property Features</Text>
+            <View style={styles.featuresList}>
+              {PROPERTY_FEATURES.map((feature) => (
+                <TouchableOpacity 
+                  key={feature}
+                  style={[
+                    styles.featureItem,
+                    formData.propertyFeatures.includes(feature) && styles.featureSelected
+                  ]}
+                  onPress={() => toggleFeature(feature, 'propertyFeatures')}
+                >
+                  <Text 
+                    style={[
+                      styles.featureText,
+                      formData.propertyFeatures.includes(feature) && styles.featureTextSelected
+                    ]}
+                  >
+                    {feature}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>Property Images</Text>
+            <Text style={styles.helperText}>Add up to 10 images to showcase the property</Text>
+
+            <View style={styles.imagesContainer}>
+              {images.map((image, index) => (
+                <View key={index} style={styles.imageWrapper}>
+                  <Image source={{ uri: image.uri }} style={styles.imagePreview} />
+                  <TouchableOpacity
+                    style={styles.removeButton}
+                    onPress={() => removeImage(index)}
+                  >
+                    <Feather name="x" size={16} color="white" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+
+              {images.length < 10 && (
+                <TouchableOpacity style={styles.addImageButton} onPress={pickImage}>
+                  <Feather name="plus" size={24} color={COLORS.primary} />
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>Availability</Text>
+            <View style={styles.switchContainer}>
+              <TouchableOpacity
+                style={[
+                  styles.switchOption,
+                  formData.available ? styles.switchActive : null,
+                ]}
+                onPress={() => handleChange('available', true)}
+              >
+                <Text
+                  style={[
+                    styles.switchText,
+                    formData.available ? styles.switchTextActive : null,
+                  ]}
+                >
+                  Available
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.switchOption,
+                  !formData.available ? styles.switchActive : null,
+                ]}
+                onPress={() => handleChange('available', false)}
+              >
+                <Text
+                  style={[
+                    styles.switchText,
+                    !formData.available ? styles.switchTextActive : null,
+                  ]}
+                >
+                  Not Available
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <Button
+            title="Create Housing Listing"
+            onPress={createHousingListing}
+            loading={loading || uploadingImages}
+            style={styles.submitButton}
+          />
+        </Card>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#F8F8F8',
+  },
+  scrollContent: {
+    padding: 16,
+    paddingTop: 8,
+    paddingBottom: 32,
+  },
+  card: {
+    padding: 16,
+    marginBottom: 20,
+  },
+  formGroup: {
+    marginBottom: 16,
+  },
+  formRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  label: {
+    fontSize: 16,
+    fontWeight: '500',
+    marginBottom: 8,
+    color: COLORS.text,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 16,
+    marginTop: 8,
+    color: COLORS.text,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#DDD',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    backgroundColor: 'white',
+  },
+  textArea: {
+    height: 120,
+    textAlignVertical: 'top',
+  },
+  charCount: {
+    alignSelf: 'flex-end',
+    fontSize: 12,
+    color: COLORS.gray,
+    marginTop: 4,
+  },
+  // Dropdown styles
+  dropdown: {
+    height: 50,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    backgroundColor: 'white',
+    marginBottom: 16,
+    position: 'relative',
+    zIndex: 1000,
+  },
+  placeholderStyle: {
+    fontSize: 16,
+    color: '#999',
+  },
+  selectedTextStyle: {
+    fontSize: 16,
+    color: COLORS.text,
+  },
+  // Date picker styles
+  datePickerContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  datePickerItem: {
+    flex: 1,
+    marginHorizontal: 4,
+  },
+  datePickerLabel: {
+    fontSize: 12,
+    color: COLORS.text,
+    marginBottom: 4,
+    fontWeight: '500',
+  },
+  inputSearchStyle: {
+    height: 40,
+    fontSize: 16,
+  },
+  iconStyle: {
+    width: 20,
+    height: 20,
+  },
+  dropdownIcon: {
+    marginRight: 8,
+  },
+  pickerContainer: {
+    borderWidth: 1,
+    borderColor: '#DDD',
+    borderRadius: 8,
+    backgroundColor: 'white',
+  },
+  picker: {
+    height: 50,
+  },
+  addressContainer: {
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  switchRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+    paddingVertical: 4,
+  },
+  switchLabel: {
+    fontSize: 16,
+    color: COLORS.text,
+  },
+  featuresList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 8,
+  },
+  featureItem: {
+    backgroundColor: '#F0F0F0',
+    borderRadius: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    margin: 4,
+  },
+  featureSelected: {
+    backgroundColor: COLORS.primaryLight,
+  },
+  featureText: {
+    fontSize: 14,
+    color: COLORS.gray,
+  },
+  featureTextSelected: {
+    color: COLORS.primary,
+    fontWeight: '500',
+  },
+  imagesContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 8,
+  },
+  imageWrapper: {
+    position: 'relative',
+    margin: 4,
+  },
+  imagePreview: {
+    width: 100,
+    height: 100,
+    borderRadius: 8,
+  },
+  removeButton: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 12,
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addImageButton: {
+    width: 100,
+    height: 100,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#DDD',
+    borderStyle: 'dashed',
+    justifyContent: 'center',
+    alignItems: 'center',
+    margin: 4,
+    backgroundColor: '#F9F9F9',
+  },
+  switchContainer: {
+    flexDirection: 'row',
+    borderWidth: 1,
+    borderColor: '#DDD',
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  switchOption: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    backgroundColor: 'white',
+  },
+  switchActive: {
+    backgroundColor: COLORS.primary,
+  },
+  switchText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: COLORS.gray,
+  },
+  switchTextActive: {
+    color: 'white',
+  },
+  helperText: {
+    fontSize: 12,
+    color: COLORS.gray,
+    marginBottom: 8,
+  },
+  submitButton: {
+    marginTop: 16,
+  },
+});
+
+export default CreateHousingListingScreen;

@@ -1,0 +1,1352 @@
+import React, { useState, useEffect, useCallback, useRef, useContext } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
+  RefreshControl,
+  ActivityIndicator,
+  Dimensions,
+  Alert
+} from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Image as ExpoImage } from 'expo-image';
+import { useScrollContext } from '../../context/ScrollContext';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
+import { supabase } from '../../lib/supabaseClient';
+import { COLORS, SIZES, FONTS, SHADOWS } from '../../constants/theme';
+// Assuming isSingleLineTitle from CardStyles might be different or not used due to local redefinition
+import { CardStyles, ConsistentHeightTitle /*, isSingleLineTitle as importedIsSingleLineTitle */ } from '../../constants/CardStyles';
+import { getValidImageUrl, getOptimizedImageUrl } from '../../utils/imageHelper';
+import SearchComponent from '../../components/common/SearchComponent';
+import AppHeader from '../../components/layout/AppHeader';
+import ServiceCardComponent from '../../components/cards/ServiceCard';
+import HousingCardComponent from '../../components/cards/HousingCard';
+import EventFavoriteCard from '../../components/cards/EventFavoriteCard';
+import ShareTrayModal from '../../components/common/ShareTrayModal';
+import { useUser } from '../../context/UserContext';
+import { isNewUser } from '../../utils/defaultDataProvider';
+
+const { width } = Dimensions.get('window');
+
+// Performance tracking
+const performanceTracker = {
+  componentId: `FAV-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+  mountTime: null,
+  renders: 0,
+  categoryChanges: {},
+  fetchTimes: {}
+};
+
+// Enhanced debug logger with timing
+const debugTiming = (action, details = {}) => {
+  const timestamp = Date.now();
+  const elapsed = performanceTracker.mountTime ? timestamp - performanceTracker.mountTime : 0;
+  console.log(`[FAVORITES-TIMING][${performanceTracker.componentId}][${elapsed}ms] ${action}`, {
+    timestamp,
+    elapsed,
+    ...details
+  });
+};
+
+// Constants
+const CARD_MARGIN = 10;
+const PAGE_SIZE = 10; // Moved PAGE_SIZE to be a top-level constant
+
+const FavouritesScreen = () => {
+  const { reportScroll } = useScrollContext();
+  const navigation = useNavigation();
+  const { profile: userProfile } = useUser();
+  const flatListRef = useRef(null);
+  const [favorites, setFavorites] = useState([]);
+  const [sortedFavorites, setSortedFavorites] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [viewMode, setViewMode] = useState('Grid');
+  const [sortConfig, setSortConfig] = useState({ field: 'created_at', direction: 'desc' });
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [shareModalVisible, setShareModalVisible] = useState(false);
+  const [itemToShare, setItemToShare] = useState(null);
+  const [isUserNew, setIsUserNew] = useState(false);
+
+  // Cache refs for performance optimization
+  const cacheRef = useRef({}); // Cache favorites by category
+  const fetchInProgressRef = useRef(false); // Prevent duplicate fetches
+  const lastFetchCategoryRef = useRef(null); // Track last fetched category
+  const fetchCounterRef = useRef(0); // Track latest fetch to ignore stale responses
+  const isMounted = useRef(true); // Track component mount state
+
+  // Sort data function
+  const sortData = useCallback((data, config) => {
+    if (!data || data.length === 0) return data;
+    
+    const { field, direction } = config;
+    
+    return [...data].sort((a, b) => {
+      let aValue, bValue;
+      
+      // Handle nested properties for favorites data
+      // Favorites have nested structure: item.service_provider.title, item.housing_listing.title, etc.
+      switch (field) {
+        case 'title':
+        case 'name':
+          // Get title from nested objects based on item_type
+          if (a.item_type === 'service_provider') {
+            aValue = a.service_provider?.title || a.title || '';
+            bValue = b.service_provider?.title || b.title || '';
+          } else if (a.item_type === 'housing_listing') {
+            aValue = a.housing_listing?.title || a.title || '';
+            bValue = b.housing_listing?.title || b.title || '';
+          } else if (a.item_type === 'housing_group') {
+            aValue = a.housing_group?.name || a.name || '';
+            bValue = b.housing_group?.name || b.name || '';
+          } else if (a.item_type === 'event') {
+            aValue = a.event?.title || a.title || '';
+            bValue = b.event?.title || b.title || '';
+          } else {
+            aValue = a.title || a.name || '';
+            bValue = b.title || b.name || '';
+          }
+          aValue = aValue.toLowerCase();
+          bValue = bValue.toLowerCase();
+          break;
+          
+        case 'created_at':
+        case 'updated_at':
+          // Use the favorite creation date or the item's date
+          aValue = new Date(a.created_at || a.service_provider?.created_at || a.housing_listing?.created_at || 0);
+          bValue = new Date(b.created_at || b.service_provider?.created_at || b.housing_listing?.created_at || 0);
+          break;
+          
+        case 'price':
+          // Get price from nested objects
+          if (a.item_type === 'service_provider') {
+            aValue = parseFloat(a.service_provider?.price || 0);
+            bValue = parseFloat(b.service_provider?.price || 0);
+          } else if (a.item_type === 'housing_listing') {
+            aValue = parseFloat(a.housing_listing?.price || 0);
+            bValue = parseFloat(b.housing_listing?.price || 0);
+          } else {
+            aValue = parseFloat(a.price || 0);
+            bValue = parseFloat(b.price || 0);
+          }
+          break;
+          
+        case 'rating':
+          // Get rating from nested objects
+          if (a.item_type === 'service_provider') {
+            aValue = parseFloat(a.service_provider?.rating || 0);
+            bValue = parseFloat(b.service_provider?.rating || 0);
+          } else if (a.item_type === 'housing_listing') {
+            aValue = parseFloat(a.housing_listing?.rating || 0);
+            bValue = parseFloat(b.housing_listing?.rating || 0);
+          } else {
+            aValue = parseFloat(a.rating || 0);
+            bValue = parseFloat(b.rating || 0);
+          }
+          break;
+          
+        case 'bedrooms':
+          // Only applicable to housing
+          aValue = parseFloat(a.housing_listing?.bedrooms || 0);
+          bValue = parseFloat(b.housing_listing?.bedrooms || 0);
+          break;
+          
+        case 'available_date':
+          // Only applicable to housing
+          aValue = new Date(a.housing_listing?.available_date || 0);
+          bValue = new Date(b.housing_listing?.available_date || 0);
+          break;
+          
+        default:
+          // Default string comparison
+          aValue = String(a[field] || '');
+          bValue = String(b[field] || '');
+      }
+      
+      // Compare values
+      let comparison = 0;
+      if (aValue < bValue) {
+        comparison = -1;
+      } else if (aValue > bValue) {
+        comparison = 1;
+      }
+      
+      // Apply direction
+      return direction === 'desc' ? -comparison : comparison;
+    });
+  }, []);
+
+  // Apply sorting whenever favorites or sortConfig changes
+  useEffect(() => {
+    const sorted = sortData(favorites, sortConfig);
+    setSortedFavorites(sorted);
+  }, [favorites, sortConfig, sortData]);
+
+  // Track component mount/unmount and check for new user
+  useEffect(() => {
+    performanceTracker.mountTime = Date.now();
+    performanceTracker.renders = 0;
+    debugTiming('COMPONENT_MOUNTED');
+    
+    isMounted.current = true;
+    
+    // Check if user is new
+    const checkNewUser = async () => {
+      try {
+        // First check AsyncStorage flag
+        const newUserFlag = await AsyncStorage.getItem('is_new_user');
+        
+        if (newUserFlag === 'true' || isNewUser(userProfile)) {
+          setIsUserNew(true);
+          // For new users, immediately set loading to false and empty favorites
+          setLoading(false);
+          setFavorites([]);
+          setHasMore(false);
+        }
+      } catch (error) {
+        console.log('[FavouritesScreen] Error checking new user status:', error);
+      }
+    };
+    
+    checkNewUser();
+    
+    return () => {
+      isMounted.current = false;
+      debugTiming('COMPONENT_UNMOUNTING', { 
+        totalRenders: performanceTracker.renders,
+        lifetimeMs: Date.now() - performanceTracker.mountTime,
+        categoryChanges: performanceTracker.categoryChanges
+      });
+    };
+  }, [userProfile]);
+
+  // Track renders
+  performanceTracker.renders++;
+  debugTiming('RENDER', { 
+    renderNumber: performanceTracker.renders,
+    category: selectedCategory,
+    searchTerm,
+    viewMode
+  });
+
+  const categories = ['All', 'Services', 'Events', 'Housing', 'Groups', 'Housing Groups'];
+
+  const mapCategoryToItemType = (category) => {
+    switch (category) {
+      case 'All':
+        return null; // No filter, fetch all types
+      case 'Services':
+        return 'service_provider';
+      case 'Events':
+        return 'group_event'; // Assuming 'Events' might actually map to 'group_event' based on renderItem logic for 'event' type
+      case 'Housing':
+        return 'housing_listing';
+      case 'Groups':
+        return 'group';
+      case 'Housing Groups':
+        return 'housing_group';
+      default:
+        console.error(`[FavouritesScreen] Unknown category: ${category}`);
+        return null;
+    }
+  };
+
+
+  const fetchFavorites = useCallback(async (pageNum = 0, isRefreshing = false, isBackgroundRefresh = false) => {
+    debugTiming('FETCH_FAVORITES_CALLED', { 
+      page: pageNum, 
+      refreshing: isRefreshing, 
+      background: isBackgroundRefresh,
+      category: selectedCategory, 
+      search: searchTerm 
+    });
+    
+    // Skip fetch entirely for new users UNLESS they're refreshing (which means they might have added favorites)
+    if (isUserNew && !isRefreshing) {
+      debugTiming('FETCH_SKIPPED_NEW_USER');
+      setLoading(false);
+      setFavorites([]);
+      setHasMore(false);
+      return;
+    }
+    
+    // Prevent duplicate fetches - more robust check
+    if (fetchInProgressRef.current && !isRefreshing) {
+      debugTiming('FETCH_PREVENTED_DUPLICATE', { 
+        category: selectedCategory,
+        isRefreshing,
+        targetPage: pageNum
+      });
+      return;
+    }
+    
+    // For pagination, bail out if already loading or no more data
+    if ((!isRefreshing && loading && pageNum > 0) || (pageNum > 0 && !hasMore)) {
+      debugTiming('FETCH_BAILED_PAGINATION', {
+        loading,
+        hasMore,
+        page: pageNum
+      });
+      return;
+    }
+
+    // Add timeout to prevent infinite loading - declare outside try block
+    let timeoutId;
+    
+    try {
+      const fetchStart = Date.now();
+      const fetchId = ++fetchCounterRef.current; // Increment fetch counter
+      const categoryAtStart = selectedCategory;  // Snapshot category
+      
+      fetchInProgressRef.current = true;
+      lastFetchCategoryRef.current = selectedCategory;
+      
+      // Set appropriate loading states
+      const hasCache = cacheRef.current[selectedCategory]?.length > 0;
+      
+      if (!hasCache && !isBackgroundRefresh && pageNum === 0) {
+        setLoading(true);
+        if (!isRefreshing) setFavorites([]); // Clear existing favorites on initial load for new filters
+      } else if (pageNum > 0) {
+        setLoadingMore(true);
+      }
+      
+      if (isRefreshing) {
+        setRefreshing(true);
+      }
+      
+      timeoutId = setTimeout(() => {
+        if (isMounted.current) {
+          setLoading(false);
+          setRefreshing(false);
+          setLoadingMore(false);
+          debugTiming('FETCH_TIMEOUT', { category: selectedCategory, page: pageNum });
+        }
+      }, 10000); // 10 second timeout
+
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        throw userError || new Error('No authenticated user');
+      }
+
+      let query = supabase
+        .from('favorites')
+        .select('*') // Just select all columns from favorites
+        .eq('user_id', user.id);
+
+      const dbItemType = mapCategoryToItemType(selectedCategory);
+      if (dbItemType) {
+        query = query.eq('item_type', dbItemType);
+      }
+
+      if (searchTerm) {
+        query = query.ilike('item_title', `%${searchTerm}%`);
+      }
+
+      if (sortConfig.field) {
+        query = query.order(sortConfig.field, { ascending: sortConfig.direction === 'asc' });
+      }
+
+      const from = pageNum * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+      query = query.range(from, to);
+
+      const { data, error } = await query; // Removed count as it wasn't used
+      
+      const fetchTime = Date.now() - fetchStart;
+      performanceTracker.fetchTimes[`${selectedCategory}-${pageNum}`] = fetchTime;
+      
+      debugTiming('FETCH_DATA_COMPLETE', { 
+        category: selectedCategory,
+        itemCount: data?.length || 0,
+        fetchTimeMs: fetchTime,
+        error: !!error,
+        fetchId,
+        isStale: fetchId !== fetchCounterRef.current || categoryAtStart !== selectedCategory
+      });
+      
+      if (!isMounted.current) {
+        clearTimeout(timeoutId);
+        fetchInProgressRef.current = false;
+        return;
+      }
+      
+      // Ignore if a newer fetch started or category has changed
+      if (fetchId !== fetchCounterRef.current || categoryAtStart !== selectedCategory) {
+        debugTiming('STALE_FETCH_IGNORED', { fetchId, currentFetchId: fetchCounterRef.current });
+        clearTimeout(timeoutId);
+        fetchInProgressRef.current = false;
+        return;
+      }
+
+      if (error) {
+        console.error('[FavouritesScreen] Fetch error:', error);
+        if (isMounted.current) setFavorites([]);
+        clearTimeout(timeoutId);
+        fetchInProgressRef.current = false;
+        setLoading(false);
+        setRefreshing(false);
+        setLoadingMore(false);
+        return;
+      }
+
+      if (!data) { // Handle null data case
+        clearTimeout(timeoutId);
+        fetchInProgressRef.current = false;
+        setLoading(false);
+        setRefreshing(false);
+        setLoadingMore(false);
+        setHasMore(false);
+        if (pageNum === 0) setFavorites([]);
+        return;
+      }
+
+      const favoritesWithEnrichedData = await Promise.all(
+        data.map(async (favorite) => {
+          const favTableId = favorite.favorite_id; // Corrected to use 'favorite_id' as per schema
+          if (favTableId === undefined) {
+            // This warning should ideally not appear if favorite_id is the PK and always present
+            console.warn(`[FavouritesScreen] fetchFavorites: favorite.favorite_id is undefined. Full favorite object:`, JSON.stringify(favorite));
+          }
+          let enriched = { ...favorite, favorite_table_id: favTableId }; // Preserve PK from 'favorites' table
+          try {
+            switch (favorite.item_type) {
+              case 'service_provider': {
+                const { data: service, error: serviceErr } = await supabase
+                  .from('services')
+                  .select('*')
+                  .eq('id', favorite.item_id)
+                  .single();
+                if (!serviceErr && service) enriched = { ...enriched, ...service, id: favorite.item_id }; // Ensure original item_id is used as id if service table also has 'id'
+                else if (serviceErr) console.warn(`[Enrichment] Service ${favorite.item_id}:`, serviceErr.message);
+                break;
+              }
+              case 'housing_listing': {
+                const { data: housing, error: housingErr } = await supabase
+                  .from('housing_listings')
+                  .select('*')
+                  .eq('id', favorite.item_id)
+                  .single();
+                if (!housingErr && housing) enriched = { ...enriched, ...housing, id: favorite.item_id };
+                else if (housingErr) console.warn(`[Enrichment] Housing ${favorite.item_id}:`, housingErr.message);
+                break;
+              }
+              case 'group_event': { // This was 'Events' in mapCategoryToItemType, ensure consistency
+                const { data: event, error: eventErr } = await supabase
+                  .from('group_events')
+                  .select('*')
+                  .eq('id', favorite.item_id)
+                  .single();
+                if (!eventErr && event) enriched = { ...enriched, ...event, id: favorite.item_id };
+                else if (eventErr) console.warn(`[Enrichment] Group Event ${favorite.item_id}:`, eventErr.message);
+                break;
+              }
+              case 'group': {
+                const { data: groupData, error: groupError } = await supabase
+                  .from('groups')
+                  .select('id, name, description, avatar_url, imageurl, category, is_public, group_members ( count )')
+                  .eq('id', favorite.item_id)
+                  .single();
+                if (!groupError && groupData) {
+                  enriched = {
+                    ...enriched, // Original favorite data
+                    ...groupData, // Group specific data
+                    id: favorite.item_id, // Ensure item_id from favorite is the main id
+                    members: groupData.group_members && groupData.group_members.length > 0 ? groupData.group_members[0].count : 0,
+                    image: groupData.imageurl || groupData.avatar_url
+                  };
+                } else if (groupError) {
+                  console.warn(`[FavouritesScreen] Enrichment error for group ${favorite.item_id}:`, groupError.message);
+                }
+                break;
+              }
+              case 'housing_group': {
+                const { data: memberData, error: memberError } = await supabase
+                  .from('housing_group_members')
+                  .select('id, status, join_date')
+                  .eq('user_id', user.id)
+                  .eq('group_id', favorite.item_id)
+                  .single();
+
+                const { data: hgData, error: hgError } = await supabase
+                  .from('housing_groups')
+                  .select('*, housing_listings:listing_id (*)')
+                  .eq('id', favorite.item_id)
+                  .single();
+
+                enriched.id = favorite.item_id; // Ensure item_id is the main id
+
+                if (hgError) {
+                  console.warn(`[FavouritesScreen] Enrichment error for housing_group ${favorite.item_id}:`, hgError.message);
+                  enriched.housing_group_data = null;
+                } else if (hgData) {
+                  enriched.housing_group_data = {
+                    ...hgData,
+                    housing_listing_data: hgData.housing_listings || null,
+                  };
+                } else {
+                  enriched.housing_group_data = {}; // Ensure it's an object
+                }
+
+
+                if (!memberError && memberData) {
+                  enriched.membership_status = memberData.status;
+                  enriched.membership_id = memberData.id; // This is the membership ID
+                  enriched.join_date = memberData.join_date;
+                } else {
+                  enriched.membership_status = null;
+                  const listingIdForAppCheck = hgData?.listing_id;
+                  if (listingIdForAppCheck) {
+                    const { data: appData, error: appError } = await supabase
+                      .from('housing_applications')
+                      .select('status')
+                      .eq('user_id', user.id)
+                      .eq('listing_id', listingIdForAppCheck)
+                      .order('created_at', { ascending: false }) // Get the latest application
+                      .limit(1)
+                      .single();
+                    if (!appError && appData) {
+                      enriched.application_status = appData.status;
+                    } else {
+                      enriched.application_status = null;
+                    }
+                  } else {
+                    enriched.application_status = null;
+                  }
+                }
+                if (!enriched.housing_group_data && !hgError) { // Ensure housing_group_data exists
+                    enriched.housing_group_data = {};
+                }
+                break;
+              }
+              default:
+                console.warn('[FavouritesScreen] Unknown item type for enrichment:', favorite.item_type);
+                break;
+            }
+          } catch (err) {
+            console.warn('[FavouritesScreen] Enrichment failed for', favorite.item_type, favorite.item_id, err);
+          }
+          return enriched;
+        })
+      );
+
+      debugTiming('ENRICHMENT_COMPLETE', {
+        category: selectedCategory,
+        itemCount: favoritesWithEnrichedData.length,
+        timeMs: Date.now() - fetchStart
+      });
+
+      // Update cache with the new data
+      if (pageNum === 0) {
+        cacheRef.current[selectedCategory] = favoritesWithEnrichedData;
+        debugTiming('CACHE_UPDATED', {
+          category: selectedCategory,
+          itemCount: favoritesWithEnrichedData.length
+        });
+      } else if (cacheRef.current[selectedCategory]) {
+        // For pagination, append to cache
+        const existingIds = new Set(cacheRef.current[selectedCategory].map(p => p.favorite_table_id));
+        const newItemsToAdd = favoritesWithEnrichedData.filter(item => !existingIds.has(item.favorite_table_id));
+        cacheRef.current[selectedCategory] = [...cacheRef.current[selectedCategory], ...newItemsToAdd];
+        
+        debugTiming('CACHE_APPENDED', {
+          category: selectedCategory,
+          previousCount: existingIds.size,
+          newItemsCount: newItemsToAdd.length,
+          totalCount: cacheRef.current[selectedCategory].length
+        });
+      }
+
+      // Update state with the new data
+      setFavorites(prev => {
+        let newItemsToAdd = favoritesWithEnrichedData;
+        // When appending (not a refresh or initial load), filter out items already present based on favorite_table_id
+        if (!isRefreshing && pageNum > 0) {
+          const existingIds = new Set(prev.map(p => p.favorite_table_id));
+          newItemsToAdd = favoritesWithEnrichedData.filter(item => !existingIds.has(item.favorite_table_id));
+        }
+
+        const updatedFavorites = isRefreshing || pageNum === 0 
+          ? newItemsToAdd // For refresh or initial load, directly use new items
+          : [...prev, ...newItemsToAdd]; // For append, add the filtered new items
+        
+        debugTiming('STATE_UPDATED', {
+          category: selectedCategory,
+          prevCount: prev.length,
+          newItemsCount: newItemsToAdd.length,
+          updatedCount: updatedFavorites.length
+        });
+        
+        return updatedFavorites;
+      });
+      
+      setHasMore(data.length === PAGE_SIZE);
+      setPage(pageNum);
+
+    } catch (error) {
+      console.error('[FavouritesScreen] fetchFavorites error:', error);
+      if (timeoutId) clearTimeout(timeoutId);
+      // Alert.alert('Error', 'Could not fetch favorites.'); // Consider user-facing error
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
+      fetchInProgressRef.current = false;
+      setLoading(false);
+      setRefreshing(false);
+      setLoadingMore(false);
+    }
+  }, [selectedCategory, searchTerm, sortConfig.field, sortConfig.direction, isUserNew]); // Removed circular dependencies
+
+  // Track if we need to fetch on focus
+  const shouldFetchOnFocusRef = useRef(true);
+  const lastFetchParamsRef = useRef({ category: null, search: null, sort: null });
+
+  // Reset scroll and check for new user favorites when tab is focused
+  useFocusEffect(
+    useCallback(() => {
+      if (flatListRef.current) {
+        flatListRef.current.scrollToOffset({ offset: 0, animated: false });
+      }
+      
+      // Only fetch if params haven't changed or it's the first focus
+      const paramsChanged = 
+        lastFetchParamsRef.current.category !== selectedCategory ||
+        lastFetchParamsRef.current.search !== searchTerm ||
+        lastFetchParamsRef.current.sort !== sortConfig.field;
+      
+      if (shouldFetchOnFocusRef.current || paramsChanged) {
+        // Check if new user has added favorites
+        const checkNewUserFavorites = async () => {
+          if (isUserNew) {
+            try {
+              const { data: { user }, error: userError } = await supabase.auth.getUser();
+              if (!userError && user) {
+                // Quick check if user has any favorites
+                const { count, error } = await supabase
+                  .from('favorites')
+                  .select('*', { count: 'exact', head: true })
+                  .eq('user_id', user.id);
+                
+                if (!error && count > 0) {
+                  console.log('[FavouritesScreen] New user now has favorites, updating status');
+                  setIsUserNew(false);
+                  // Clear the new user flag
+                  await AsyncStorage.removeItem('is_new_user');
+                  // Fetch their favorites
+                  setPage(0);
+                  fetchFavorites(0, true);
+                }
+              }
+            } catch (error) {
+              console.log('[FavouritesScreen] Error checking new user favorites:', error);
+            }
+          } else {
+            // Not a new user, fetch normally
+            setPage(0);
+            fetchFavorites(0, true);
+          }
+        };
+        
+        checkNewUserFavorites();
+        shouldFetchOnFocusRef.current = false; // Don't fetch again until blur
+      }
+      
+      return () => {
+        // Re-enable fetch on next focus when screen loses focus
+        shouldFetchOnFocusRef.current = true;
+      };
+    }, [isUserNew, selectedCategory, searchTerm, sortConfig.field, fetchFavorites]) // Only re-run if these change
+  );
+
+  // Fetch data when selectedCategory, searchTerm, or sortConfig change
+  // But NOT on initial mount or when returning to screen
+  useEffect(() => {
+    // Skip on initial mount
+    if (lastFetchParamsRef.current.category === null) {
+      lastFetchParamsRef.current = {
+        category: selectedCategory,
+        search: searchTerm,
+        sort: sortConfig.field
+      };
+      return;
+    }
+    
+    // Skip fetch for new users
+    if (isUserNew) {
+      console.log("[FavouritesScreen] Skipping fetch for new user");
+      return;
+    }
+    
+    // Check if params actually changed
+    const paramsChanged = 
+      lastFetchParamsRef.current.category !== selectedCategory ||
+      lastFetchParamsRef.current.search !== searchTerm ||
+      lastFetchParamsRef.current.sort !== sortConfig.field;
+    
+    if (paramsChanged) {
+      console.log("[FavouritesScreen] Filters changed, fetching page 0. Category:", selectedCategory, "Search:", searchTerm);
+      lastFetchParamsRef.current = {
+        category: selectedCategory,
+        search: searchTerm,
+        sort: sortConfig.field
+      };
+      setPage(0); // Reset page when filters change
+      fetchFavorites(0, true); // Fetch with new filters, as a refresh
+    }
+  }, [selectedCategory, searchTerm, sortConfig.field, isUserNew]); // Using specific field instead of whole object
+
+  const onRefresh = useCallback(async () => {
+    debugTiming('MANUAL_REFRESH_TRIGGERED');
+    setRefreshing(true);
+    setPage(0);
+    
+    // If new user, check if they now have favorites
+    if (isUserNew) {
+      try {
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        if (!userError && user) {
+          const { count, error } = await supabase
+            .from('favorites')
+            .select('*', { count: 'exact', head: true })
+            .eq('user_id', user.id);
+          
+          if (!error && count > 0) {
+            console.log('[FavouritesScreen] New user refreshed and has favorites');
+            setIsUserNew(false);
+            await AsyncStorage.removeItem('is_new_user');
+          }
+        }
+      } catch (error) {
+        console.log('[FavouritesScreen] Error checking favorites on refresh:', error);
+      }
+    }
+    
+    fetchFavorites(0, true, false);
+  }, [fetchFavorites, isUserNew]);
+
+  const loadMore = useCallback(() => {
+    debugTiming('LOAD_MORE_TRIGGERED', {
+      hasMore,
+      loadingMore,
+      loading,
+      page
+    });
+    
+    if (!loading && !loadingMore && hasMore) {
+      fetchFavorites(page + 1, false, false);
+    }
+  }, [page, loading, loadingMore, hasMore, fetchFavorites]);
+
+
+  const toggleFavorite = async (itemId, itemType) => {
+    try {
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        Alert.alert("Authentication Error", "You must be logged in to change favorites.");
+        return;
+      }
+
+      const { error } = await supabase
+        .from('favorites')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('item_id', itemId)
+        .eq('item_type', itemType);
+
+      if (error) {
+        throw error;
+      }
+      // Refresh list after unfavoriting
+      setFavorites(prev => prev.filter(item => !(item.item_id === itemId && item.item_type === itemType)));
+      // Or optionally, fully refetch:
+      // fetchFavorites(0, true); 
+    } catch (error) {
+      console.error('[FavouritesScreen] toggleFavorite error:', error);
+      Alert.alert('Error', 'Could not update favorites.');
+    }
+  };
+
+  const handleOpenShareTray = (item) => {
+    setItemToShare(item);
+    setShareModalVisible(true);
+  };
+
+  const handleCloseShareTray = () => {
+    setShareModalVisible(false);
+    setItemToShare(null);
+  };
+
+  // Function to measure title text width to determine if it's single line
+  // This is a local definition, shadowing any imported one.
+  const isSingleLineTitleLocal = (title) => {
+    if (!title) return true; // Or false, depending on desired behavior for null/undefined titles
+    const avgCharWidth = 10; 
+    const maxChars = width / avgCharWidth * 0.4; // Approx 40% of screen width for a grid item title
+    return title.length < maxChars;
+  };
+
+  const renderItem = ({ item }) => {
+    // console.log('[FavouritesScreen] renderItem called for item:', JSON.stringify(item, null, 2));
+    // Use the locally defined isSingleLineTitle
+    const titleIsSingleLine = item.item_type === 'housing_group' && item.housing_group_data?.name
+                              ? isSingleLineTitleLocal(item.housing_group_data.name)
+                              : (item.item_title ? isSingleLineTitleLocal(item.item_title) : true);
+
+
+    const commonCardProps = {
+      onPress: () => {
+        // Ensure item.id or item.item_id is correctly referencing the actual entity ID
+        const entityId = item.item_id; // This should be the ID of the service, housing, group etc.
+        switch (item.item_type) {
+          case 'service_provider':
+            navigation.navigate('ServiceDetail', { providerId: entityId, service_provider_name: item.item_title || item.name });
+            break;
+          case 'housing_listing':
+            navigation.navigate('HousingDetail', { listingId: entityId });
+            break;
+          case 'group': // Changed from 'housing_group'
+            navigation.navigate('GroupDetail', { groupId: entityId });
+            break;
+          case 'housing_group':
+            navigation.navigate('HousingGroupDetailScreen', { housingGroupId: entityId });
+            break;
+          case 'group_event': // Assuming 'event' favorites are stored as 'group_event' type
+             navigation.navigate('EventDetail', { eventId: entityId, groupId: item.group_id });
+            break;
+          default:
+            console.warn(`[FavouritesScreen] No specific navigation path for item_type: ${item.item_type} in commonCardProps.onPress`);
+            break;
+        }
+      },
+      isFavorited: true,
+      onToggleFavorite: () => toggleFavorite(item.item_id, item.item_type), // Corrected: removed third argument
+      displayAs: viewMode === 'Grid' ? 'grid' : 'list',
+      onSharePress: () => handleOpenShareTray(item),
+    };
+    
+    // Ensure item.id is consistently the actual item's ID from its original table,
+    // and favorite-specific ID (if needed for deletion directly by favorite PK) is item.favorite_id_pk or similar
+    // For toggleFavorite, item.item_id (entity ID) and item.item_type are used.
+
+    switch (item.item_type) {
+      // Case 'event' was present but 'group_event' seems to be the actual type based on enrichment logic.
+      // If 'event' is a distinct type, its enrichment and card handling need to be defined.
+      // For now, assuming events are 'group_event'.
+      case 'group_event':
+        console.log('[FavouritesScreen] Rendering EventFavoriteCard for group_event:', item.item_id);
+        const groupEventCardItem = {
+          id: item.item_id, // Main ID for the event
+          item_id: item.item_id, // Redundant but for clarity if card expects it
+          item_type: item.item_type,
+          item_title: item.title || item.item_title || 'Group Event', // Fallback chain
+          description: item.description,
+          item_image_url: getValidImageUrl(item.image_url),
+          event_start_time: item.start_time || item.event_start_time,
+          event_location: { address: item.location?.full_address || item.location_address, ...item.location },
+          event_category: item.category,
+          group_id: item.group_id, // Important for navigation
+        };
+        return (
+          <EventFavoriteCard
+            item={groupEventCardItem}
+            displayAs={commonCardProps.displayAs}
+            onSharePress={commonCardProps.onSharePress}
+            onPress={() => navigation.navigate('EventDetail', { eventId: groupEventCardItem.id, groupId: groupEventCardItem.group_id })}
+            onRemoveFavorite={commonCardProps.onToggleFavorite}
+            testID={`group-event-card-${groupEventCardItem.id}`}
+          />
+        );
+
+      case 'service_provider':
+        console.log('[FavouritesScreen] Rendering ServiceCardComponent for:', item.item_id);
+        const serviceProviderItem = {
+            id: item.item_id, // Use item_id as the primary id for the card
+            ...item, // Spread the enriched item data
+            name: item.name || item.item_title, // Ensure name is present
+        };
+        // delete serviceProviderItem.item_id; // Avoid duplicate id fields if item itself has id
+        return <ServiceCardComponent item={serviceProviderItem} {...commonCardProps} />;
+
+      case 'housing_listing':
+        console.log('[FavouritesScreen] Rendering HousingCardComponent for:', item.item_id);
+        const housingListingItem = {
+            id: item.item_id,
+            ...item,
+            title: item.title || item.item_title,
+        };
+        return <HousingCardComponent item={housingListingItem} {...commonCardProps} />;
+
+      case 'group':
+        console.log('[FavouritesScreen] Rendering Group:', item.item_id, 'ViewMode:', viewMode);
+        const groupImageUrl = getValidImageUrl(item.image || item.avatar_url, 'groupavatars');
+        const groupName = item.name || item.item_title || 'Unnamed Group';
+        const groupDescription = item.description || 'No description available.';
+        const groupMembers = item.members != null ? `${item.members} members` : '';
+
+        if (viewMode === 'Grid') {
+          return (
+            <View style={CardStyles.gridCardWrapper} testID={`group-card-grid-${item.item_id}`}>
+              <TouchableOpacity
+                style={CardStyles.gridCardContainer}
+                onPress={commonCardProps.onPress}
+                activeOpacity={0.8}
+              >
+                <View style={CardStyles.gridCardInner}>
+                  <View style={CardStyles.gridImageContainer}>
+                    {groupImageUrl ? (
+                      <ExpoImage source={{ uri: getOptimizedImageUrl(groupImageUrl, 400, 70) }} style={CardStyles.gridImage} contentFit="cover" cachePolicy="immutable" />
+                    ) : (
+                      <View style={[CardStyles.gridImage, CardStyles.gridCardPlaceholderImage]}>
+                        <Ionicons name="people-outline" size={SIZES.xxxLarge} color={COLORS.mediumGray} />
+                      </View>
+                    )}
+                    <TouchableOpacity
+                        style={CardStyles.iconContainer}
+                        onPress={commonCardProps.onToggleFavorite}
+                    >
+                        <View style={CardStyles.iconCircleActive}>
+                          <Ionicons name="heart" size={20} style={CardStyles.favoriteIconActive} />
+                        </View>
+                    </TouchableOpacity>
+                    {commonCardProps.onSharePress && (
+                        <TouchableOpacity
+                            style={[CardStyles.iconContainer, { top: 40 }]}
+                            onPress={commonCardProps.onSharePress}
+                        >
+                            <View style={CardStyles.iconCircle}>
+                              <Ionicons name="share-social-outline" size={20} style={CardStyles.favoriteIcon} />
+                            </View>
+                        </TouchableOpacity>
+                    )}
+                  </View>
+                  <View style={{padding: 12}}>
+                    <Text style={[CardStyles.title, {marginBottom: 4}]} numberOfLines={2}>{groupName}</Text>
+                    <View style={CardStyles.labelsRow}>
+                        {groupMembers ? (
+                          <View style={CardStyles.labelContainer}>
+                            <Ionicons name="people" size={14} color={COLORS.darkBlue} />
+                            <Text style={[CardStyles.labelText, {marginLeft: 3}]} numberOfLines={1}>{groupMembers}</Text>
+                          </View>
+                        ) : <View/>}
+                    </View>
+                    <Text style={CardStyles.subtitle} numberOfLines={2}>{groupDescription}</Text>
+                  </View>
+                </View>
+              </TouchableOpacity>
+            </View>
+          );
+        } else { // List view for 'group'
+          return (
+            <TouchableOpacity
+              style={CardStyles.listCardContainer}
+              onPress={commonCardProps.onPress}
+              activeOpacity={0.8}
+              testID={`group-card-list-${item.item_id}`}
+            >
+              <View style={CardStyles.listCardInner}>
+                <View style={CardStyles.listImageContainer}>
+                  {groupImageUrl ? (
+                    <ExpoImage source={{ uri: getOptimizedImageUrl(groupImageUrl, 400, 70) }} style={CardStyles.listImage} contentFit="cover" cachePolicy="immutable" onError={(e) => console.log('Group List Image Error:', e.nativeEvent.error)} />
+                  ) : (
+                    <View style={CardStyles.listPlaceholderImage}><Ionicons name="people-outline" size={SIZES.xLarge} color={COLORS.mediumGray} /></View>
+                  )}
+                </View>
+                <View style={CardStyles.listContentContainer}>
+                    <View style={CardStyles.topSection}>
+                        <Text style={[CardStyles.title, {flex:1}]} numberOfLines={1}>{groupName}</Text>
+                    </View>
+                    {groupMembers ? <Text style={CardStyles.subtitle} numberOfLines={1}>{groupMembers}</Text> : null}
+                    <Text style={[CardStyles.subtitle, {marginVertical: 4}]} numberOfLines={2}>{groupDescription}</Text>
+                </View>
+                <View style={CardStyles.listIconContainer}>
+                  <TouchableOpacity onPress={commonCardProps.onToggleFavorite} style={CardStyles.listIconWrapper}><Ionicons name="heart" size={24} color={COLORS.primary} /></TouchableOpacity>
+                  <TouchableOpacity onPress={commonCardProps.onSharePress} style={CardStyles.listIconWrapper}><Ionicons name="share-social-outline" size={24} color={COLORS.primary} /></TouchableOpacity>
+                </View>
+              </View>
+            </TouchableOpacity>
+          );
+        }
+
+      case 'housing_group':
+        console.log('[FavouritesScreen] Rendering Housing Group:', item.item_id, 'ViewMode:', viewMode);
+        // Extract housing group data - first check if it's nested or directly on the item
+        const hgData = item.housing_group_data || item; 
+        const listingData = hgData?.housing_listing_data || hgData?.housing_listings; // Check both possible paths
+        
+        // Log data structure to help debug
+        console.log(`[FavouritesScreen] Housing Group Data Structure for ${item.item_id}:`, 
+          { hasHGData: !!item.housing_group_data, hasDirectProps: !!item.name, hasListingData: !!listingData });
+          
+        // Get image URL - try multiple paths
+        let hgImageUrl = null;
+        if (listingData?.media_urls?.length > 0) {
+          hgImageUrl = getValidImageUrl(listingData.media_urls[0], 'housingimages');
+        } else if (hgData?.avatar_url) {
+          hgImageUrl = getValidImageUrl(hgData.avatar_url, 'housinggroupavatar');
+        } else if (listingData?.avatar_url) {
+          hgImageUrl = getValidImageUrl(listingData.avatar_url, 'housinggroupavatar');
+        }
+        
+        // Get housing group information, looking in multiple possible locations
+        const hgTitle = hgData?.name || item.item_title || 'Unnamed Housing Group';
+        const hgMembers = (hgData?.current_members != null && hgData?.max_members != null)
+                          ? `${hgData.current_members}/${hgData.max_members} members`
+                          : (hgData?.member_count != null ? `${hgData.member_count} members` : '');
+
+
+        let hgLocationDisplayValue = 'Location not specified';
+        if (listingData?.location_text) {
+          hgLocationDisplayValue = listingData.location_text;
+        } else if (listingData?.address) {
+          if (typeof listingData.address === 'string') {
+            hgLocationDisplayValue = listingData.address;
+          } else if (typeof listingData.address === 'object' && listingData.address !== null) {
+            hgLocationDisplayValue = listingData.address.suburb || listingData.address.city || 'Address available';
+          }
+        }
+        if (typeof hgLocationDisplayValue !== 'string' || hgLocationDisplayValue.trim() === '') {
+            hgLocationDisplayValue = 'Location not specified';
+        }
+
+        if (viewMode === 'Grid') {
+          return (
+            <View style={CardStyles.gridCardWrapper} testID={`housinggroup-card-grid-${item.item_id}`}>
+              <TouchableOpacity
+                style={CardStyles.gridCardContainer}
+                onPress={commonCardProps.onPress}
+                activeOpacity={0.8}
+              >
+                <View style={CardStyles.gridCardInner}>
+                  <View style={CardStyles.gridImageContainer}>
+                    {hgImageUrl ? (
+                      <ExpoImage source={{ uri: getOptimizedImageUrl(hgImageUrl, 400, 70) }} style={CardStyles.gridImage} contentFit="cover" cachePolicy="immutable" />
+                    ) : (
+                      <View style={[CardStyles.gridImage, CardStyles.gridCardPlaceholderImage]}>
+                        <Ionicons name="home-outline" size={SIZES.xxxLarge} color={COLORS.mediumGray} />
+                      </View>
+                    )}
+                    <TouchableOpacity
+                        style={CardStyles.iconContainer}
+                        onPress={commonCardProps.onToggleFavorite}
+                    >
+                        <View style={CardStyles.iconCircleActive}>
+                          <Ionicons name="heart" size={20} style={CardStyles.favoriteIconActive} />
+                        </View>
+                    </TouchableOpacity>
+                    {commonCardProps.onSharePress && (
+                        <TouchableOpacity
+                            style={[CardStyles.iconContainer, { top: 40 }]}
+                            onPress={commonCardProps.onSharePress}
+                        >
+                            <View style={CardStyles.iconCircle}>
+                              <Ionicons name="share-social-outline" size={20} style={CardStyles.favoriteIcon} />
+                            </View>
+                        </TouchableOpacity>
+                    )}
+                  </View>
+                  <View style={{padding: 12}}>
+                    <Text style={[CardStyles.title, {marginBottom: 4}]} numberOfLines={2}>{hgTitle}</Text>
+                    <View style={CardStyles.labelsRow}>
+                      <View style={CardStyles.labelContainer}>
+                        <Ionicons name="location-outline" size={14} color={COLORS.darkBlue} />
+                        <Text style={[CardStyles.labelText, {marginLeft: 3}]} numberOfLines={1}>{hgLocationDisplayValue}</Text>
+                      </View>
+                      
+                      {hgMembers ? (
+                        <View style={CardStyles.labelContainer}>
+                          <Ionicons name="people" size={14} color={COLORS.darkBlue} />
+                          <Text style={[CardStyles.labelText, {marginLeft: 3}]} numberOfLines={1}>{hgMembers}</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  </View>
+                </View>
+              </TouchableOpacity>
+            </View>
+          );
+        } else { // List view for 'housing_group'
+          return (
+            <TouchableOpacity
+              style={CardStyles.listCardContainer}
+              onPress={commonCardProps.onPress}
+              activeOpacity={0.8}
+              testID={`housinggroup-card-list-${item.item_id}`}
+            >
+              <View style={CardStyles.listCardInner}>
+                <View style={CardStyles.listImageContainer}>
+                  {hgImageUrl ? (
+                    <ExpoImage source={{ uri: getOptimizedImageUrl(hgImageUrl, 400, 70) }} style={CardStyles.listImage} contentFit="cover" cachePolicy="immutable" onError={(e) => console.log('Housing Group List Image Error:', e.nativeEvent.error)} />
+                  ) : (
+                    <View style={CardStyles.listPlaceholderImage}><Ionicons name="home-outline" size={SIZES.xLarge} color={COLORS.mediumGray} /></View>
+                  )}
+                </View>
+                <View style={CardStyles.listContentContainer}>
+                    <View style={CardStyles.topSection}>
+                        <Text style={[CardStyles.title, {flex:1}]} numberOfLines={1}>{hgTitle}</Text>
+                    </View>
+                    <View style={CardStyles.labelsRow}>
+                      <View style={CardStyles.labelContainer}>
+                        <Ionicons name="location-outline" size={14} color={COLORS.darkBlue} />
+                        <Text style={[CardStyles.labelText, {marginLeft: 3}]} numberOfLines={1}>{hgLocationDisplayValue}</Text>
+                      </View>
+                      
+                      {hgMembers ? (
+                        <View style={CardStyles.labelContainer}>
+                          <Ionicons name="people" size={14} color={COLORS.darkBlue} />
+                          <Text style={[CardStyles.labelText, {marginLeft: 3}]} numberOfLines={1}>{hgMembers}</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                </View>
+                <View style={CardStyles.listIconContainer}>
+                  <TouchableOpacity onPress={commonCardProps.onToggleFavorite} style={CardStyles.listIconWrapper}><Ionicons name="heart" size={24} color={COLORS.primary} /></TouchableOpacity>
+                  <TouchableOpacity onPress={commonCardProps.onSharePress} style={CardStyles.listIconWrapper}><Ionicons name="share-social-outline" size={24} color={COLORS.primary} /></TouchableOpacity>
+                </View>
+              </View>
+            </TouchableOpacity>
+          );
+        }
+
+      default:
+        console.warn(`[FavouritesScreen] Unknown item_type in renderItem: ${item.item_type} for item ID: ${item.item_id}`);
+        const defaultTitle = item.item_title || `Unknown Item: ${item.item_id}`;
+        // Ensure CardStyles has definitions for these placeholder styles if they are different
+        // from the standard ones like CardStyles.title, CardStyles.subtitle
+        if (viewMode === 'Grid') {
+          return (
+            <View style={CardStyles.gridCardWrapper} testID={`unknown-card-grid-${item.item_id}`}>
+              <View style={[CardStyles.gridCardContainer, CardStyles.gridCardPlaceholderImage, {alignItems:'center', justifyContent:'center'}]}>
+                <Ionicons name="help-circle-outline" size={SIZES.xxxLarge} color={COLORS.mediumGray} />
+                <Text style={[CardStyles.title, {textAlign:'center'}]} numberOfLines={2}>{defaultTitle}</Text>
+                <Text style={[CardStyles.subtitle, {textAlign:'center'}]}>{`Type: ${item.item_type}`}</Text>
+              </View>
+            </View>
+          );
+        } else {
+          return (
+            <View style={[CardStyles.listCardContainer, {alignItems:'center'}]} testID={`unknown-card-list-${item.item_id}`}>
+              <Ionicons name="help-circle-outline" size={SIZES.xLarge} color={COLORS.mediumGray} style={{marginRight: SIZES.base}}/>
+              <View style={CardStyles.listContentContainer}>
+                <Text style={CardStyles.title} numberOfLines={2}>{defaultTitle}</Text>
+                <Text style={CardStyles.subtitle}>{`Type: ${item.item_type}`}</Text>
+              </View>
+            </View>
+          );
+        }
+    }
+  };
+
+  // Prefetch first batch of thumbnail URLs for snappy display
+  useEffect(() => {
+    if (favorites.length === 0) return;
+
+    const urls = favorites.slice(0, 12).map(fav => {
+      let rawUrl = null;
+      switch (fav.item_type) {
+        case 'service_provider':
+          rawUrl = fav.avatar_url || fav.image_url || fav.item_image_url;
+          rawUrl = getValidImageUrl(rawUrl, 'provideravatars');
+          break;
+        case 'housing_listing':
+          rawUrl = fav.media_urls?.[0];
+          rawUrl = getValidImageUrl(rawUrl, 'housingimages');
+          break;
+        case 'group':
+          rawUrl = fav.image || fav.avatar_url;
+          rawUrl = getValidImageUrl(rawUrl, 'groupavatars');
+          break;
+        case 'housing_group': {
+          const listingMedia = fav.housing_group_data?.housing_listing_data?.media_urls?.[0];
+          rawUrl = listingMedia || fav.housing_group_data?.avatar_url;
+          rawUrl = getValidImageUrl(rawUrl, 'housingimages');
+          break; }
+        case 'group_event':
+          rawUrl = fav.media_urls?.[0] || fav.item_image_url;
+          rawUrl = getValidImageUrl(rawUrl, 'eventimages');
+          break;
+        default:
+          break;
+      }
+      if (!rawUrl) return null;
+      return getOptimizedImageUrl(rawUrl, 400, 70);
+    }).filter(Boolean);
+
+    urls.forEach(u => ExpoImage.prefetch(u));
+  }, [favorites]);
+
+  return (
+    <View style={styles.container}>
+      <AppHeader title="Favorites" navigation={navigation} />
+      <SearchComponent
+        categories={categories}
+        selectedCategory={selectedCategory}
+        onCategoryChange={(category) => {
+            console.log("Category changed to:", category);
+            setSelectedCategory(category);
+        }}
+        searchTerm={searchTerm}
+        onSearchChange={(term) => {
+            console.log("Search term changed to:", term);
+            setSearchTerm(term);
+        }}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+        sortConfig={sortConfig}
+        onSortChange={(config) => {
+            console.log("Sort config changed to:", config);
+            setSortConfig(config);
+        }}
+        showSortOptions={true}
+      />
+      {loading && favorites.length === 0 && page === 0 ? ( // Show loader only on initial full load
+        <ActivityIndicator size="large" color={COLORS.primary} style={styles.loader} />
+      ) : !loading && favorites.length === 0 ? ( // Show empty only if not loading and no favorites
+        <View style={styles.emptyContainer}>
+          <Ionicons name="heart-dislike-outline" size={80} color={COLORS.gray} />
+          <Text style={styles.emptyText}>
+            {isUserNew ? "Welcome! Start exploring to find your favorites" : "You haven't favorited anything yet."}
+          </Text>
+          <Text style={styles.emptySubText}>
+            {isUserNew ? "Browse services, events, and housing to save what you love!" : "Tap the heart on items to add them here!"}
+          </Text>
+          {isUserNew && (
+            <TouchableOpacity
+              style={styles.exploreCTA}
+              onPress={() => navigation.navigate('Explore', {
+                screen: 'ProviderDiscovery'
+              })}
+              activeOpacity={0.8}
+            >
+              <View style={styles.exploreCTAContent}>
+                <Ionicons name="compass" size={24} color={COLORS.white} style={styles.exploreCTAIcon} />
+                <Text style={styles.exploreCTAText}>Start Exploring</Text>
+                <Ionicons name="arrow-forward" size={20} color={COLORS.white} style={styles.exploreCTAArrow} />
+              </View>
+            </TouchableOpacity>
+          )}
+        </View>
+      ) : (
+        <FlatList
+          ref={flatListRef}
+          data={sortedFavorites.length > 0 ? sortedFavorites : favorites}
+          renderItem={renderItem}
+          keyExtractor={(item, index) => {
+            if (item.favorite_table_id !== undefined && item.favorite_table_id !== null) {
+              return item.favorite_table_id.toString();
+            }
+            // Fallback if favorite_table_id (from favorite.id) is not available
+            const type = item.item_type || 'unknown_type';
+            const entityId = item.item_id || 'unknown_item_id'; // item_id of the actual entity (service, group etc)
+            console.warn(`[FavouritesScreen] keyExtractor: favorite_table_id is undefined for item_type: ${type}, item_id: ${entityId}. Using fallback key with index ${index}.`);
+            return `${type}-${entityId}-${index}`;
+          }} // Ensure item_id is unique per type
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} tintColor={COLORS.primary}/>}
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.5}
+          ListFooterComponent={loadingMore ? <ActivityIndicator size="small" color={COLORS.primary} style={{ marginVertical: 20 }}/> : null}
+          numColumns={viewMode === 'Grid' ? 2 : 1}
+          key={viewMode} // Important for re-rendering on viewMode change
+          contentContainerStyle={viewMode === 'Grid' ? styles.gridContainer : styles.listContainer}
+          columnWrapperStyle={viewMode === 'Grid' ? styles.columnWrapper : null}
+          // Performance settings
+          initialNumToRender={PAGE_SIZE / 2}
+          maxToRenderPerBatch={PAGE_SIZE / 2}
+          windowSize={PAGE_SIZE + 5} // Roughly current page items + 1 page ahead and 1 behind
+        />
+      )}
+      <ShareTrayModal
+        visible={shareModalVisible}
+        onClose={handleCloseShareTray}
+        itemToShare={itemToShare}
+      />
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.lightGray, // Or COLORS.background for consistency
+  },
+  loader: {
+    flex: 1, // To center it if it's the only thing
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+    backgroundColor: COLORS.white, // Or transparent to see container bg
+  },
+  emptyText: {
+    fontSize: SIZES.h3, // Use FONTS.h3
+    fontFamily: FONTS.bold,
+    marginTop: SIZES.medium,
+    color: COLORS.darkGray,
+    textAlign: 'center',
+  },
+  emptySubText: {
+    fontSize: SIZES.body3, // Use FONTS.body3
+    fontFamily: FONTS.regular,
+    marginTop: SIZES.base,
+    color: COLORS.gray,
+    textAlign: 'center',
+  },
+  exploreCTA: {
+    marginTop: SIZES.large,
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SIZES.large * 2,
+    paddingVertical: SIZES.medium + 4,
+    borderRadius: 25,
+    ...SHADOWS.medium,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+    transform: [{ scale: 1 }],
+  },
+  exploreCTAContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  exploreCTAIcon: {
+    marginRight: 8,
+  },
+  exploreCTAText: {
+    color: COLORS.white,
+    fontSize: SIZES.body2,
+    fontFamily: FONTS.bold,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+  },
+  exploreCTAArrow: {
+    marginLeft: 8,
+    opacity: 0.9,
+  },
+  gridContainer: {
+    paddingBottom: SIZES.large, // Use theme sizes
+    paddingHorizontal: CARD_MARGIN / 2, // Adjust for half margin on sides
+  },
+  listContainer: {
+    paddingBottom: SIZES.large,
+    paddingHorizontal: CARD_MARGIN,
+  },
+  columnWrapper: {
+    justifyContent: 'flex-start',
+    paddingHorizontal: CARD_MARGIN / 2, // Distribute remaining margin
+  },
+  // Card specific styles were removed as they should come from CardStyles.js
+  // If any were truly unique to this screen, they can be re-added or moved to CardStyles
+});
+
+export default FavouritesScreen;

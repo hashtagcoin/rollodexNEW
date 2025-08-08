@@ -18,7 +18,23 @@
       "WebFetch(domain:smtckdlpdfvdycocwoip.supabase.co)",
       "Bash(cp:*)",
       "Bash(npx supabase db remote:*)",
-      "Bash(npm start)"
+      "Bash(npm start)",
+      "Bash(npx expo install:*)",
+      "Bash(npx expo:*)",
+      "Bash(npx:*)",
+      "Bash(pkill:*)",
+      "Bash(npm i:*)",
+      "Bash(sudo npm i -g @anthropic-ai/claude-code)",
+      "Bash(npm update)",
+      "Bash(git submodule:*)",
+      "Bash(git pull:*)",
+      "Bash(true)",
+      "Bash(expo doctor:*)",
+      "Bash(cat:*)",
+      "Bash(npm ls:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(npm audit:*)"
     ],
     "deny": []
   }

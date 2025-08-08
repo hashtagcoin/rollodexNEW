@@ -1,0 +1,385 @@
+/**
+ * SwipeCardDeck Component
+ * A high-performance Tinder-style card swiping component optimized for React Native
+ */
+
+import React, { useState, useRef, useCallback, useMemo, useImperativeHandle, forwardRef } from 'react';
+import {
+  View, 
+  Text,
+  Animated, 
+  PanResponder, 
+  Dimensions, 
+  StyleSheet,
+  InteractionManager
+} from 'react-native';
+import { COLORS } from '../../constants/theme';
+
+// Get screen dimensions
+const { width, height } = Dimensions.get('window');
+
+// Constants for swipe behavior
+const SWIPE_THRESHOLD = width * 0.25;
+const SWIPE_OUT_DURATION = 250;
+const ROTATION_RANGE = 30;
+const ROTATION_MULTIPLIER = ROTATION_RANGE / width;
+const VERTICAL_THRESHOLD = height * 0.25;
+
+// Performance constants
+const CARD_PRELOAD_COUNT = 3; // Number of cards to preload
+const MAX_VISIBLE_CARDS = 3;  // Maximum cards visible in stack
+
+// Component styles
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  card: {
+    position: 'absolute',
+    width: '100%',
+  }
+});
+
+const SwipeCardDeck = forwardRef((props, ref) => { 
+  const { 
+    data = [],
+    renderCard,
+    onSwipeLeft,
+    onSwipeRight, 
+    onSwipeTop,
+    onSwipeBottom,
+    onCardDisappear,
+    onAllCardsViewed,
+    backgroundColor = 'transparent',
+    cardStyle = {},
+    stackSize = 3,
+    stackScale = 0.08,
+    stackSeparation = 15,
+    infinite = false,
+    disableTopSwipe = false,
+    disableBottomSwipe = false,
+    disableLeftSwipe = false,
+    disableRightSwipe = false,
+    animationOverlayOpacity = 0.8,
+    animationDuration = SWIPE_OUT_DURATION,
+    rotationEnabled = true,
+    scaleEnabled = true,
+    overlayLabels = {}
+  } = props;
+  
+  // State
+  const [currentIndex, setCurrentIndex] = useState(0);
+  
+  // Refs for animations
+  const panRef = useRef(new Animated.ValueXY()).current;
+  const rotateRef = useRef(new Animated.Value(0)).current;
+  const nextCardScale = useRef(new Animated.Value(1 - stackScale)).current;
+  
+  // Ref to track cards that have been swiped to prevent duplicates
+  const swipedCardIdsRef = useRef(new Set());
+  
+  // Function to reset the animation values
+  const resetCardPosition = () => {
+    Animated.spring(panRef, {
+      toValue: { x: 0, y: 0 },
+      friction: 5,
+      useNativeDriver: false
+    }).start();
+    
+    Animated.spring(rotateRef, {
+      toValue: 0,
+      friction: 5,
+      useNativeDriver: false
+    }).start();
+  };
+  
+  // Function to handle card swipe
+  const swipeCard = useCallback((direction) => {
+    // Capture current card and index to prevent stale closures
+    const swipedCard = data[currentIndex];
+    const swipedIndex = currentIndex;
+    const oldIndex = currentIndex;
+    
+    // Prevent duplicate swipes of the same card
+    const cardId = swipedCard?.id || `card-${swipedIndex}`;
+    if (swipedCardIdsRef.current.has(cardId)) return;
+    
+    // Mark this card as swiped
+    if (swipedCard) {
+      swipedCardIdsRef.current.add(cardId);
+    }
+    
+    // Determine the direction to swipe
+    let xOffset = 0;
+    let yOffset = 0;
+    
+    switch (direction) {
+      case 'left':
+        xOffset = -width * 1.5;
+        break;
+      case 'right':
+        xOffset = width * 1.5;
+        break;
+      case 'up':
+        yOffset = -height * 1.5;
+        break;
+      case 'down':
+        yOffset = height * 1.5;
+        break;
+      default:
+        return;
+    }
+    
+    // Animate the swipe
+    Animated.parallel([
+      Animated.timing(panRef, {
+        toValue: { x: xOffset, y: yOffset },
+        duration: animationDuration,
+        useNativeDriver: false
+      }),
+      Animated.timing(rotateRef, {
+        toValue: 0,
+        duration: animationDuration,
+        useNativeDriver: false
+      }),
+      Animated.spring(nextCardScale, {
+        toValue: 1,
+        friction: 5,
+        useNativeDriver: false
+      })
+    ]).start(() => {
+      // Reset animation values for reuse
+      panRef.setValue({ x: 0, y: 0 });
+      rotateRef.setValue(0);
+      nextCardScale.setValue(1 - stackScale);
+      
+      // Update the current index, cycling back to 0 if infinite is true
+      const newIndex = infinite && swipedIndex >= data.length - 1 ? 0 : swipedIndex + 1;
+      setCurrentIndex(newIndex);
+      
+      // Call appropriate callbacks based on direction
+      if (swipedCard) {
+        switch (direction) {
+          case 'left':
+            onSwipeLeft?.(swipedCard, oldIndex);
+            break;
+          case 'right':
+            onSwipeRight?.(swipedCard, oldIndex);
+            break;
+          case 'up':
+            onSwipeTop?.(swipedCard, oldIndex);
+            break;
+          case 'down':
+            onSwipeBottom?.(swipedCard, oldIndex);
+            break;
+        }
+        
+        // Call onCardDisappear callback
+        onCardDisappear?.(swipedCard, oldIndex);
+        
+        // Call onAllCardsViewed when we've gone through all cards
+        if (newIndex === data.length && typeof onAllCardsViewed === 'function') {
+          InteractionManager.runAfterInteractions(() => {
+            onAllCardsViewed();
+          });
+        }
+      }
+    });
+  }, [
+    currentIndex, 
+    data, 
+    animationDuration, 
+    infinite, 
+    onSwipeLeft, 
+    onSwipeRight, 
+    onSwipeTop, 
+    onSwipeBottom,
+    onCardDisappear,
+    onAllCardsViewed,
+    panRef,
+    rotateRef,
+    nextCardScale,
+    stackScale
+  ]);
+  
+  // Create pan responder for touch gestures
+  const panResponder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onPanResponderMove: (event, gesture) => {
+      // Update position
+      panRef.setValue({ x: gesture.dx, y: gesture.dy });
+      
+      // Calculate rotation based on horizontal movement if enabled
+      if (rotationEnabled) {
+        rotateRef.setValue(gesture.dx * ROTATION_MULTIPLIER);
+      }
+    },
+    onPanResponderRelease: (event, gesture) => {
+      // Determine if the card should be swiped away
+      if (gesture.dx > SWIPE_THRESHOLD && !disableRightSwipe) {
+        swipeCard('right');
+      } else if (gesture.dx < -SWIPE_THRESHOLD && !disableLeftSwipe) {
+        swipeCard('left');
+      } else if (gesture.dy < -VERTICAL_THRESHOLD && !disableTopSwipe) {
+        swipeCard('up');
+      } else if (gesture.dy > VERTICAL_THRESHOLD && !disableBottomSwipe) {
+        swipeCard('down');
+      } else {
+        resetCardPosition();
+      }
+    }
+  }), [
+    swipeCard, 
+    resetCardPosition, 
+    rotationEnabled, 
+    disableRightSwipe, 
+    disableLeftSwipe,
+    disableTopSwipe,
+    disableBottomSwipe
+  ]);
+  
+  // Expose methods to parent component via ref
+  useImperativeHandle(ref, () => ({
+    swipeLeft: () => swipeCard('left'),
+    swipeRight: () => swipeCard('right'),
+    swipeTop: () => swipeCard('up'),
+    swipeBottom: () => swipeCard('down'),
+    resetPosition: resetCardPosition
+  }));
+  
+  // Function to get the rotation transform
+  const getCardRotation = useCallback(() => {
+    if (!rotationEnabled) return '0deg';
+    
+    return rotateRef.interpolate({
+      inputRange: [-width, 0, width],
+      outputRange: [`-${ROTATION_RANGE}deg`, '0deg', `${ROTATION_RANGE}deg`],
+      extrapolate: 'clamp'
+    });
+  }, [rotateRef, rotationEnabled]);
+  
+  // Render the cards efficiently using useMemo to prevent unnecessary re-renders
+  const renderCards = useMemo(() => {
+    if (!data.length || currentIndex >= data.length) {
+      return null;
+    }
+    
+    // Calculate the end index, considering the stack size and data length
+    const endIndex = Math.min(currentIndex + stackSize - 1, data.length - 1);
+    
+    // Store rendered cards in this array
+    const cards = [];
+    
+    // Track which card IDs have been rendered to prevent duplicates
+    const renderedCardIds = new Set();
+    
+    // Render cards from endIndex down to currentIndex to ensure proper stacking order
+    for (let i = endIndex; i >= currentIndex; i--) {
+      const item = data[i];
+      if (!item) continue;
+      
+      // Use ID if available or fallback to index
+      const cardKey = item.id || `card-${i}`;
+      
+      // Skip if this card has already been rendered (prevent duplicates)
+      if (renderedCardIds.has(cardKey)) continue;
+      renderedCardIds.add(cardKey);
+      
+      // Calculate card position in the stack
+      const stackIndex = i - currentIndex;
+      
+      // For top card (current card)
+      if (i === currentIndex) {
+        const rotateTransform = {
+          transform: [
+            { translateX: panRef.x },
+            { translateY: panRef.y },
+            { rotate: getCardRotation() }
+          ]
+        };
+        
+        cards.push(
+          <Animated.View 
+            key={cardKey} 
+            style={[styles.card, cardStyle, rotateTransform]} 
+            {...panResponder.panHandlers}
+          >
+            {renderCard(item, i)}
+          </Animated.View>
+        );
+      } 
+      // For subsequent cards in the stack (background cards)
+      else {
+        const stackOffset = stackIndex * stackSeparation;
+        const cardScale = 1 - (stackIndex * stackScale);
+        
+        // Create a transform for this card with appropriate scaling and offset
+        const cardTransform = {
+          transform: [
+            { translateY: stackOffset },
+            { scale: scaleEnabled ? cardScale : 1 }
+          ],
+          zIndex: -stackIndex
+        };
+        
+        cards.push(
+          <Animated.View 
+            key={cardKey} 
+            style={[styles.card, cardStyle, cardTransform]}
+          >
+            {renderCard(item, i)}
+          </Animated.View>
+        );
+      }
+    }
+    
+    return cards;
+  }, [
+    data, 
+    currentIndex, 
+    panRef, 
+    renderCard, 
+    getCardRotation, 
+    scaleEnabled, 
+    rotationEnabled, 
+    stackScale, 
+    stackSeparation, 
+    cardStyle, 
+    panResponder,
+    stackSize,
+    onCardDisappear,
+    onAllCardsViewed
+  ]);
+  
+  // Return the component's JSX
+  return (
+    <View style={[styles.container, { backgroundColor }]}>
+      {renderCards}
+    </View>
+  );
+});
+
+// Add display name for better debugging
+SwipeCardDeck.displayName = 'SwipeCardDeck';
+
+// Default props
+SwipeCardDeck.defaultProps = {
+  data: [],
+  stackSize: 3,
+  stackSeparation: 15,
+  stackScale: 0.08,
+  infinite: false,
+  disableTopSwipe: false,
+  disableBottomSwipe: false,
+  disableLeftSwipe: false,
+  disableRightSwipe: false,
+  animationDuration: SWIPE_OUT_DURATION,
+  rotationEnabled: true,
+  scaleEnabled: true,
+  backgroundColor: 'transparent',
+  overlayLabels: {}
+};
+
+export default SwipeCardDeck;
