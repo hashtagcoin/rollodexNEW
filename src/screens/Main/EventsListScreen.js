@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useDeferredValue } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, TextInput, ScrollView, Animated, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, TextInput, ScrollView, Animated, ActivityIndicator, RefreshControl, Dimensions } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import ActionButton from '../../components/common/ActionButton';
 import { supabase } from '../../lib/supabaseClient';
@@ -8,6 +8,23 @@ import EventCard from '../../components/cards/EventCard';
 import { COLORS, FONTS } from '../../constants/theme';
 import AppHeader from '../../components/layout/AppHeader';
 import Feather from 'react-native-vector-icons/Feather';
+
+// Dynamic column calculation for responsive design
+const { width: screenWidth } = Dimensions.get('window');
+const CARD_MIN_WIDTH = 280; // Minimum width for each card
+const CARD_MARGIN = 20; // Margin between cards
+const SCREEN_PADDING = 32; // Total left/right padding
+
+const getNumColumns = (viewMode) => {
+  if (viewMode === 'list') return 1;
+  
+  const availableWidth = screenWidth - SCREEN_PADDING;
+  const cardWidthWithMargin = CARD_MIN_WIDTH + CARD_MARGIN;
+  const calculatedColumns = Math.floor(availableWidth / cardWidthWithMargin);
+  
+  // Ensure at least 2 columns for grid, max 4 for readability
+  return Math.min(Math.max(calculatedColumns, 2), 4);
+};
 
 // Event categories for filtering
 const EVENT_FILTERS = [
@@ -217,8 +234,8 @@ const EventsListScreen = ({ navigation }) => {
           renderItem={renderEvent}
           keyExtractor={item => item.id}
           contentContainerStyle={viewMode === 'grid' ? styles.gridContainer : styles.listContainer}
-          numColumns={viewMode === 'grid' ? 2 : 1}
-          columnWrapperStyle={viewMode === 'grid' ? { justifyContent: 'space-between' } : null}
+          numColumns={getNumColumns(viewMode)}
+          columnWrapperStyle={getNumColumns(viewMode) > 1 ? { justifyContent: 'space-around', paddingHorizontal: 8 } : null}
           showsVerticalScrollIndicator={false}
           initialNumToRender={4}
           maxToRenderPerBatch={6}

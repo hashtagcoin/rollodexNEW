@@ -110,7 +110,7 @@ const WelcomeScreen = ({ navigation, route }) => {
           >
             <View style={styles.logoContainer}>
               <Image 
-                source={require('../../assets/images/placeholder.png')}
+                source={require('../../assets/images/logo.png')}
                 style={styles.logoImage}
                 resizeMode="contain"
               />
@@ -258,9 +258,8 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   logoImage: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
+    width: 80,
+    height: 80,
   },
   appNameImage: {
     width: 200,

@@ -1,7 +1,38 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { View, StyleSheet, Platform } from 'react-native';
+import React, { useState, useRef, useEffect, useCallback, Component } from 'react';
+import { View, StyleSheet, Platform, unstable_batchedUpdates, Text } from 'react-native';
 import PropTypes from 'prop-types';
 import Swiper from 'react-native-deck-swiper';
+
+// Error boundary specifically for swipe gestures
+class SwipeErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('SwipeCardDeck: Gesture error caught:', error, errorInfo);
+    // In production, you might want to log this to a crash reporting service
+    if (__DEV__) {
+      console.error('SwipeCardDeck: Error details:', errorInfo);
+    }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback || (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>Swipe temporarily unavailable</Text>
+        </View>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 /**
  * SwipeCardDeck component using react-native-deck-swiper library
@@ -23,13 +54,36 @@ const SwipeCardDeck = ({
   const [currentIndex, setCurrentIndex] = useState(0);
   const [forceRerender, setForceRerender] = useState(0);
   const swiperRef = useRef(null);
+  const animationFrameRef = useRef(null);
 
   // Reset current index when data changes
   useEffect(() => {
+    // Cancel any pending animation frames
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    
     setCurrentIndex(0);
     swipedCardIdsRef.current = new Set();
     setForceRerender(0);
   }, [data]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      // Cleanup animation frames
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+      
+      // Cleanup swiper reference
+      if (swiperRef.current) {
+        swiperRef.current = null;
+      }
+    };
+  }, []);
 
 
 
@@ -45,54 +99,77 @@ const SwipeCardDeck = ({
     return emptyView || <View style={styles.emptyContainer} />;
   }
 
-  const handleCardSwiped = (cardIndex) => {
-    const item = data[cardIndex];
-    const cardId = item?.id || item?._id;
-    if (cardId) {
-      swipedCardIdsRef.current.add(cardId);
-    }
-    
-    // Debug logging for iOS testing
-    if (__DEV__) {
-      console.log('SwipeCardDeck: Card swiped', {
-        cardIndex,
-        itemTitle: item?.title || item?.name,
-        platform: Platform.OS,
-        totalCards: data.length,
-        currentIndex,
-        forceRerender
+  const handleCardSwiped = useCallback((cardIndex) => {
+    try {
+      const item = data[cardIndex];
+      const cardId = item?.id || item?._id;
+      if (cardId) {
+        swipedCardIdsRef.current.add(cardId);
+      }
+      
+      // Debug logging for iOS testing
+      if (__DEV__) {
+        console.log('SwipeCardDeck: Card swiped', {
+          cardIndex,
+          itemTitle: item?.title || item?.name,
+          platform: Platform.OS,
+          totalCards: data.length,
+          currentIndex,
+          forceRerender
+        });
+      }
+      
+      // Cancel any pending animation frames
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+      
+      // Batch state updates to prevent race conditions
+      unstable_batchedUpdates(() => {
+        const nextIndex = (infinite && cardIndex === data.length - 1) ? 0 : cardIndex + 1;
+        setCurrentIndex(nextIndex);
+        
+        // For iOS, use safer animation frame handling
+        if (Platform.OS === 'ios') {
+          animationFrameRef.current = requestAnimationFrame(() => {
+            setForceRerender(prev => prev + 1);
+            animationFrameRef.current = null;
+          });
+        }
       });
+    } catch (error) {
+      console.error('SwipeCardDeck: Error in handleCardSwiped:', error);
+      // Fallback to prevent complete crash
+      setCurrentIndex(prev => Math.min(prev + 1, data.length - 1));
     }
-    
-    // Update index immediately to prevent crashes
-    const nextIndex = (infinite && cardIndex === data.length - 1) ? 0 : cardIndex + 1;
-    setCurrentIndex(nextIndex);
-    
-    // For iOS production builds, force component re-render to reset animation state
-    if (Platform.OS === 'ios') {
-      // Use requestAnimationFrame for safer timing
-      requestAnimationFrame(() => {
-        setForceRerender(prev => prev + 1);
-      });
-    }
-  };
+  }, [infinite, data.length, currentIndex, forceRerender]);
 
   return (
-    <View style={[styles.container, containerStyle]}>
-      <Swiper
+    <SwipeErrorBoundary>
+      <View style={[styles.container, containerStyle]}>
+        <Swiper
         ref={swiperRef}
         cards={data}
         renderCard={renderCard}
         onSwipedLeft={(cardIndex) => {
-          handleCardSwiped(cardIndex);
-          if (onSwipeLeft && data[cardIndex]) {
-            onSwipeLeft(data[cardIndex]);
+          try {
+            handleCardSwiped(cardIndex);
+            if (onSwipeLeft && data[cardIndex]) {
+              onSwipeLeft(data[cardIndex]);
+            }
+          } catch (error) {
+            console.error('SwipeCardDeck: Error in onSwipedLeft:', error);
           }
         }}
         onSwipedRight={(cardIndex) => {
-          handleCardSwiped(cardIndex);
-          if (onSwipeRight && data[cardIndex]) {
-            onSwipeRight(data[cardIndex]);
+          try {
+            handleCardSwiped(cardIndex);
+            if (onSwipeRight && data[cardIndex]) {
+              onSwipeRight(data[cardIndex]);
+            }
+          } catch (error) {
+            console.error('SwipeCardDeck: Error in onSwipedRight:', error);
           }
         }}
         backgroundColor={'transparent'}
@@ -136,8 +213,9 @@ const SwipeCardDeck = ({
         animateCardOpacity={Platform.OS === 'ios' ? false : true}
         animateOverlayLabelsOpacity={Platform.OS === 'ios' ? false : true}
         goBackToPreviousCardOnSwipeOut={false}
-      />
-    </View>
+        />
+      </View>
+    </SwipeErrorBoundary>
   );
 };
 
@@ -154,6 +232,17 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
   },
   overlayWrapper: {
     flexDirection: 'column',

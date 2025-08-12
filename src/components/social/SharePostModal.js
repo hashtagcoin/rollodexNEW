@@ -43,8 +43,8 @@ const SharePostModal = ({ visible, onClose, post, onShareComplete }) => {
 
   const fetchOriginalPoster = async () => {
     try {
-      const { data } = await getUserDetails(post.user_id);
-      setOriginalPoster(data);
+      const userData = await getUserDetails(post.user_id);
+      setOriginalPoster(userData);
     } catch (error) {
       console.error('Error fetching post creator:', error);
     }

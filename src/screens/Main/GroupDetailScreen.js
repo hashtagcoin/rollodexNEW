@@ -361,22 +361,6 @@ const GroupDetailScreen = () => {
     }
   }, [group, user, checkMembership, checkFavorite, initialFetchDone.current]);
 
-
-  // Effect to handle the join flow popup
-  useEffect(() => {
-    if (joinFlow && groupName && user && groupId && group) { // Ensure group is loaded for context
-      Alert.alert(
-        `Join ${groupName}?`,
-        `Welcome to ${groupName}! This is a ${group.is_public ? 'public' : 'private'} group. To post comments and fully engage with other members, please join. We encourage respectful interaction. Enjoy your time here!`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Join Group', onPress: () => joinGroup(true) },
-        ],
-        { cancelable: true }
-      );
-    }
-  }, [joinFlow, groupName, user, groupId, group, joinGroup]); // Added group and joinGroup
-
   // Handle joining or leaving a group
   const joinGroup = useCallback(async (autoJoin = false) => {
     if (!user || !groupId || !group) {
@@ -461,6 +445,21 @@ const GroupDetailScreen = () => {
       if (!autoJoin && isMounted.current) Alert.alert('Error', 'Failed to process your request. Please try again.');
     }
   }, [user, groupId, group, isGroupMember, fetchGroupData, fetchGroupMembers]);
+
+  // Effect to handle the join flow popup
+  useEffect(() => {
+    if (joinFlow && groupName && user && groupId && group) { // Ensure group is loaded for context
+      Alert.alert(
+        `Join ${groupName}?`,
+        `Welcome to ${groupName}! This is a ${group.is_public ? 'public' : 'private'} group. To post comments and fully engage with other members, please join. We encourage respectful interaction. Enjoy your time here!`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Join Group', onPress: () => joinGroup(true) },
+        ],
+        { cancelable: true }
+      );
+    }
+  }, [joinFlow, groupName, user, groupId, group, joinGroup]); // Added group and joinGroup
 
   // Check for auto-join when group data (specifically auto_join flag) is loaded
   useEffect(() => {

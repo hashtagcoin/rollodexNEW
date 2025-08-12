@@ -179,6 +179,44 @@ const GroupsListScreen = () => {
     fetchUserGroupRoles();
   }, [userId, fetchUserGroupRoles]);
   
+  // Fetch user's membership status for housing groups
+  const fetchUserMembershipStatus = useCallback(async (housingGroupIds) => {
+    if (!userId || housingGroupIds.length === 0) return;
+    
+    // Check cache first
+    const cacheKey = `${userId}-housing`;
+    if (membershipCacheRef.current[cacheKey]) {
+      debugTiming('MEMBERSHIP_FROM_CACHE', { userId });
+      setMembershipStatus(membershipCacheRef.current[cacheKey]);
+      return;
+    }
+    
+    try {
+      const { data, error } = await supabase
+        .from('housing_group_members')
+        .select('group_id, status')
+        .eq('user_id', userId)
+        .in('group_id', housingGroupIds);
+        
+      if (error) throw error;
+      
+      // Convert to object with group_id as key
+      const statusMap = {};
+      data.forEach(membership => {
+        statusMap[membership.group_id] = membership.status;
+      });
+      
+      // Cache the membership status
+      membershipCacheRef.current[cacheKey] = statusMap;
+      setMembershipStatus(statusMap);
+      
+      debugTiming('MEMBERSHIP_FETCHED', {
+        membershipCount: Object.keys(statusMap).length
+      });
+    } catch (e) {
+      console.error('[GroupsListScreen] Error fetching membership status:', e);
+    }
+  }, [userId]);
 
 
   const fetchGroups = useCallback(async (forceRefresh = false) => {
@@ -377,45 +415,6 @@ const GroupsListScreen = () => {
         return allGroups;
     }
   };
-  
-  // Fetch user's membership status for housing groups
-  const fetchUserMembershipStatus = useCallback(async (housingGroupIds) => {
-    if (!userId || housingGroupIds.length === 0) return;
-    
-    // Check cache first
-    const cacheKey = `${userId}-housing`;
-    if (membershipCacheRef.current[cacheKey]) {
-      debugTiming('MEMBERSHIP_FROM_CACHE', { userId });
-      setMembershipStatus(membershipCacheRef.current[cacheKey]);
-      return;
-    }
-    
-    try {
-      const { data, error } = await supabase
-        .from('housing_group_members')
-        .select('group_id, status')
-        .eq('user_id', userId)
-        .in('group_id', housingGroupIds);
-        
-      if (error) throw error;
-      
-      // Convert to object with group_id as key
-      const statusMap = {};
-      data.forEach(membership => {
-        statusMap[membership.group_id] = membership.status;
-      });
-      
-      // Cache the membership status
-      membershipCacheRef.current[cacheKey] = statusMap;
-      setMembershipStatus(statusMap);
-      
-      debugTiming('MEMBERSHIP_FETCHED', {
-        membershipCount: Object.keys(statusMap).length
-      });
-    } catch (e) {
-      console.error('[GroupsListScreen] Error fetching membership status:', e);
-    }
-  }, [userId]);
 
   // Handle filter changes
   useEffect(() => {

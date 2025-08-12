@@ -442,7 +442,6 @@ const NotificationTray = ({ visible, onClose, notifications = [], loading = fals
                   <Text style={styles.notificationTitle} numberOfLines={1}>
                     {notification.title}
                   </Text>
-                  {!notification.read && <View style={styles.unreadDot} />}
                 </View>
                 {notification.type === 'BADGE' ? (
                   formatBadgeNotification(notification)
@@ -525,27 +524,29 @@ const styles = StyleSheet.create({
     borderBottomColor: '#F0F0F0',
     backgroundColor: '#FFF',
   },
-  // Badge notification styles
+  // Badge notification styles - Updated for better spacing
   badgeContainer: {
     width: '100%',
     backgroundColor: '#FFF9E6',
     borderRadius: 12,
-    padding: 15,
+    padding: 12,
     borderWidth: 1,
     borderColor: '#FFE6B2',
+    marginTop: 4,
   },
   badgeHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
+    alignItems: 'flex-start',
+    marginBottom: 8,
   },
   badgeIconContainer: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: 10,
+    flexShrink: 0,
   },
   badgeImage: {
     width: 30,
@@ -554,17 +555,20 @@ const styles = StyleSheet.create({
   },
   badgeHeaderText: {
     flex: 1,
+    paddingRight: 10,
   },
   badgeTitle: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: '600',
     color: '#333',
     marginBottom: 2,
+    lineHeight: 18,
   },
   badgeName: {
-    fontSize: 18,
-    fontWeight: '800',
+    fontSize: 16,
+    fontWeight: '700',
     color: '#FF9500',
+    lineHeight: 20,
   },
   badgeDescription: {
     fontSize: 14,
@@ -622,48 +626,34 @@ const styles = StyleSheet.create({
   },
   notificationContent: {
     flex: 1,
-    marginLeft: 12,
+    marginLeft: 0,
+    paddingRight: 20,
+  },
+  notificationHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
   },
   notificationTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: '#222',
-    marginBottom: 4,
+    flex: 1,
+    paddingRight: 8,
+  },
+  notificationTime: {
+    fontSize: 12,
+    color: '#999',
+    marginTop: 6,
   },
   notificationMessage: {
     fontSize: 14,
     color: '#666',
     marginTop: 2,
   },
-  badgeContainer: {
-    marginTop: 6,
-    backgroundColor: '#FFF9E6',
-    borderRadius: 12,
-    padding: 12,
-    borderLeftWidth: 4,
-    borderLeftColor: '#FFD700',
-  },
-  badgeTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#FF8C00',
-    marginBottom: 6,
-    textAlign: 'center',
-  },
   badgeContent: {
-    paddingLeft: 4,
-  },
-  badgeName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 4,
-  },
-  badgeDescription: {
-    fontSize: 13,
-    color: '#666',
-    marginBottom: 6,
-    lineHeight: 18,
+    paddingLeft: 0,
   },
   badgeLevel: {
     alignSelf: 'flex-start',

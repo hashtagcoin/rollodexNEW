@@ -36,7 +36,36 @@ import { preloadImages } from '../../utils/imagePreloader';
 import { Image } from 'expo-image';
 import useHousingImageCache from '../../hooks/useHousingImageCache';
 
-const { width, height } = Dimensions.get('window');
+const { height } = Dimensions.get('window');
+
+// Dynamic column calculation for responsive design - Mobile optimized
+const getMobilePadding = (screenWidth) => {
+  const isMobile = screenWidth <= 480;
+  return isMobile ? 8 : 16; // Reduced padding for mobile
+};
+
+const getResponsiveColumns = (viewMode, currentWidth) => {
+  if (viewMode !== 'Grid') return 1;
+  
+  // Always use 2 columns for mobile phones to ensure proper display
+  // iPhone sizes: iPhone SE (375), iPhone 12/13/14 (390), iPhone 12/13/14 Pro Max (428)
+  // Android typical: 360-450
+  const isMobile = currentWidth <= 480; // Covers all typical mobile sizes
+  
+  if (isMobile) {
+    return 2; // Fixed 2 columns for mobile phones
+  }
+  
+  // For tablets/iPads and larger screens, calculate dynamic columns
+  // Use responsive card width calculation
+  const availableWidth = currentWidth - SCREEN_PADDING;
+  const minCardWidth = 200; // Minimum card width for larger screens
+  const cardWidthWithMargin = minCardWidth + CARD_MARGIN;
+  const calculatedColumns = Math.floor(availableWidth / cardWidthWithMargin);
+  
+  // Minimum 2 for grid, maximum 4 for readability
+  return Math.min(Math.max(calculatedColumns, 2), 4);
+};
 
 // Constants
 const CATEGORIES = ['All', 'Health', 'Therapy', 'Housing', 'Support', 'Transport', 'Tech', 'Personal', 'Social', 'Travel', 'Companionship', 'Experiences'];
@@ -51,6 +80,12 @@ Image.prefetch([
 const ProviderDiscoveryScreen = ({ route }) => {  
   const initialParams = route?.params || {};
   const navigation = useNavigation();
+  
+  // Track window dimensions for responsive layout
+  const [screenDimensions, setScreenDimensions] = useState(() => {
+    const { width } = Dimensions.get('window');
+    return { width };
+  });
   
   // State management - matching FavouritesScreen pattern
   const [selectedCategory, setSelectedCategory] = useState('All');
@@ -92,11 +127,18 @@ const ProviderDiscoveryScreen = ({ route }) => {
 
   useEffect(() => {
     isMounted.current = true;
+    
+    // Add listener for dimension changes
+    const subscription = Dimensions.addEventListener('change', ({ window }) => {
+      setScreenDimensions({ width: window.width });
+    });
+    
     return () => {
       isMounted.current = false;
       if (fetchController.current) {
         fetchController.current.abort();
       }
+      subscription?.remove();
     };
   }, []);
 
@@ -451,9 +493,9 @@ const ProviderDiscoveryScreen = ({ route }) => {
   // Get item layout for better performance
   const getItemLayout = useCallback((data, index) => {
     if (viewMode === 'Grid') {
-      // For grid view with 2 columns, we need to calculate row-based offsets
-      const itemHeight = 220;
-      const itemsPerRow = 2;
+      // For grid view with dynamic columns, we need to calculate row-based offsets
+      const itemHeight = 280; // Updated to match card height
+      const itemsPerRow = getResponsiveColumns(viewMode, screenDimensions.width);
       const row = Math.floor(index / itemsPerRow);
       return {
         length: itemHeight,
@@ -468,7 +510,7 @@ const ProviderDiscoveryScreen = ({ route }) => {
         index,
       };
     }
-  }, [viewMode]);
+  }, [viewMode, screenDimensions.width]);
 
   // Get the data to display (sorted data)
   const displayData = sortedData.length > 0 ? sortedData : currentData;
@@ -563,9 +605,13 @@ const ProviderDiscoveryScreen = ({ route }) => {
           data={displayData}
           renderItem={renderItem}
           keyExtractor={keyExtractor}
-          numColumns={viewMode === 'Grid' ? 2 : 1}
-          key={viewMode} // Only change key when view mode changes
-          contentContainerStyle={viewMode === 'Grid' ? styles.gridContainer : styles.listContainer}
+          numColumns={getResponsiveColumns(viewMode, screenDimensions.width)}
+          key={`${viewMode}-${getResponsiveColumns(viewMode, screenDimensions.width)}`} // Change key when columns change
+          columnWrapperStyle={getResponsiveColumns(viewMode, screenDimensions.width) > 1 ? styles.gridRowWrapper : null}
+          contentContainerStyle={viewMode === 'Grid' ? [
+            styles.gridContainer, 
+            { paddingHorizontal: getMobilePadding(screenDimensions.width) }
+          ] : styles.listContainer}
           showsVerticalScrollIndicator={false}
           initialNumToRender={viewMode === 'Grid' ? 8 : 6}
           maxToRenderPerBatch={viewMode === 'Grid' ? 8 : 6}
@@ -613,8 +659,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   gridContainer: {
-    padding: 5,
+    paddingTop: 8,
     paddingBottom: 100,
+    // paddingHorizontal is now set dynamically based on screen size
+  },
+  gridRowWrapper: {
+    justifyContent: 'space-between', // Better distribution of cards
+    paddingHorizontal: 0,
   },
   listContainer: {
     padding: 10,

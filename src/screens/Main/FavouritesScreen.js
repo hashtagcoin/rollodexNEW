@@ -8,7 +8,8 @@ import {
   RefreshControl,
   ActivityIndicator,
   Dimensions,
-  Alert
+  Alert,
+  Platform
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image as ExpoImage } from 'expo-image';
@@ -31,6 +32,31 @@ import { isNewUser } from '../../utils/defaultDataProvider';
 
 const { width } = Dimensions.get('window');
 
+// Dynamic column calculation for responsive design
+const CARD_MIN_WIDTH = 280; // Maintain consistent card width
+const CARD_MARGIN = 16; // Space between cards
+const SCREEN_PADDING = 32; // Total left/right screen padding
+
+const getResponsiveColumns = (viewMode, currentWidth) => {
+  if (viewMode !== 'Grid') return 1;
+  
+  // Mobile phones: fixed 2 columns
+  // Tablets/iPads and larger: dynamic columns based on width
+  const isMobile = Platform.OS === 'ios' ? currentWidth <= 428 : currentWidth <= 450; // iPhone 14 Pro Max is 428pt
+  
+  if (isMobile) {
+    return 2; // Fixed 2 columns for mobile phones
+  }
+  
+  // For tablets/iPads and larger screens, calculate dynamic columns
+  const availableWidth = currentWidth - SCREEN_PADDING;
+  const cardWidthWithMargin = CARD_MIN_WIDTH + CARD_MARGIN;
+  const calculatedColumns = Math.floor(availableWidth / cardWidthWithMargin);
+  
+  // Minimum 2 for grid, no artificial maximum - let screen width determine
+  return Math.max(calculatedColumns, 2);
+};
+
 // Performance tracking
 const performanceTracker = {
   componentId: `FAV-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -52,7 +78,6 @@ const debugTiming = (action, details = {}) => {
 };
 
 // Constants
-const CARD_MARGIN = 10;
 const PAGE_SIZE = 10; // Moved PAGE_SIZE to be a top-level constant
 
 const FavouritesScreen = () => {
@@ -60,6 +85,12 @@ const FavouritesScreen = () => {
   const navigation = useNavigation();
   const { profile: userProfile } = useUser();
   const flatListRef = useRef(null);
+  
+  // Track window dimensions for responsive layout
+  const [screenDimensions, setScreenDimensions] = useState(() => {
+    const { width } = Dimensions.get('window');
+    return { width };
+  });
   const [favorites, setFavorites] = useState([]);
   const [sortedFavorites, setSortedFavorites] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -197,6 +228,11 @@ const FavouritesScreen = () => {
     
     isMounted.current = true;
     
+    // Add listener for dimension changes
+    const subscription = Dimensions.addEventListener('change', ({ window }) => {
+      setScreenDimensions({ width: window.width });
+    });
+    
     // Check if user is new
     const checkNewUser = async () => {
       try {
@@ -219,6 +255,7 @@ const FavouritesScreen = () => {
     
     return () => {
       isMounted.current = false;
+      subscription?.remove();
       debugTiming('COMPONENT_UNMOUNTING', { 
         totalRenders: performanceTracker.renders,
         lifetimeMs: Date.now() - performanceTracker.mountTime,
@@ -1223,11 +1260,8 @@ const FavouritesScreen = () => {
               })}
               activeOpacity={0.8}
             >
-              <View style={styles.exploreCTAContent}>
-                <Ionicons name="compass" size={24} color={COLORS.white} style={styles.exploreCTAIcon} />
-                <Text style={styles.exploreCTAText}>Start Exploring</Text>
-                <Ionicons name="arrow-forward" size={20} color={COLORS.white} style={styles.exploreCTAArrow} />
-              </View>
+              <Ionicons name="compass" size={20} color={COLORS.white} />
+              <Text style={styles.exploreCTAText}>Start Exploring</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -1250,10 +1284,10 @@ const FavouritesScreen = () => {
           onEndReached={loadMore}
           onEndReachedThreshold={0.5}
           ListFooterComponent={loadingMore ? <ActivityIndicator size="small" color={COLORS.primary} style={{ marginVertical: 20 }}/> : null}
-          numColumns={viewMode === 'Grid' ? 2 : 1}
-          key={viewMode} // Important for re-rendering on viewMode change
+          numColumns={getResponsiveColumns(viewMode, screenDimensions.width)}
+          key={`${viewMode}-${getResponsiveColumns(viewMode, screenDimensions.width)}`} // Change key when columns change
           contentContainerStyle={viewMode === 'Grid' ? styles.gridContainer : styles.listContainer}
-          columnWrapperStyle={viewMode === 'Grid' ? styles.columnWrapper : null}
+          columnWrapperStyle={getResponsiveColumns(viewMode, screenDimensions.width) > 1 ? { justifyContent: 'space-around', paddingHorizontal: 8 } : null}
           // Performance settings
           initialNumToRender={PAGE_SIZE / 2}
           maxToRenderPerBatch={PAGE_SIZE / 2}
@@ -1301,37 +1335,26 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   exploreCTA: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     marginTop: SIZES.large,
     backgroundColor: COLORS.primary,
-    paddingHorizontal: SIZES.large * 2,
-    paddingVertical: SIZES.medium + 4,
-    borderRadius: 25,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 8,
     ...SHADOWS.medium,
     shadowColor: COLORS.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 6,
-    transform: [{ scale: 1 }],
-  },
-  exploreCTAContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  exploreCTAIcon: {
-    marginRight: 8,
   },
   exploreCTAText: {
     color: COLORS.white,
-    fontSize: SIZES.body2,
-    fontFamily: FONTS.bold,
+    fontSize: 16,
     fontWeight: '600',
-    letterSpacing: 0.5,
-  },
-  exploreCTAArrow: {
-    marginLeft: 8,
-    opacity: 0.9,
   },
   gridContainer: {
     paddingBottom: SIZES.large, // Use theme sizes

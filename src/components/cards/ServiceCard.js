@@ -1,17 +1,17 @@
 import React, { useState, useMemo } from 'react';
-// Corrected import: Added StyleSheet, removed unused useEffect and SIZES
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+// Corrected import: Added StyleSheet, Dimensions, removed unused useEffect and SIZES
+import { View, Text, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
 import { Image } from 'expo-image'; 
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { getValidImageUrl, getOptimizedImageUrl } from '../../utils/imageHelper';
-import { CardStyles } from '../../constants/CardStyles'; // Import CardStyles
+import { CardStyles, createResponsiveGridCardWrapper } from '../../constants/CardStyles'; // Import CardStyles and responsive function
 import { COLORS } from '../../constants/theme'; // Removed SIZES as it was unused
 
 // Main component
 // Pre-load placeholder image
 const placeholderImage = { uri: 'https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/providerimages/default-service.png' };
 
-const ServiceCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', isFavorited, onToggleFavorite, onSharePress }) => { 
+const ServiceCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', isFavorited, onToggleFavorite, onSharePress, isDashboard = false }) => { 
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
 
@@ -73,12 +73,12 @@ const ServiceCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', isFavor
         onPress={onPress ? () => onPress(item) : undefined} 
         activeOpacity={0.8}
       >
-        <View style={localStyles.listCardInner}>
-          <View style={localStyles.listImageContainer}>
+        <View style={[localStyles.listCardInner, isDashboard && {height: 160, backgroundColor: '#ffffff', padding: 10}]}>
+          <View style={[localStyles.listImageContainer, isDashboard && {width: 140, height: 140, borderRadius: 12}]}>
             {!imageLoaded && <View style={localStyles.loaderContainer} />}
             <Image 
               source={{ uri: imageError ? 'https://smtckdlpdfvdycocwoip.supabase.co/storage/v1/object/public/providerimages/default-service.png' : thumbUrl }}
-              style={localStyles.listImage}
+              style={[localStyles.listImage, isDashboard && {borderRadius: 12}]}
               onLoad={() => {
                 setImageLoaded(true);
                 if (typeof onImageLoaded === 'function' && imageUrl && !imageError) onImageLoaded(imageUrl);
@@ -132,8 +132,12 @@ const ServiceCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', isFavor
       </TouchableOpacity>
     );
   } else {
+    // Get responsive width for current screen size
+    const { width } = Dimensions.get('window');
+    const responsiveWrapperStyle = createResponsiveGridCardWrapper(width);
+    
     return (
-      <View style={CardStyles.gridCardWrapper}> 
+      <View style={responsiveWrapperStyle}> 
         <TouchableOpacity 
           style={CardStyles.gridCardContainer}  
           onPress={onPress ? () => onPress(item) : undefined} 

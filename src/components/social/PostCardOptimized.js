@@ -33,7 +33,7 @@ import {
   isPostBookmarked
 } from '../../services/bookmarkService';
 import LikesListModal from './LikesListModal';
-import SharePostModal from './SharePostModal';
+import ShareTrayModal from '../common/ShareTrayModal';
 
 const { width, height } = Dimensions.get('window');
 
@@ -462,11 +462,16 @@ const PostCardOptimized = ({ post, onPress, showActions = true, onBookmarkToggle
       )}
       
       {showShareModal && (
-        <SharePostModal
+        <ShareTrayModal
           visible={showShareModal}
           onClose={() => setShowShareModal(false)}
-          post={post}
-          onShareComplete={() => setShowShareModal(false)}
+          itemToShare={{
+            item_id: post.post_id,
+            item_type: 'post',
+            item_title: post.caption || 'Shared Post',
+            item_image_url: post.media_urls?.[0] || null
+          }}
+          highlightSharedUsers={false}
         />
       )}
     </View>

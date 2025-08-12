@@ -31,6 +31,29 @@ import { useScrollContext } from '../../context/ScrollContext';
 
 const { width } = Dimensions.get('window');
 
+// Dynamic column calculation for responsive design
+const CARD_MIN_WIDTH = 280; // Minimum width for each card
+const CARD_MARGIN = 20; // Margin between cards
+const SCREEN_PADDING = 32; // Total left/right padding
+
+const getGridNumColumns = (currentWidth) => {
+  // Mobile phones: fixed 2 columns
+  // Tablets/iPads and larger: dynamic columns based on width
+  const isMobile = Platform.OS === 'ios' ? currentWidth <= 428 : currentWidth <= 450; // iPhone 14 Pro Max is 428pt
+  
+  if (isMobile) {
+    return 2; // Fixed 2 columns for mobile phones
+  }
+  
+  // For tablets/iPads and larger screens, calculate dynamic columns
+  const availableWidth = currentWidth - SCREEN_PADDING;
+  const cardWidthWithMargin = CARD_MIN_WIDTH + CARD_MARGIN;
+  const calculatedColumns = Math.floor(availableWidth / cardWidthWithMargin);
+  
+  // Minimum 2 for grid, no artificial maximum - let screen width determine
+  return Math.max(calculatedColumns, 2);
+};
+
 // Housing group filters
 const HOUSING_FILTERS = [
   { key: 'all', label: 'All' },
@@ -49,6 +72,13 @@ const PAGE_SIZE = 15;
 const HousingGroupsScreen = ({ navigation }) => {
   const { reportScroll } = useScrollContext();
   const { preloadHousingItems, getCachedUrl, cacheStats } = useHousingImageCache();
+  
+  // Track window dimensions for responsive layout
+  const [screenDimensions, setScreenDimensions] = useState(() => {
+    const { width } = Dimensions.get('window');
+    return { width };
+  });
+  
   // State management
   const [housingGroups, setHousingGroups] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -65,7 +95,7 @@ const HousingGroupsScreen = ({ navigation }) => {
   // Create refs for FlatList
   const flatListRef = useRef(null);
 
-  // Fetch user ID on component mount
+  // Fetch user ID on component mount and add dimensions listener
   useEffect(() => {
     const fetchUserId = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -74,6 +104,15 @@ const HousingGroupsScreen = ({ navigation }) => {
       }
     };
     fetchUserId();
+    
+    // Add listener for dimension changes
+    const subscription = Dimensions.addEventListener('change', ({ window }) => {
+      setScreenDimensions({ width: window.width });
+    });
+    
+    return () => {
+      subscription?.remove();
+    };
   }, []);
 
   // Fetch housing groups data from Supabase - optimized version
@@ -645,8 +684,9 @@ const HousingGroupsScreen = ({ navigation }) => {
             data={filteredGroups}
             renderItem={renderHousingGroup}
             keyExtractor={(item) => String(item.id)}
-            numColumns={2}
-            columnWrapperStyle={{justifyContent: 'space-between'}}
+            numColumns={getGridNumColumns(screenDimensions.width)}
+            key={`grid-${getGridNumColumns(screenDimensions.width)}`}
+            columnWrapperStyle={{justifyContent: 'space-around', paddingHorizontal: 8}}
             contentContainerStyle={{paddingHorizontal: 10, paddingBottom: 20}}
             showsVerticalScrollIndicator={false}
             initialNumToRender={4}

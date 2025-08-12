@@ -124,16 +124,16 @@ const ShareTrayModal = ({ visible, onClose, itemToShare, highlightSharedUsers = 
       // Map item types to valid notification types from the constraint
       switch (itemToShare.item_type) {
         case 'housing_group':
-          notificationType = 'group';
+          notificationType = 'system'; // Changed from 'group' to 'system' for compatibility
           break;
         case 'housing_listing':
-          notificationType = 'post_share'; // Use post_share for housing listings
+          notificationType = 'system'; // Use system for housing listings
           break;
         case 'post':
-          notificationType = 'post_share';
+          notificationType = 'system'; // Use system for posts
           break;
         case 'event':
-          notificationType = 'post_share';
+          notificationType = 'system'; // Use system for events
           break;
         default:
           notificationType = 'system'; // Default fallback for unknown types
@@ -191,6 +191,28 @@ const ShareTrayModal = ({ visible, onClose, itemToShare, highlightSharedUsers = 
           }
         } catch (error) {
           console.error('Error sharing housing listing:', error);
+        }
+      } else if (itemToShare.item_type === 'post' && itemToShare.item_id) {
+        // For posts, record in the shared_items table
+        try {
+          const { error: shareError } = await supabase
+            .from('shared_items')
+            .insert([
+              {
+                sender_id: currentUser.id,
+                recipient_id: userToShareWith.id,
+                item_type: 'post',
+                item_id: itemToShare.item_id,
+                is_favourited: false,
+                dismissed: false
+              }
+            ]);
+            
+          if (shareError) {
+            console.error('Error recording post share:', shareError);
+          }
+        } catch (error) {
+          console.error('Error sharing post:', error);
         }
       }
       

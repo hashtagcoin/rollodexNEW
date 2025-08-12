@@ -3,8 +3,26 @@ import { Dimensions, Text, View } from 'react-native';
 
 const { width } = Dimensions.get('window');
 
-// Calculate card dimensions
-const GRID_CARD_WIDTH = '100%'; // Full width of its container
+// Calculate responsive card dimensions
+const calculateGridCardWidth = (screenWidth = width) => {
+  // Mobile-optimized spacing for better card width utilization
+  const isMobile = screenWidth <= 480;
+  const SCREEN_PADDING = isMobile ? 16 : 32; // Reduced padding for mobile (8px each side)
+  const CARD_MARGIN = isMobile ? 4 : 8; // Minimal space between cards on mobile
+  const MIN_COLUMNS = 2; // Always show at least 2 columns on mobile
+  
+  // For mobile phones, always use 2 columns to ensure proper display
+  const availableWidth = screenWidth - SCREEN_PADDING;
+  const totalMargin = CARD_MARGIN * (MIN_COLUMNS - 1); // Only space between cards, not edges
+  const cardWidth = Math.floor((availableWidth - totalMargin) / MIN_COLUMNS);
+  
+  return Math.max(cardWidth, 140); // Minimum card width for readability
+};
+
+// Export function so components can recalculate on resize
+export const getGridCardWidth = calculateGridCardWidth;
+
+const GRID_CARD_WIDTH = calculateGridCardWidth();
 const LIST_CARD_WIDTH = width; // Full width for list view
 
 // Utility function to determine if title is likely single line based on length
@@ -34,16 +52,26 @@ const LABEL_COLORS = {
   text: '#003366',      // Dark blue text
 };
 
+// Create responsive grid card wrapper style
+export const createResponsiveGridCardWrapper = (screenWidth) => {
+  const isMobile = screenWidth <= 480;
+  return {
+    width: calculateGridCardWidth(screenWidth),
+    marginBottom: 12,
+    marginHorizontal: isMobile ? 2 : 4, // Minimal horizontal margin on mobile
+  };
+};
+
 export const CardStyles = {
   // ===== GRID VIEW STYLES =====
   gridCardWrapper: {
-    width: '50%',
+    width: GRID_CARD_WIDTH,
     marginBottom: 12,
-    paddingHorizontal: 3.5, // Halved from 7 to reduce gap between cards
+    marginHorizontal: 4, // Reduced margin for better mobile fit
   },
   
   gridCardContainer: {
-    width: GRID_CARD_WIDTH,
+    width: '100%',
     borderRadius: 12,
     backgroundColor: COLORS.white,
     ...SHADOWS.medium,
@@ -225,7 +253,7 @@ export const CardStyles = {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: 'transparent',
+    backgroundColor: 'rgba(255,255,255,0.9)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -236,7 +264,7 @@ export const CardStyles = {
   },
   
   favoriteIconActive: {
-    color: 'red', // Using direct red color for consistency
+    color: '#FF6B6B', // Better red color that's more visible
     fontSize: 18, // Explicitly set size for consistency
   },
   

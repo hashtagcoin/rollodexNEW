@@ -356,85 +356,161 @@ const WalletScreen = () => {
               </>)}
             
             {activeTab === 'claims' && (
-              <>
-                {/* My Claims */}
-                <View style={styles.sectionContainer}>
-                  <View style={styles.sectionHeader}>
-                    <Text style={styles.sectionTitle}>My Claims</Text>
-                    <TouchableOpacity style={styles.sectionAction}>
-                      <Text style={styles.sectionActionText}>View All</Text>
-                      <Ionicons name="chevron-forward" size={16} color={COLORS.primary} />
+              <View style={styles.claimsTabContainer}>
+                {/* Claims Header with Stats */}
+                <LinearGradient
+                  colors={['#667eea', '#764ba2']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.claimsHeaderCard}
+                >
+                  <View style={styles.claimsHeaderContent}>
+                    <View style={styles.claimsStatsRow}>
+                      <View style={styles.claimsStat}>
+                        <Text style={styles.claimsStatNumber}>{allUserClaims.length}</Text>
+                        <Text style={styles.claimsStatLabel}>Total Claims</Text>
+                      </View>
+                      <View style={styles.claimsStatDivider} />
+                      <View style={styles.claimsStat}>
+                        <Text style={styles.claimsStatNumber}>
+                          {allUserClaims.filter(c => c.status === 'approved').length}
+                        </Text>
+                        <Text style={styles.claimsStatLabel}>Approved</Text>
+                      </View>
+                      <View style={styles.claimsStatDivider} />
+                      <View style={styles.claimsStat}>
+                        <Text style={styles.claimsStatNumber}>
+                          ${allUserClaims.reduce((sum, claim) => sum + (claim.amount || 0), 0).toFixed(0)}
+                        </Text>
+                        <Text style={styles.claimsStatLabel}>Total Value</Text>
+                      </View>
+                    </View>
+                  </View>
+                </LinearGradient>
+
+                {/* Quick Actions for Claims */}
+                <View style={styles.claimsActionsContainer}>
+                  <TouchableOpacity 
+                    style={styles.claimsActionButton}
+                    onPress={handleNavigateToSubmitClaim}
+                  >
+                    <LinearGradient
+                      colors={['#4facfe', '#00f2fe']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.claimsActionGradient}
+                    >
+                      <Ionicons name="add-circle" size={24} color="#FFFFFF" />
+                      <Text style={styles.claimsActionText}>New Claim</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity 
+                    style={styles.claimsActionButton}
+                    onPress={() => navigation.navigate('ViewClaimsScreen')}
+                  >
+                    <View style={styles.claimsActionSecondary}>
+                      <Ionicons name="eye-outline" size={24} color="#667eea" />
+                      <Text style={styles.claimsActionSecondaryText}>View All</Text>
+                    </View>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Claims List */}
+                {allUserClaims.length === 0 ? (
+                  <View style={styles.claimsEmptyState}>
+                    <View style={styles.emptyStateIcon}>
+                      <Ionicons name="document-text-outline" size={64} color="#E1E5E9" />
+                    </View>
+                    <Text style={styles.emptyStateTitle}>No Claims Yet</Text>
+                    <Text style={styles.emptyStateSubtitle}>
+                      Start by submitting your first NDIS claim to track your expenses
+                    </Text>
+                    <TouchableOpacity 
+                      style={styles.emptyStateButton}
+                      onPress={handleNavigateToSubmitClaim}
+                    >
+                      <Ionicons name="add" size={20} color="#FFFFFF" />
+                      <Text style={styles.emptyStateButtonText}>Submit First Claim</Text>
                     </TouchableOpacity>
                   </View>
-                  
-                  {allUserClaims.length === 0 ? (
-                    <View style={styles.emptyContainer}>
-                      <Ionicons name="document-text-outline" size={60} color="#DADADA" />
-                      <Text style={styles.emptyTitle}>No claims found</Text>
-                      <Text style={styles.emptySubtitle}>You haven't submitted any claims yet</Text>
-                      <TouchableOpacity 
-                        style={styles.emptyButton}
-                        onPress={handleNavigateToSubmitClaim}
-                      >
-                        <Text style={styles.emptyButtonText}>Submit a Claim</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ) : (
-                    <View>
-                      {allUserClaims.map((claim) => {
-                        const statusColor = claim.status === 'approved' ? '#34C759' : 
-                                           claim.status === 'pending' ? '#FF9500' : 
-                                           claim.status === 'rejected' ? '#FF3B30' : '#8E8E93';
-                        
-                        return (
-                          <TouchableOpacity 
-                            key={claim.id} 
-                            style={styles.claimCard}
-                            onPress={() => Alert.alert('View Claim', `Details for claim: ${claim.claim_title || 'Claim'}`)} 
-                            activeOpacity={0.8}
-                          > 
-                            <View style={styles.claimDateColumn}>
-                              <Text style={styles.claimDate}>
-                                {claim.service_date ? new Date(claim.service_date).toLocaleDateString('en-US', {day: '2-digit', month: 'short'}) : 'N/A'}
+                ) : (
+                  <View style={styles.claimsListContainer}>
+                    <Text style={styles.claimsListTitle}>Recent Claims</Text>
+                    {allUserClaims.slice(0, 5).map((claim, index) => {
+                      const statusConfig = {
+                        approved: { color: '#10B981', bg: '#D1FAE5', icon: 'checkmark-circle' },
+                        pending: { color: '#F59E0B', bg: '#FEF3C7', icon: 'time' },
+                        rejected: { color: '#EF4444', bg: '#FEE2E2', icon: 'close-circle' },
+                        processing: { color: '#8B5CF6', bg: '#EDE9FE', icon: 'sync' }
+                      };
+                      
+                      const status = statusConfig[claim.status] || statusConfig.processing;
+                      
+                      return (
+                        <TouchableOpacity 
+                          key={claim.id} 
+                          style={[styles.modernClaimCard, { marginTop: index === 0 ? 0 : 12 }]}
+                          onPress={() => Alert.alert('View Claim', `Details for claim: ${claim.claim_title || 'Claim'}`)}
+                          activeOpacity={0.8}
+                        > 
+                          <View style={styles.claimCardHeader}>
+                            <View style={styles.claimTitleRow}>
+                              <Text style={styles.modernClaimTitle} numberOfLines={1}>
+                                {claim.claim_title || 'Untitled Claim'}
                               </Text>
-                              <Text style={styles.claimAmount}>${claim.amount?.toFixed(2) || '0.00'}</Text>
-                              <View style={[styles.statusChip, { backgroundColor: `${statusColor}20` }]}>
-                                <Text style={[styles.statusText, { color: statusColor }]}>
-                                  {claim.status?.charAt(0).toUpperCase() + claim.status?.slice(1) || 'Unknown'}
+                              <View style={[styles.modernStatusChip, { backgroundColor: status.bg }]}>
+                                <Ionicons name={status.icon} size={12} color={status.color} />
+                                <Text style={[styles.modernStatusText, { color: status.color }]}>
+                                  {claim.status?.charAt(0).toUpperCase() + claim.status?.slice(1) || 'Processing'}
                                 </Text>
                               </View>
                             </View>
-                            
-                            <View style={styles.claimContentColumn}>
-                              <Text style={styles.claimTitle} numberOfLines={1}>{claim.claim_title || 'Claim'}</Text>
-                              {claim.ndis_category && (
-                                <Text style={styles.claimCategory} numberOfLines={1}>Category: {claim.ndis_category}</Text>
-                              )}
-                              
-                              <View style={styles.claimDetails}>
-                                <View style={styles.claimDetailItem}>
-                                  <Ionicons name="time-outline" size={14} color="#666" style={styles.detailIcon} />
-                                  <Text style={styles.detailText}>
-                                    {claim.created_at ? new Date(claim.created_at).toLocaleDateString() : 'N/A'}
-                                  </Text>
-                                </View>
-                                {claim.document_url && (
-                                  <View style={styles.claimDetailItem}>
-                                    <Ionicons name="document-outline" size={14} color="#666" style={styles.detailIcon} />
-                                    <Text style={styles.detailText}>Receipt attached</Text>
-                                  </View>
-                                )}
-                              </View>
+                            <Text style={styles.modernClaimAmount}>${(claim.amount || 0).toFixed(2)}</Text>
+                          </View>
+
+                          <View style={styles.claimCardDetails}>
+                            <View style={styles.claimDetailRow}>
+                              <Ionicons name="calendar-outline" size={14} color="#64748B" />
+                              <Text style={styles.modernDetailText}>
+                                {claim.service_date ? new Date(claim.service_date).toLocaleDateString('en-US', { 
+                                  month: 'short', day: 'numeric', year: 'numeric' 
+                                }) : new Date(claim.created_at).toLocaleDateString('en-US', { 
+                                  month: 'short', day: 'numeric', year: 'numeric' 
+                                })}
+                              </Text>
                             </View>
                             
-                            <Ionicons name="chevron-forward" size={18} color="#999" style={styles.chevron} />
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                  )}
-                </View>
-            </>
+                            {claim.ndis_category && (
+                              <View style={styles.claimDetailRow}>
+                                <Ionicons name="pricetag-outline" size={14} color="#64748B" />
+                                <Text style={styles.modernDetailText}>{claim.ndis_category}</Text>
+                              </View>
+                            )}
+
+                            {claim.document_url && (
+                              <View style={styles.claimDetailRow}>
+                                <Ionicons name="document-attach-outline" size={14} color="#10B981" />
+                                <Text style={[styles.modernDetailText, { color: '#10B981' }]}>Receipt attached</Text>
+                              </View>
+                            )}
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                    
+                    {allUserClaims.length > 5 && (
+                      <TouchableOpacity 
+                        style={styles.viewAllClaimsButton}
+                        onPress={() => navigation.navigate('ViewClaimsScreen')}
+                      >
+                        <Text style={styles.viewAllClaimsText}>View All {allUserClaims.length} Claims</Text>
+                        <Ionicons name="arrow-forward" size={16} color="#667eea" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+              </View>
             )}
             {activeTab === 'payment' && (
               <>
@@ -805,19 +881,21 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
   
-  // Claims Card Styles
+  // Enhanced Claims Card Styles
   claimCard: {
     flexDirection: 'row',
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: 16,
+    padding: 20,
     marginHorizontal: 16,
-    marginBottom: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#F0F0F0',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
   },
   sectionTitle: {
     ...FONTS.h4,
@@ -1029,7 +1107,314 @@ const styles = StyleSheet.create({
     color: COLORS.RED,
     textAlign: 'center',
     marginVertical: 20,
-  }
+  },
+  
+  // Enhanced Claim Card Styles
+  claimDateColumn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 80,
+    paddingRight: 16,
+  },
+  claimDate: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  claimAmount: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#000',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  statusChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    minWidth: 60,
+  },
+  statusText: {
+    fontSize: 11,
+    fontWeight: '600',
+    textAlign: 'center',
+    textTransform: 'uppercase',
+  },
+  claimContentColumn: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  claimTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#000',
+    marginBottom: 6,
+  },
+  claimCategory: {
+    fontSize: 13,
+    color: '#666',
+    marginBottom: 8,
+  },
+  claimDetails: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  claimDetailItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  detailIcon: {
+    marginRight: 4,
+  },
+  detailText: {
+    fontSize: 12,
+    color: '#666',
+  },
+  chevron: {
+    alignSelf: 'center',
+  },
+
+  // Modern Claims Tab Styles
+  claimsTabContainer: {
+    paddingBottom: 20,
+  },
+  claimsHeaderCard: {
+    marginHorizontal: 16,
+    marginTop: 8,
+    borderRadius: 20,
+    padding: 24,
+    shadowColor: '#667eea',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  claimsHeaderContent: {
+    alignItems: 'center',
+  },
+  claimsStatsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+  claimsStat: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  claimsStatNumber: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    marginBottom: 4,
+  },
+  claimsStatLabel: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.8)',
+    textAlign: 'center',
+  },
+  claimsStatDivider: {
+    width: 1,
+    height: 40,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    marginHorizontal: 16,
+  },
+
+  // Claims Actions
+  claimsActionsContainer: {
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    marginTop: 16,
+    gap: 12,
+  },
+  claimsActionButton: {
+    flex: 1,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  claimsActionGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    gap: 8,
+  },
+  claimsActionText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  claimsActionSecondary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#667eea',
+    borderRadius: 16,
+    gap: 8,
+  },
+  claimsActionSecondaryText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#667eea',
+  },
+
+  // Empty State
+  claimsEmptyState: {
+    alignItems: 'center',
+    paddingVertical: 48,
+    paddingHorizontal: 32,
+    marginHorizontal: 16,
+    marginTop: 20,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  emptyStateIcon: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: '#F8FAFC',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
+  emptyStateTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 8,
+  },
+  emptyStateSubtitle: {
+    fontSize: 16,
+    color: '#6B7280',
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 28,
+  },
+  emptyStateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#667eea',
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 8,
+    shadowColor: '#667eea',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  emptyStateButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+
+  // Claims List
+  claimsListContainer: {
+    marginHorizontal: 16,
+    marginTop: 20,
+  },
+  claimsListTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 16,
+    paddingHorizontal: 4,
+  },
+  modernClaimCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
+    borderLeftWidth: 4,
+    borderLeftColor: '#667eea',
+  },
+  claimCardHeader: {
+    marginBottom: 12,
+  },
+  claimTitleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  modernClaimTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+    flex: 1,
+    marginRight: 12,
+  },
+  modernStatusChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    gap: 4,
+  },
+  modernStatusText: {
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'capitalize',
+  },
+  modernClaimAmount: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#059669',
+    textAlign: 'left',
+  },
+  claimCardDetails: {
+    gap: 8,
+  },
+  claimDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  modernDetailText: {
+    fontSize: 14,
+    color: '#64748B',
+    fontWeight: '500',
+  },
+
+  // View All Button
+  viewAllClaimsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 20,
+    paddingVertical: 16,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  viewAllClaimsText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#667eea',
+  },
 });
 
 export default WalletScreen;

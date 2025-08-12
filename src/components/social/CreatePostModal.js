@@ -70,11 +70,10 @@ const CreatePostModal = ({ visible, onClose, onPostCreated }) => {
       // Use expo-image-picker - note: can't use allowsEditing with multiple selection
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: selectedImages.length >= 4, // Only allow editing when we can only select one more image
-        aspect: [1, 1],
+        allowsEditing: false, // Disable editing to avoid iOS issues
         quality: 0.8,
-        allowsMultipleSelection: selectedImages.length < 4,
-        base64: true, // Get base64 for upload to Supabase
+        allowsMultipleSelection: Platform.OS === 'ios' ? false : selectedImages.length < 4, // Disable multiple selection on iOS
+        base64: Platform.OS === 'ios' ? false : true, // Disable base64 on iOS to avoid memory issues
       });
 
       if (!result.canceled && result.assets) {

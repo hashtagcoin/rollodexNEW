@@ -16,8 +16,9 @@ const placeholderImage = { uri: 'https://smtckdlpdfvdycocwoip.supabase.co/storag
 const styles = StyleSheet.create({
   // Grid styles
   gridCardWrapper: {
-    flex: 1,
-    padding: 5,
+    width: 280,
+    marginHorizontal: 8,
+    marginBottom: 12,
   },
   gridCardContainer: {
     backgroundColor: 'white',

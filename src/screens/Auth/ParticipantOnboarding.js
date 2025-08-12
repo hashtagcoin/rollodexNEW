@@ -250,25 +250,30 @@ const Step1 = ({ formData, updateFormData }) => {
           {goals.map((goal) => (
             <TouchableOpacity
               key={goal.id}
-              style={[
-                styles.optionCard,
-                formData.mainGoals.includes(goal.id) && styles.selectedOption,
-              ]}
+              style={styles.optionCard}
               onPress={() => updateFormData('mainGoals', 
                 formData.mainGoals.includes(goal.id) 
                   ? formData.mainGoals.filter(g => g !== goal.id)
                   : [...formData.mainGoals, goal.id]
               )}
             >
-              <View style={[styles.optionIcon, { backgroundColor: `${goal.color}20` }]}>
-                <MaterialCommunityIcons name={goal.icon} size={24} color={goal.color} />
-              </View>
-              <Text style={styles.optionText}>{goal.label}</Text>
-              {formData.mainGoals.includes(goal.id) && (
-                <View style={styles.checkmark}>
-                  <Ionicons name="checkmark" size={16} color="#FFFFFF" />
+              <View style={[
+                styles.optionCardInner,
+                formData.mainGoals.includes(goal.id) && styles.selectedOptionCard
+              ]}>
+                <View style={[styles.optionIcon, { backgroundColor: `${goal.color}20` }]}>
+                  <MaterialCommunityIcons name={goal.icon} size={28} color={goal.color} />
                 </View>
-              )}
+                <Text style={[
+                  styles.optionText,
+                  formData.mainGoals.includes(goal.id) && styles.selectedOptionText
+                ]}>{goal.label}</Text>
+                {formData.mainGoals.includes(goal.id) && (
+                  <View style={styles.checkmark}>
+                    <Ionicons name="checkmark" size={16} color="#FFFFFF" />
+                  </View>
+                )}
+              </View>
             </TouchableOpacity>
           ))}
         </View>
@@ -667,27 +672,30 @@ const styles = StyleSheet.create({
   optionsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginHorizontal: -8,
+    marginHorizontal: -6,
+    marginTop: 8,
   },
   optionCard: {
     width: '50%',
-    padding: 8,
+    padding: 6,
   },
   selectedOption: {
-    transform: [{ scale: 0.98 }],
+    // Removed transform scale
   },
   optionIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
+    width: 56,
+    height: 56,
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 12,
   },
   optionText: {
     fontSize: 14,
     color: '#374151',
     textAlign: 'center',
+    fontWeight: '500',
+    lineHeight: 18,
   },
   checkmark: {
     position: 'absolute',
@@ -699,6 +707,32 @@ const styles = StyleSheet.create({
     backgroundColor: '#10B981',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  optionCardInner: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+    position: 'relative',
+    minHeight: 120,
+    justifyContent: 'center',
+  },
+  selectedOptionCard: {
+    borderColor: '#1E90FF',
+    backgroundColor: '#F0F9FF',
+    shadowOpacity: 0.1,
+    elevation: 3,
+  },
+  selectedOptionText: {
+    color: '#1E90FF',
+    fontWeight: '600',
   },
   supportList: {
     marginBottom: 24,

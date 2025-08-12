@@ -66,15 +66,32 @@ const SwipeCard = memo(({
 
   // Handle image load success
   const handleImageLoad = useCallback(() => {
+    if (__DEV__) {
+      console.log('[SwipeCard] Image loaded successfully');
+    }
     setImageLoaded(true);
     setImageError(false);
-  }, []);
+    if (onImageLoad) {
+      onImageLoad();
+    }
+  }, [onImageLoad]);
 
   // Handle image load error with comprehensive error handling
   const handleImageError = useCallback((error) => {
-    console.warn('[SwipeCard] Image load error:', error?.nativeEvent || 'Unknown error');
+    if (__DEV__) {
+      console.warn('[SwipeCard] Image load error:', error?.nativeEvent || 'Unknown error');
+    }
     setImageError(true);
-    setImageLoaded(false);
+    setImageLoaded(true); // Set to true to stop loading indicator
+  }, []);
+
+  // Cleanup effect for component unmount
+  useEffect(() => {
+    return () => {
+      // Reset state on unmount to prevent memory leaks
+      setImageLoaded(false);
+      setImageError(false);
+    };
   }, []);
 
   // Handle card press

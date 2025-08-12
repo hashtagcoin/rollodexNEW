@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabaseClient';
 import * as FileSystem from 'expo-file-system';
 import { decode } from 'base64-arraybuffer';
+import { Platform } from 'react-native';
 
 /**
  * Creates a new post with optional images
@@ -68,29 +69,61 @@ export const uploadPostImage = async (imageData) => {
       base64Data = imageData.base64;
     } else if (imageData.uri) {
       try {
-        // Use expo-file-system to read the file
-        const FileSystem = require('expo-file-system');
+        // Read the file to get base64 - required for iOS
         base64Data = await FileSystem.readAsStringAsync(imageData.uri, {
           encoding: FileSystem.EncodingType.Base64
         });
       } catch (error) {
         console.error('Error reading file:', error);
-        throw new Error('Failed to read image data');
+        console.error('Image URI:', imageData.uri);
+        throw new Error('Failed to read image data: ' + error.message);
       }
     } else {
       throw new Error('No valid image data found');
     }
     
-    // Convert base64 to array buffer for upload
-    const arrayBuffer = decode(base64Data);
+    // Upload to Supabase storage
+    let uploadData;
+    let uploadOptions;
+    
+    if (Platform.OS === 'ios') {
+      // For iOS, use blob upload to avoid base64/arraybuffer issues
+      try {
+        // Convert base64 to blob
+        const byteCharacters = atob(base64Data);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        uploadData = byteArray;
+        uploadOptions = {
+          contentType,
+          upsert: true,
+        };
+      } catch (blobError) {
+        console.error('Error creating blob for iOS:', blobError);
+        throw new Error('Failed to process image for iOS: ' + blobError.message);
+      }
+    } else {
+      // For Android, use the arraybuffer method
+      try {
+        uploadData = decode(base64Data);
+        uploadOptions = {
+          contentType,
+          upsert: true,
+        };
+      } catch (decodeError) {
+        console.error('Error decoding base64:', decodeError);
+        console.error('Base64 data length:', base64Data ? base64Data.length : 0);
+        throw new Error('Failed to decode image data: ' + decodeError.message);
+      }
+    }
     
     // Upload to Supabase storage with explicit error logging
     const { data, error } = await supabase.storage
       .from('postsimages')
-      .upload(fileName, arrayBuffer, {
-        contentType,
-        upsert: true,
-      });
+      .upload(fileName, uploadData, uploadOptions);
 
     if (error) {
       console.error('Supabase storage upload error:', error);
@@ -980,5 +1013,79 @@ export const deleteCollection = async (collectionId) => {
   } catch (error) {
     console.error('Error deleting collection:', error);
     return false;
+  }
+};
+
+/**
+ * Share a post by creating a notification-based share system
+ * @param {string} originalPostId - The original post ID to share
+ * @param {string} caption - Optional caption for the share
+ * @returns {Object} - Success response
+ */
+export const sharePost = async (originalPostId, caption = '') => {
+  try {
+    // Get current user
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) throw new Error('User must be authenticated to share posts');
+
+    // Get the original post details
+    const { data: originalPost, error: postError } = await supabase
+      .from('posts')
+      .select('*')
+      .eq('post_id', originalPostId)
+      .single();
+      
+    if (postError) throw postError;
+    if (!originalPost) throw new Error('Original post not found');
+
+    // Get current user's profile for notification
+    const { data: userProfile } = await supabase
+      .from('user_profiles')
+      .select('username, full_name')
+      .eq('id', user.id)
+      .single();
+
+    const senderName = userProfile?.full_name || userProfile?.username || user.email;
+
+    // Record the share activity in a shares table or through notifications
+    const shareData = {
+      user_id: user.id,
+      post_id: originalPostId,
+      caption: caption,
+      created_at: new Date().toISOString()
+    };
+
+    // Try to insert into post_shares table, if it doesn't exist, skip
+    try {
+      await supabase
+        .from('post_shares')
+        .insert(shareData);
+    } catch (shareTableError) {
+      console.log('Post shares table not available, proceeding without it');
+    }
+
+    // Send notification to the original poster (if different user)
+    if (originalPost.user_id !== user.id) {
+      const { error: notificationError } = await supabase
+        .from('notifications')
+        .insert({
+          user_id: originalPost.user_id,
+          type: 'system',
+          title: 'Post Shared',
+          body: `${senderName} shared your post${caption ? ` with caption: "${caption}"` : ''}`,
+          content: originalPostId,
+          seen: false,
+          created_at: new Date().toISOString()
+        });
+        
+      if (notificationError) {
+        console.warn('Failed to send share notification:', notificationError);
+      }
+    }
+
+    return { data: { success: true, shared_by: user.id, post_id: originalPostId }, error: null };
+  } catch (error) {
+    console.error('Error sharing post:', error);
+    return { data: null, error: error.message };
   }
 };

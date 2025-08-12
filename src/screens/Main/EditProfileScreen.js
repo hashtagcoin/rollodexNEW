@@ -63,22 +63,13 @@ export default function EditProfileScreen() {
     comfort_traits: [],
     preferred_categories: [],
     preferred_service_formats: [],
-    // Provider-specific fields
-    business_name: '',
-    contact_name: '',
-    provider_type: '',
-    service_types: [],
-    specializations: [],
-    service_areas: [],
+    // Provider-specific fields (removed non-existent columns)
     availability: {
       weekdays: false,
       weekends: false,
       evenings: false,
       emergencies: false,
-    },
-    languages: [],
-    ndis_registered: false,
-    registration_number: ''
+    }
   });
   
   // Local state for avatar preview
@@ -219,22 +210,13 @@ export default function EditProfileScreen() {
         comfort_traits: userProfile.comfort_traits ?? [],
         preferred_categories: userProfile.preferred_categories ?? [],
         preferred_service_formats: userProfile.preferred_service_formats ?? [],
-        // Provider-specific fields
-        business_name: userProfile.business_name ?? '',
-        contact_name: userProfile.contact_name ?? '',
-        provider_type: userProfile.provider_type ?? '',
-        service_types: userProfile.service_types ?? [],
-        specializations: userProfile.specializations ?? [],
-        service_areas: userProfile.service_areas ?? [],
+        // Provider-specific fields (removed non-existent columns)
         availability: userProfile.availability ?? {
           weekdays: false,
           weekends: false,
           evenings: false,
           emergencies: false,
-        },
-        languages: userProfile.languages ?? [],
-        ndis_registered: userProfile.ndis_registered ?? false,
-        registration_number: userProfile.registration_number ?? ''
+        }
       });
       // Only update avatar if we're not currently uploading a new one
       if (!isUploadingAvatar) {
@@ -266,22 +248,13 @@ export default function EditProfileScreen() {
         comfort_traits: [],
         preferred_categories: [],
         preferred_service_formats: [],
-        // Provider-specific fields
-        business_name: '',
-        contact_name: '',
-        provider_type: '',
-        service_types: [],
-        specializations: [],
-        service_areas: [],
+        // Provider-specific fields (removed non-existent columns)
         availability: {
           weekdays: false,
           weekends: false,
           evenings: false,
           emergencies: false,
-        },
-        languages: [],
-        ndis_registered: false,
-        registration_number: ''
+        }
       });
       setLoading(false);
       clearTimeout(timeoutId);
@@ -561,22 +534,13 @@ export default function EditProfileScreen() {
         accessibility_preferences: typeof profile.accessibility_preferences === 'object' ? 
           profile.accessibility_preferences : {},
         
-        // Provider-specific fields
-        business_name: profile.business_name || '',
-        contact_name: profile.contact_name || '',
-        provider_type: profile.provider_type || '',
-        service_types: Array.isArray(profile.service_types) ? profile.service_types : [],
-        specializations: Array.isArray(profile.specializations) ? profile.specializations : [],
-        service_areas: Array.isArray(profile.service_areas) ? profile.service_areas : [],
+        // Provider-specific fields (removed non-existent columns)
         availability: typeof profile.availability === 'object' ? profile.availability : {
           weekdays: false,
           weekends: false,
           evenings: false,
           emergencies: false,
         },
-        languages: Array.isArray(profile.languages) ? profile.languages : [],
-        ndis_registered: profile.ndis_registered || false,
-        registration_number: profile.registration_number || '',
           
         // Ensure text fields are defined
         bio: profile.bio || '',
@@ -863,153 +827,7 @@ export default function EditProfileScreen() {
           {isProvider ? (
             /* Provider-specific sections */
             <>
-              {/* Business Information */}
-              <View style={styles.formSection}>
-                <Text style={styles.sectionTitle}>Business Information</Text>
-                
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Business Name</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Enter your business name"
-                    value={profile.business_name ?? ''}
-                    onChangeText={text => setProfile(p => ({ ...p, business_name: text }))}
-                    accessibilityLabel="Business name input field"
-                  />
-                </View>
-                
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Contact Name</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Contact person's name"
-                    value={profile.contact_name ?? ''}
-                    onChangeText={text => setProfile(p => ({ ...p, contact_name: text }))}
-                    accessibilityLabel="Contact name input field"
-                  />
-                </View>
-                
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Provider Type</Text>
-                  <View style={styles.optionsContainer}>
-                    {PROVIDER_TYPES.map(type => (
-                      <TouchableOpacity 
-                        key={type.id}
-                        style={[styles.optionButton, profile.provider_type === type.id && styles.optionButtonSelected]}
-                        onPress={() => setProfile(p => ({ ...p, provider_type: type.id }))}
-                        accessibilityLabel={`${type.label} provider type option`}
-                      >
-                        <Text 
-                          style={[styles.optionText, profile.provider_type === type.id && styles.optionTextSelected]}
-                        >
-                          {type.label}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-              </View>
-              
-              {/* Service Information */}
-              <View style={styles.formSection}>
-                <Text style={styles.sectionTitle}>Service Information</Text>
-                
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Service Types</Text>
-                  <Text style={styles.optionDescription}>Select all services you offer</Text>
-                  <View style={styles.checkboxContainer}>
-                    {SERVICE_TYPES.map(service => {
-                      const isSelected = profile.service_types?.includes(service);
-                      return (
-                        <TouchableOpacity
-                          key={service}
-                          style={styles.checkboxRow}
-                          onPress={() => toggleMultiSelect(service, 'service_types')}
-                          accessibilityLabel={`${service} service type option`}
-                        >
-                          <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
-                            {isSelected && <Ionicons name="checkmark" size={16} color="white" />}
-                          </View>
-                          <Text style={styles.checkboxLabel}>{service}</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </View>
-                
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Service Areas</Text>
-                  <Text style={styles.optionDescription}>Select all areas you serve</Text>
-                  <View style={styles.checkboxContainer}>
-                    {SERVICE_AREAS.map(area => {
-                      const isSelected = profile.service_areas?.includes(area);
-                      return (
-                        <TouchableOpacity
-                          key={area}
-                          style={styles.checkboxRow}
-                          onPress={() => toggleMultiSelect(area, 'service_areas')}
-                          accessibilityLabel={`${area} service area option`}
-                        >
-                          <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
-                            {isSelected && <Ionicons name="checkmark" size={16} color="white" />}
-                          </View>
-                          <Text style={styles.checkboxLabel}>{area}</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </View>
-                
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Languages</Text>
-                  <Text style={styles.optionDescription}>Select all languages you speak</Text>
-                  <View style={styles.checkboxContainer}>
-                    {LANGUAGES.map(language => {
-                      const isSelected = profile.languages?.includes(language);
-                      return (
-                        <TouchableOpacity
-                          key={language}
-                          style={styles.checkboxRow}
-                          onPress={() => toggleMultiSelect(language, 'languages')}
-                          accessibilityLabel={`${language} language option`}
-                        >
-                          <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
-                            {isSelected && <Ionicons name="checkmark" size={16} color="white" />}
-                          </View>
-                          <Text style={styles.checkboxLabel}>{language}</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </View>
-                
-                {/* NDIS Registration */}
-                <View style={styles.inputGroup}>
-                  <TouchableOpacity
-                    style={styles.checkboxRow}
-                    onPress={() => setProfile(p => ({ ...p, ndis_registered: !p.ndis_registered }))}
-                    accessibilityLabel="NDIS registered checkbox"
-                  >
-                    <View style={[styles.checkbox, profile.ndis_registered && styles.checkboxSelected]}>
-                      {profile.ndis_registered && <Ionicons name="checkmark" size={16} color="white" />}
-                    </View>
-                    <Text style={styles.checkboxLabel}>I am NDIS registered</Text>
-                  </TouchableOpacity>
-                  
-                  {profile.ndis_registered && (
-                    <View style={styles.inputGroup}>
-                      <Text style={styles.inputLabel}>NDIS Registration Number</Text>
-                      <TextInput
-                        style={styles.input}
-                        placeholder="Enter your registration number"
-                        value={profile.registration_number ?? ''}
-                        onChangeText={text => setProfile(p => ({ ...p, registration_number: text }))}
-                        accessibilityLabel="NDIS registration number input field"
-                      />
-                    </View>
-                  )}
-                </View>
-              </View>
+              {/* Provider-specific fields removed - columns don't exist in database */}
               
               {/* Availability */}
               <View style={styles.formSection}>

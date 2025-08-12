@@ -73,8 +73,12 @@ const EventCard = ({ event, onPress, listView = true, testID, onFavoriteUpdate }
       return;
     }
     
+    // Optimistic update - update UI immediately
+    const previousState = isFavorited;
+    setIsFavorited(!isFavorited);
+    
     try {
-      if (isFavorited) {
+      if (previousState) {
         // Remove from favorites
         const { error } = await supabase
           .from('favorites')
@@ -84,7 +88,6 @@ const EventCard = ({ event, onPress, listView = true, testID, onFavoriteUpdate }
           .eq('item_type', 'group_event');
           
         if (error) throw error;
-        setIsFavorited(false);
       } else {
         // Add to favorites
         const { error } = await supabase
@@ -92,20 +95,24 @@ const EventCard = ({ event, onPress, listView = true, testID, onFavoriteUpdate }
           .insert({
             user_id: user.id,
             item_id: event.id,
-            item_type: 'group_event'
+            item_type: 'group_event',
+            item_title: event.title || 'Event',
+            item_image_url: event.image_url,
+            created_at: new Date().toISOString()
           });
           
         if (error) throw error;
-        setIsFavorited(true);
       }
       
       // Notify parent component if needed
       if (onFavoriteUpdate) {
-        onFavoriteUpdate(event.id, !isFavorited);
+        onFavoriteUpdate(event.id, !previousState);
       }
     } catch (error) {
       console.error('Error updating favorite status:', error);
-      Alert.alert('Error', 'Could not update favorite status');
+      // Revert optimistic update on error
+      setIsFavorited(previousState);
+      Alert.alert('Error', 'Could not update favorite status. Please try again.');
     }
   };
   
@@ -159,12 +166,12 @@ const EventCard = ({ event, onPress, listView = true, testID, onFavoriteUpdate }
         activeOpacity={0.8}
         testID={testID}
       >
-        <View style={[CardStyles.listCardInner, {height: 140, backgroundColor: '#ffffff'}]}>
-          <View style={CardStyles.listImageContainer}>
+        <View style={[CardStyles.listCardInner, {height: 160, backgroundColor: '#ffffff', padding: 10}]}>
+          <View style={[CardStyles.listImageContainer, {width: 140, height: 140, borderRadius: 12}]}>
             {!imageLoaded && <View style={CardStyles.loaderContainer} />}
             <Image
               source={imageSource}
-              style={CardStyles.listImage}
+              style={[CardStyles.listImage, {borderRadius: 12}]}
               contentFit="cover"
               cachePolicy="immutable"
               onLoad={() => setImageLoaded(true)}
@@ -250,6 +257,21 @@ const EventCard = ({ event, onPress, listView = true, testID, onFavoriteUpdate }
                 onError={() => setImageLoaded(true)}
               />
               
+              {/* Favorite button for grid view */}
+              <TouchableOpacity 
+                style={[CardStyles.iconContainer, { top: 8, right: 8 }]}
+                onPress={toggleFavorite}
+                testID={`favorite-button-${event.id}`}
+              >
+                <View style={isFavorited ? CardStyles.iconCircleActive : CardStyles.iconCircle}>
+                  <Ionicons 
+                    name={isFavorited ? "heart" : "heart-outline"} 
+                    size={18} 
+                    style={isFavorited ? CardStyles.favoriteIconActive : CardStyles.favoriteIcon} 
+                  />
+                </View>
+              </TouchableOpacity>
+              
               {/* Joined indicator */}
               {isJoined && (
                 <View style={styles.joinedBadge}>
@@ -289,7 +311,7 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   title: {
-    fontSize: 15,
+    fontSize: 14,
     fontFamily: FONTS.semiBold,
     color: COLORS.black,
     marginBottom: 4,

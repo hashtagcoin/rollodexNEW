@@ -552,7 +552,7 @@ const DashboardScreen = () => {
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => (
                 <TouchableOpacity 
-                  style={{ width: 320, height: 140, marginRight: 8 }}
+                  style={styles.eventCardWrapper}
                   onPress={() => navigation.navigate('EventDetail', { eventId: item.id })}
                 >
                   <EventCard
@@ -562,7 +562,7 @@ const DashboardScreen = () => {
                   />
                 </TouchableOpacity>
               )}
-              contentContainerStyle={{ paddingLeft: 16, paddingRight: 16 }}
+              contentContainerStyle={styles.eventCarouselContent}
             />
           ) : (
             <View style={styles.emptyStateContainer}>
@@ -771,7 +771,7 @@ const DashboardScreen = () => {
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => (
                 <TouchableOpacity 
-                  style={{ width: 320, height: 152, marginRight: 8 }}
+                  style={styles.serviceCardWrapper}
                   onPress={() => navigation.navigate('Explore', { screen: 'ServiceDetail', params: { serviceId: item.id } })}
                 >
                   <ServiceCard
@@ -780,10 +780,11 @@ const DashboardScreen = () => {
                     isFavorited={false}
                     onToggleFavorite={() => {}}
                     displayAs="list"
+                    isDashboard={true}
                   />
                 </TouchableOpacity>
               )}
-              contentContainerStyle={{ paddingLeft: 16, paddingRight: 16 }}
+              contentContainerStyle={styles.serviceCarouselContent}
             />
           ) : (
             <View style={styles.emptyStateContainer}>
@@ -854,7 +855,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 200, // Extended to cover more area for better visibility
-    zIndex: -1, // Behind all content
+    zIndex: 0, // Below all content
   },
   switchButton: {
     backgroundColor: COLORS.primary,
@@ -884,7 +885,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   carouselTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
     color: '#222',
     marginTop: 18,
@@ -1089,7 +1090,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     marginRight: -12,
     paddingRight: 12, // Added padding to right edge
-    zIndex: 1, // Ensure it appears above the title
+    zIndex: 3, // Ensure it appears above the gradient and other elements
   },
   notificationBadge: {
     position: 'absolute',
@@ -1135,14 +1136,14 @@ const styles = StyleSheet.create({
   },
   welcomeTitleText: {
     fontSize: 18,
-    color: '#888',
+    color: '#000',
     fontWeight: '600',
     marginBottom: 2,
   },
   userNameText: {
     fontSize: 26,
     fontWeight: 'bold',
-    color: '#222',
+    color: '#FFFFFF',
   },
   avatarContainer: {
     borderRadius: 39,
@@ -1271,6 +1272,24 @@ const styles = StyleSheet.create({
     color: '#222',
     fontSize: 15,
     textAlign: 'center',
+  },
+  eventCardWrapper: {
+    width: 280,
+    height: 160,
+    marginRight: 12,
+  },
+  eventCarouselContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  serviceCardWrapper: {
+    width: 280,
+    height: 160,
+    marginRight: 12,
+  },
+  serviceCarouselContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 8,
   },
 });
 
