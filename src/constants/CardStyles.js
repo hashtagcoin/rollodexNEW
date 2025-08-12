@@ -5,18 +5,20 @@ const { width } = Dimensions.get('window');
 
 // Calculate responsive card dimensions
 const calculateGridCardWidth = (screenWidth = width) => {
-  // Mobile-optimized spacing for better card width utilization
   const isMobile = screenWidth <= 480;
-  const SCREEN_PADDING = isMobile ? 16 : 32; // Reduced padding for mobile (8px each side)
-  const CARD_MARGIN = isMobile ? 4 : 8; // Minimal space between cards on mobile
-  const MIN_COLUMNS = 2; // Always show at least 2 columns on mobile
   
-  // For mobile phones, always use 2 columns to ensure proper display
-  const availableWidth = screenWidth - SCREEN_PADDING;
-  const totalMargin = CARD_MARGIN * (MIN_COLUMNS - 1); // Only space between cards, not edges
-  const cardWidth = Math.floor((availableWidth - totalMargin) / MIN_COLUMNS);
-  
-  return Math.max(cardWidth, 140); // Minimum card width for readability
+  if (isMobile) {
+    // Mobile: Calculate width for exactly 2 columns
+    const SCREEN_PADDING = 16;
+    const CARD_MARGIN = 4;
+    const availableWidth = screenWidth - SCREEN_PADDING;
+    const totalMargin = CARD_MARGIN * 1; // Space between 2 cards
+    const cardWidth = Math.floor((availableWidth - totalMargin) / 2);
+    return Math.max(cardWidth, 140);
+  } else {
+    // Web/iPad: Use fixed optimal card width, let columns adjust automatically
+    return 280; // Fixed optimal card width for larger screens
+  }
 };
 
 // Export function so components can recalculate on resize
@@ -58,7 +60,7 @@ export const createResponsiveGridCardWrapper = (screenWidth) => {
   return {
     width: calculateGridCardWidth(screenWidth),
     marginBottom: 12,
-    marginHorizontal: isMobile ? 2 : 4, // Minimal horizontal margin on mobile
+    marginHorizontal: isMobile ? 2 : 8, // Reduced margin for mobile, normal margin for larger screens
   };
 };
 

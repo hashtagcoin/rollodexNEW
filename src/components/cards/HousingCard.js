@@ -1,12 +1,12 @@
 import React, { memo, useMemo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'; 
+import { View, Text, TouchableOpacity, StyleSheet, Dimensions } from 'react-native'; 
 import { Image } from 'expo-image';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getValidImageUrl, getOptimizedImageUrl } from '../../utils/imageHelper';
 import { COLORS, SIZES } from '../../constants/theme';
-import { CardStyles } from '../../constants/CardStyles';
+import { CardStyles, createResponsiveGridCardWrapper } from '../../constants/CardStyles';
 import { getImageProps } from '../../config/imageConfig';
 
 // Pre-load the placeholder image once
@@ -293,8 +293,11 @@ const HousingCard = memo(({
 
   // Grid View
   if (displayAs === 'grid') {
+    const { width } = Dimensions.get('window');
+    const responsiveWrapperStyle = createResponsiveGridCardWrapper(width);
+    
     return (
-      <View style={CardStyles.gridCardWrapper}>
+      <View style={responsiveWrapperStyle}>
         <TouchableOpacity 
           style={CardStyles.gridCardContainer}
           onPress={() => onPress(item)}

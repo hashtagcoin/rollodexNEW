@@ -23,6 +23,8 @@ import { Ionicons, MaterialIcons, MaterialCommunityIcons, FontAwesome5 } from '@
 import { supabase } from '../../lib/supabaseClient';
 import { COLORS } from '../../constants/theme';
 import { useUser } from '../../context/UserContext';
+import { useChatButton } from '../../context/ChatButtonContext';
+import ChatModal from '../../components/chat/ChatModal';
 // Using Location API without MapboxGL due to dependency issues
 import * as Location from 'expo-location';
 
@@ -95,6 +97,7 @@ const BookingDetailScreen = ({ navigation }) => {
   const route = useRoute();
   const { bookingId } = route.params || {};
   const { profile } = useUser();
+  const { hideChatButton, showChatButton } = useChatButton();
 
   const [booking, setBooking] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -126,6 +129,10 @@ const BookingDetailScreen = ({ navigation }) => {
   const [videoSessions, setVideoSessions] = useState([]);
   const [showVideoSessions, setShowVideoSessions] = useState(false);
   
+  // Chat modal state
+  const [showChatModal, setShowChatModal] = useState(false);
+  const [chatRecipient, setChatRecipient] = useState(null);
+  
   // Session tracking state
   const [trackingModalVisible, setTrackingModalVisible] = useState(false);
   const [sessionStarted, setSessionStarted] = useState(false);
@@ -142,6 +149,16 @@ const BookingDetailScreen = ({ navigation }) => {
   const [trackingLoading, setTrackingLoading] = useState(false);
   const [mapError, setMapError] = useState(false);
   const [mapUrl, setMapUrl] = useState(null);
+  
+  // Hide chat button when this screen is mounted
+  useEffect(() => {
+    hideChatButton();
+    
+    // Show chat button again when unmounting
+    return () => {
+      showChatButton();
+    };
+  }, [hideChatButton, showChatButton]);
   
   // Fetch booking details and history
   useEffect(() => {
@@ -776,6 +793,11 @@ const BookingDetailScreen = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
+      <AppHeader
+        title="Booking Details"
+        navigation={navigation}
+        canGoBack={true}
+      />
       <ScrollView contentContainerStyle={styles.contentContainer}>
         {loading ? (
           <View style={styles.loadingContainer}>
@@ -816,6 +838,36 @@ const BookingDetailScreen = ({ navigation }) => {
                 <Text style={styles.metaText}>{formattedDateTime.time}</Text>
               </View>
             </View>
+          </View>
+
+          {/* Action Buttons Row */}
+          <View style={styles.actionButtonsRow}>
+            <TouchableOpacity 
+              style={styles.headerActionButton}
+              onPress={handleShare}
+            >
+              <Ionicons name="share-outline" size={24} color={COLORS.primary} />
+              <Text style={styles.headerActionButtonText}>Share</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.headerActionButton}
+              onPress={() => {
+                // Open chat modal with provider
+                if (booking.user_id) {
+                  setChatRecipient({
+                    id: booking.user_id,
+                    name: booking.user_full_name || 'Provider'
+                  });
+                  setShowChatModal(true);
+                } else {
+                  Alert.alert('Unable to Message', 'Provider information not available');
+                }
+              }}
+            >
+              <Ionicons name="chatbubble-outline" size={24} color={COLORS.primary} />
+              <Text style={styles.headerActionButtonText}>Message</Text>
+            </TouchableOpacity>
           </View>
 
           {/* Service Image (if available) */}
@@ -1746,6 +1798,19 @@ const BookingDetailScreen = ({ navigation }) => {
           </View>
         </View>
       </Modal>
+      
+      {/* Chat Modal */}
+      {chatRecipient && (
+        <ChatModal
+          visible={showChatModal}
+          onClose={() => {
+            setShowChatModal(false);
+            setChatRecipient(null);
+          }}
+          recipientId={chatRecipient.id}
+          recipientName={chatRecipient.name}
+        />
+      )}
     </View> // <-- Changed closing tag from </ScrollView> to </View>
   );
 };
@@ -2112,6 +2177,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 20,
     paddingBottom: 16,
+  },
+  actionButtonsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  headerActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    backgroundColor: '#f8f8f8',
+  },
+  headerActionButtonText: {
+    color: COLORS.primary,
+    fontWeight: '600',
+    fontSize: 14,
+    marginLeft: 8,
   },
   statusContainer: {
     flexDirection: 'row',

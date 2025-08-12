@@ -6,6 +6,8 @@ import AppHeader from '../../components/layout/AppHeader';
 import { COLORS, FONTS } from '../../constants/theme';
 import { useNavigation } from '@react-navigation/native';
 import BookingAvailabilityScreen from '../Bookings/BookingAvailabilityScreen';
+import ChatModal from '../../components/chat/ChatModal';
+import ShareTray from '../../components/common/ShareTray';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { supabase } from '../../lib/supabaseClient';
 import { format, addDays } from 'date-fns';
@@ -28,6 +30,9 @@ const ServiceDetailScreen = ({ route }) => {
 
   // State for booking and UI
   const [showModal, setShowModal] = useState(false);
+  const [showChatModal, setShowChatModal] = useState(false);
+  const [showShareTray, setShowShareTray] = useState(false);
+  const [serviceProvider, setServiceProvider] = useState(null);
   const [bookingInfo, setBookingInfo] = useState({
     date: null,
     time: null,
@@ -60,9 +65,22 @@ const ServiceDetailScreen = ({ route }) => {
   
   const fetchServiceDetails = async () => {
     try {
+      // Fetch service details with provider information
       const { data, error } = await supabase
         .from('services')
-        .select('*')
+        .select(`
+          *,
+          service_providers!inner(
+            id,
+            business_name,
+            user_profiles!inner(
+              id,
+              full_name,
+              avatar_url,
+              username
+            )
+          )
+        `)
         .eq('id', serviceId)
         .single();
         
@@ -70,13 +88,23 @@ const ServiceDetailScreen = ({ route }) => {
       
       if (data) {
         setServiceDetails({
-          title: data.name || 'Service Name',
-          location: data.location || 'Location',
-          price: data.hourly_rate || 0,
+          title: data.title || data.name || 'Service Name',
+          location: data.address_suburb || data.location || 'Location',
+          price: data.price || data.hourly_rate || 0,
           description: data.description || 'No description available',
-          imageUrl: data.image_url,
+          imageUrl: data.media_urls && data.media_urls.length > 0 ? data.media_urls[0] : data.image_url,
           loading: false
         });
+        
+        // Set provider details for chat
+        if (data.service_providers && data.service_providers.user_profiles) {
+          setServiceProvider({
+            id: data.service_providers.user_profiles.id,
+            name: data.service_providers.user_profiles.full_name || data.service_providers.business_name,
+            avatar: data.service_providers.user_profiles.avatar_url,
+            username: data.service_providers.user_profiles.username
+          });
+        }
       }
     } catch (error) {
       console.error('Error fetching service details:', error);
@@ -196,6 +224,22 @@ const ServiceDetailScreen = ({ route }) => {
     }
   }, [bookingInfo, navigation, serviceId, serviceDetails]);
 
+  // Handler for opening chat with service provider
+  const handleMessage = useCallback(() => {
+    if (!serviceProvider) {
+      Alert.alert('Error', 'Service provider information not available');
+      return;
+    }
+    console.log('Opening chat with provider:', serviceProvider.name);
+    setShowChatModal(true);
+  }, [serviceProvider]);
+
+  // Handler for sharing service
+  const handleShare = useCallback(() => {
+    console.log('Opening share tray for service:', serviceDetails.title);
+    setShowShareTray(true);
+  }, [serviceDetails.title]);
+
   return (
     <View style={styles.container}>
       <AppHeader title="Service Details" showBackButton={true} />
@@ -225,6 +269,28 @@ const ServiceDetailScreen = ({ route }) => {
             </>
           )}
         </View>
+
+        {/* Action Buttons Row */}
+        {!serviceDetails.loading && (
+          <View style={styles.actionButtonsRow}>
+            <TouchableOpacity
+              style={[styles.actionButton, styles.messageButton]}
+              onPress={handleMessage}
+              disabled={!serviceProvider}
+            >
+              <Ionicons name="chatbubble-outline" size={20} color="#fff" />
+              <Text style={styles.actionButtonText}>Message</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[styles.actionButton, styles.shareButton]}
+              onPress={handleShare}
+            >
+              <Ionicons name="share-social-outline" size={20} color="#fff" />
+              <Text style={styles.actionButtonText}>Share</Text>
+            </TouchableOpacity>
+          </View>
+        )}
         
         {/* Check Availability Button */}
         <TouchableOpacity
@@ -304,6 +370,30 @@ const ServiceDetailScreen = ({ route }) => {
           onSelect={handleSelectBooking}
           selectedServiceId={serviceId}
           baseHourlyRate={50}
+        />
+      )}
+
+      {/* Chat Modal */}
+      {showChatModal && serviceProvider && (
+        <ChatModal
+          visible={showChatModal}
+          onClose={() => setShowChatModal(false)}
+          initialUser={serviceProvider}
+        />
+      )}
+
+      {/* Share Tray */}
+      {showShareTray && (
+        <ShareTray
+          visible={showShareTray}
+          onClose={() => setShowShareTray(false)}
+          item={{
+            id: serviceId,
+            item_id: serviceId,
+            item_title: serviceDetails.title,
+            item_type: 'service_provider'
+          }}
+          itemType="service_provider"
         />
       )}
     </View>
@@ -464,6 +554,35 @@ const styles = StyleSheet.create({
     color: COLORS.textDark,
     fontFamily: FONTS.semiBold,
     marginLeft: 10,
+  },
+  // New styles for action buttons
+  actionButtonsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+    gap: 12,
+  },
+  actionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    ...AIRBNB_CARD_SHADOW,
+  },
+  messageButton: {
+    backgroundColor: '#007AFF', // iOS blue
+  },
+  shareButton: {
+    backgroundColor: '#34C759', // iOS green
+  },
+  actionButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontFamily: FONTS.semiBold,
+    marginLeft: 8,
   },
 });
 

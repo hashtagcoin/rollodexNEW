@@ -11,6 +11,7 @@ import {
   StyleSheet,
   Dimensions,
   Animated,
+  Platform,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Image as ExpoImage } from 'expo-image';
@@ -106,12 +107,19 @@ const HousingGroupsScreen = ({ navigation }) => {
     fetchUserId();
     
     // Add listener for dimension changes
-    const subscription = Dimensions.addEventListener('change', ({ window }) => {
+    const updateDimensions = ({ window }) => {
       setScreenDimensions({ width: window.width });
-    });
+    };
+    
+    const subscription = Dimensions.addEventListener('change', updateDimensions);
     
     return () => {
-      subscription?.remove();
+      // Handle both old and new API
+      if (subscription && typeof subscription.remove === 'function') {
+        subscription.remove();
+      } else if (Dimensions.removeEventListener) {
+        Dimensions.removeEventListener('change', updateDimensions);
+      }
     };
   }, []);
 

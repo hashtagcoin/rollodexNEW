@@ -112,7 +112,7 @@ const ActionButton = memo(({ icon, isActive, activeColor, count, onPress, style 
   </View>
 ));
 
-const PostCardOptimized = ({ post, onPress, showActions = true, onBookmarkToggle, initialBookmarkState }) => {
+const PostCardOptimized = ({ post, onPress, showActions = true, onBookmarkToggle, initialBookmarkState, isGridView = false }) => {
   const [user, setUser] = useState(null);
   const [likesCount, setLikesCount] = useState(0);
   const [commentsCount, setCommentsCount] = useState(0);
@@ -331,7 +331,7 @@ const PostCardOptimized = ({ post, onPress, showActions = true, onBookmarkToggle
   }, [onPress, post]);
 
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, isGridView && styles.gridCard]}>
       <UserHeader 
         user={user} 
         postTime={postDate}
@@ -491,6 +491,11 @@ const styles = StyleSheet.create({
     elevation: 2,
     overflow: 'hidden',
   },
+  gridCard: {
+    marginHorizontal: 0,
+    marginBottom: 0,
+    flex: 1,
+  },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -610,6 +615,7 @@ export default memo(PostCardOptimized, (prevProps, nextProps) => {
     prevProps.post?.post_id === nextProps.post?.post_id &&
     prevProps.post?.caption === nextProps.post?.caption &&
     prevProps.post?.media_urls?.length === nextProps.post?.media_urls?.length &&
-    prevProps.showActions === nextProps.showActions
+    prevProps.showActions === nextProps.showActions &&
+    prevProps.isGridView === nextProps.isGridView
   );
 });

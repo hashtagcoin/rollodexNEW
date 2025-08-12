@@ -27,6 +27,29 @@ import PostCardOptimized from '../../components/social/PostCardOptimized';
 
 const { width, height } = Dimensions.get('window');
 
+// Dynamic column calculation for responsive design
+const getResponsiveColumns = (currentWidth) => {
+  // Mobile phones: single column
+  // Tablets/iPads and larger: grid layout
+  const isMobile = Platform.OS === 'ios' ? currentWidth <= 428 : currentWidth <= 450;
+  
+  if (isMobile) {
+    return 1; // Single column for mobile phones
+  }
+  
+  // For tablets/iPads and larger screens, calculate dynamic columns
+  const CARD_MIN_WIDTH = 350; // Minimum width for each post card
+  const SCREEN_PADDING = 32; // Total left/right screen padding
+  const CARD_MARGIN = 16; // Space between cards
+  
+  const availableWidth = currentWidth - SCREEN_PADDING;
+  const cardWidthWithMargin = CARD_MIN_WIDTH + CARD_MARGIN;
+  const calculatedColumns = Math.floor(availableWidth / cardWidthWithMargin);
+  
+  // Minimum 2 columns for grid, maximum 3 for readability
+  return Math.min(Math.max(calculatedColumns, 2), 3);
+};
+
 // Memoized housing group item
 const HousingGroupItem = memo(({ item }) => {
   const thumbUrl = getOptimizedImageUrl(item.image, 400, 70);
@@ -99,6 +122,12 @@ const SocialFeedScreen = () => {
   const navigation = useNavigation();
   const flatListRef = useRef(null);
   
+  // Track window dimensions for responsive layout
+  const [screenDimensions, setScreenDimensions] = useState(() => {
+    const { width } = Dimensions.get('window');
+    return { width };
+  });
+  
   // Consolidated state management to reduce re-renders
   const [uiState, setUIState] = useState({
     loading: true,
@@ -125,8 +154,22 @@ const SocialFeedScreen = () => {
   
   useEffect(() => {
     isMounted.current = true;
+    
+    // Add listener for dimension changes
+    const updateDimensions = ({ window }) => {
+      setScreenDimensions({ width: window.width });
+    };
+    
+    const subscription = Dimensions.addEventListener('change', updateDimensions);
+    
     return () => {
       isMounted.current = false;
+      // Handle both old and new API
+      if (subscription && typeof subscription.remove === 'function') {
+        subscription.remove();
+      } else if (Dimensions.removeEventListener) {
+        Dimensions.removeEventListener('change', updateDimensions);
+      }
     };
   }, []);
 
@@ -316,14 +359,20 @@ const SocialFeedScreen = () => {
     fetchPosts(true);
   }, [fetchPosts]);
 
+  // Get number of columns based on screen width
+  const numColumns = getResponsiveColumns(screenDimensions.width);
+  
   // Optimized render post with navigation
   const renderPost = useCallback(({ item }) => (
-    <PostCardOptimized 
-      post={item} 
-      onPress={() => navigation.navigate('PostDetailScreen', { post: item })}
-      showActions={true}
-    />
-  ), [navigation]);
+    <View style={numColumns > 1 ? styles.gridPostWrapper : null}>
+      <PostCardOptimized 
+        post={item} 
+        onPress={() => navigation.navigate('PostDetailScreen', { post: item })}
+        showActions={true}
+        isGridView={numColumns > 1}
+      />
+    </View>
+  ), [navigation, numColumns]);
 
   // Key extractor
   const keyExtractor = useCallback((item) => item.post_id, []);
@@ -380,7 +429,13 @@ const SocialFeedScreen = () => {
           renderItem={renderPost}
           keyExtractor={keyExtractor}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.feedList}
+          contentContainerStyle={[
+            styles.feedList,
+            numColumns > 1 && styles.gridFeedList
+          ]}
+          numColumns={numColumns}
+          key={`social-feed-${numColumns}`} // Force re-render when columns change
+          columnWrapperStyle={numColumns > 1 ? styles.columnWrapper : null}
           onRefresh={handleRefresh}
           refreshing={refreshing}
           ListHeaderComponent={ListHeader}
@@ -492,6 +547,18 @@ const styles = StyleSheet.create({
   },
   feedList: {
     paddingBottom: 100,
+  },
+  gridFeedList: {
+    paddingHorizontal: 16,
+  },
+  gridPostWrapper: {
+    flex: 1,
+    marginHorizontal: 8,
+    marginBottom: 16,
+  },
+  columnWrapper: {
+    justifyContent: 'space-between',
+    paddingHorizontal: 0,
   },
   loadingContainer: {
     flex: 1,

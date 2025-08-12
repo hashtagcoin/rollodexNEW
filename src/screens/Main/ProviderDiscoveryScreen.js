@@ -57,7 +57,10 @@ const getResponsiveColumns = (viewMode, currentWidth) => {
   }
   
   // For tablets/iPads and larger screens, calculate dynamic columns
-  // Use responsive card width calculation
+  // Define constants locally to avoid undefined errors
+  const SCREEN_PADDING = 32; // Total left/right screen padding for larger screens
+  const CARD_MARGIN = 16; // Space between cards for larger screens
+  
   const availableWidth = currentWidth - SCREEN_PADDING;
   const minCardWidth = 200; // Minimum card width for larger screens
   const cardWidthWithMargin = minCardWidth + CARD_MARGIN;
@@ -129,16 +132,23 @@ const ProviderDiscoveryScreen = ({ route }) => {
     isMounted.current = true;
     
     // Add listener for dimension changes
-    const subscription = Dimensions.addEventListener('change', ({ window }) => {
+    const updateDimensions = ({ window }) => {
       setScreenDimensions({ width: window.width });
-    });
+    };
+    
+    const subscription = Dimensions.addEventListener('change', updateDimensions);
     
     return () => {
       isMounted.current = false;
       if (fetchController.current) {
         fetchController.current.abort();
       }
-      subscription?.remove();
+      // Handle both old and new API
+      if (subscription && typeof subscription.remove === 'function') {
+        subscription.remove();
+      } else if (Dimensions.removeEventListener) {
+        Dimensions.removeEventListener('change', updateDimensions);
+      }
     };
   }, []);
 

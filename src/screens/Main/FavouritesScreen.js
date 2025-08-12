@@ -32,7 +32,12 @@ import { isNewUser } from '../../utils/defaultDataProvider';
 
 const { width } = Dimensions.get('window');
 
-// Dynamic column calculation for responsive design
+// Dynamic column calculation for responsive design - Mobile optimized
+const getMobilePadding = (screenWidth) => {
+  const isMobile = screenWidth <= 480;
+  return isMobile ? 8 : 16; // Reduced padding for mobile
+};
+
 const CARD_MIN_WIDTH = 280; // Maintain consistent card width
 const CARD_MARGIN = 16; // Space between cards
 const SCREEN_PADDING = 32; // Total left/right screen padding
@@ -229,9 +234,11 @@ const FavouritesScreen = () => {
     isMounted.current = true;
     
     // Add listener for dimension changes
-    const subscription = Dimensions.addEventListener('change', ({ window }) => {
+    const updateDimensions = ({ window }) => {
       setScreenDimensions({ width: window.width });
-    });
+    };
+    
+    const subscription = Dimensions.addEventListener('change', updateDimensions);
     
     // Check if user is new
     const checkNewUser = async () => {
@@ -255,7 +262,12 @@ const FavouritesScreen = () => {
     
     return () => {
       isMounted.current = false;
-      subscription?.remove();
+      // Handle both old and new API
+      if (subscription && typeof subscription.remove === 'function') {
+        subscription.remove();
+      } else if (Dimensions.removeEventListener) {
+        Dimensions.removeEventListener('change', updateDimensions);
+      }
       debugTiming('COMPONENT_UNMOUNTING', { 
         totalRenders: performanceTracker.renders,
         lifetimeMs: Date.now() - performanceTracker.mountTime,
@@ -1286,8 +1298,11 @@ const FavouritesScreen = () => {
           ListFooterComponent={loadingMore ? <ActivityIndicator size="small" color={COLORS.primary} style={{ marginVertical: 20 }}/> : null}
           numColumns={getResponsiveColumns(viewMode, screenDimensions.width)}
           key={`${viewMode}-${getResponsiveColumns(viewMode, screenDimensions.width)}`} // Change key when columns change
-          contentContainerStyle={viewMode === 'Grid' ? styles.gridContainer : styles.listContainer}
-          columnWrapperStyle={getResponsiveColumns(viewMode, screenDimensions.width) > 1 ? { justifyContent: 'space-around', paddingHorizontal: 8 } : null}
+          contentContainerStyle={viewMode === 'Grid' ? [
+            styles.gridContainer, 
+            { paddingHorizontal: getMobilePadding(screenDimensions.width) }
+          ] : styles.listContainer}
+          columnWrapperStyle={getResponsiveColumns(viewMode, screenDimensions.width) > 1 ? {justifyContent: 'space-between', paddingHorizontal: 0} : null}
           // Performance settings
           initialNumToRender={PAGE_SIZE / 2}
           maxToRenderPerBatch={PAGE_SIZE / 2}
@@ -1357,12 +1372,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   gridContainer: {
-    paddingBottom: SIZES.large, // Use theme sizes
-    paddingHorizontal: CARD_MARGIN / 2, // Adjust for half margin on sides
+    paddingTop: 8,
+    paddingBottom: 100,
+    // paddingHorizontal is now set dynamically based on screen size
   },
   listContainer: {
-    paddingBottom: SIZES.large,
-    paddingHorizontal: CARD_MARGIN,
+    padding: 10,
+    paddingBottom: 100,
   },
   columnWrapper: {
     justifyContent: 'flex-start',

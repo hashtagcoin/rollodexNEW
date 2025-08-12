@@ -3,6 +3,7 @@ import { Animated, TouchableOpacity, StyleSheet, View, Text } from 'react-native
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useScrollContext } from '../../context/ScrollContext';
+import { useChatButton } from '../../context/ChatButtonContext';
 import ChatModal from './ChatModal';
 
 // Constants for positioning
@@ -17,9 +18,15 @@ const TAB_BAR_HEIGHT = 50;
  */
 const ChatButton = () => {
   const { isScrolling } = useScrollContext();
+  const { isChatButtonVisible } = useChatButton();
   const insets = useSafeAreaInsets();
   const opacity = useRef(new Animated.Value(1)).current;
   const [isChatModalVisible, setIsChatModalVisible] = useState(false);
+  
+  // Hide chat button if context says so
+  if (!isChatButtonVisible) {
+    return null;
+  }
 
   useEffect(() => {
     Animated.timing(opacity, {

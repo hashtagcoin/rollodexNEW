@@ -23,29 +23,27 @@ const SplashScreen = ({ navigation, route }) => {
   const taglineText = "Connect. Explore. Thrive.";
 
   useEffect(() => {
+    // Show GIF immediately - no delay to prevent slow loading
+    setShowGif(true);
+    
     // Set minimum display time (3 seconds)
     setTimeout(() => {
       setMinDisplayTimeReached(true);
     }, 3000);
 
-    // Show splash screen for minimum duration on all platforms
-    // Removed auto-navigation - user must tap to continue
-    
     // Animation sequence:
-    // 1. GIF appears instantly at center
-    // 2. GIF stays in place
-    // 3. After 1.5 seconds, logo fades in and throbs
-    // 4. Text fades in
+    // 1. GIF appears instantly and starts playing immediately
+    // 2. GIF plays for 2 seconds then stops
+    // 3. 2-second delay after GIF stops
+    // 4. Logo appears and starts pulsing
+    // 5. Text fades in 0.5 seconds after logo
     
-    // Show GIF immediately
-    setShowGif(true);
-    
-    // GIF stops playing after one cycle
+    // GIF stops playing after 2 seconds
     setTimeout(() => {
       setGifPlayComplete(true);
-    }, 2500); // GIF plays once and stops
+    }, 2000); // GIF plays for 2 seconds then stops
     
-    // Show logo 1 second after GIF stops (2.5s + 1s = 3.5s)
+    // Show logo 2 seconds after GIF stops (2s + 2s = 4s)
     setTimeout(() => {
       Animated.parallel([
         Animated.timing(fadeAnim, {
@@ -78,18 +76,18 @@ const SplashScreen = ({ navigation, route }) => {
           ])
         ).start();
       });
-    }, 3500); // 1 second after GIF stops (2500 + 1000)
+    }, 4000); // 2 seconds after GIF stops (2000 + 2000)
     
-    // Show text 0.5 seconds after logo appears (3.5s + 0.5s = 4s)
+    // Show text 0.5 seconds after logo appears (4s + 0.5s = 4.5s)
     setTimeout(() => {
       Animated.timing(messageOpacity, {
         toValue: 1,
-        duration: 400,
+        duration: 1500, // 1.5 second fade-in for text
         useNativeDriver: true,
       }).start(() => {
         setAnimationComplete(true);
       });
-    }, 4000); // 0.5 seconds after logo appears (3500 + 500)
+    }, 4500); // 0.5 seconds after logo appears (4000 + 500)
 
     // Heartbeat animation
     Animated.loop(

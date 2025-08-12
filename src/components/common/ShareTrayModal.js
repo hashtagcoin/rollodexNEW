@@ -139,98 +139,155 @@ const ShareTrayModal = ({ visible, onClose, itemToShare, highlightSharedUsers = 
           notificationType = 'system'; // Default fallback for unknown types
       }
       
-      // Track the share in the proper table based on type
+      // Track the share in the shared_items table based on type
       if (itemToShare.item_type === 'housing_group' && itemToShare.item_id && itemToShare.item_id !== 'temp_id') {
-        // First check if the housing group exists
-        const { data: groupExists, error: checkError } = await supabase
-          .from('housing_groups')
-          .select('id')
-          .eq('id', itemToShare.item_id)
-          .limit(1);
+        // For housing groups, use the shared_items table
+        try {
+          console.log('Attempting to record housing group share for item_id:', itemToShare.item_id);
           
-        if (checkError) {
-          console.error('Error checking if housing group exists:', checkError);
-        } else if (groupExists && groupExists.length > 0) {
-          // Only insert into housing_group_shares if the group exists
+          // Ensure item_id is a valid UUID for the database
+          const itemId = typeof itemToShare.item_id === 'string' ? itemToShare.item_id : itemToShare.item_id.toString();
+          
+          const shareRecord = {
+            sender_id: currentUser.id,
+            recipient_id: userToShareWith.id,
+            item_type: 'housing_group', // This matches the check constraint
+            item_id: itemId,
+            is_favourited: false,
+            dismissed: false
+          };
+          
           const { error: shareError } = await supabase
-            .from('housing_group_shares')
-            .insert([
-              {
-                group_id: itemToShare.item_id,
-                sender_id: currentUser.id,
-                recipient_id: userToShareWith.id,
-                status: 'sent',
-                message: `Check out this housing group: ${itemToShare.item_title}`
-              }
-            ]);
+            .from('shared_items')
+            .insert([shareRecord]);
           
           if (shareError) {
             console.error('Error recording housing group share:', shareError);
+            console.error('Share record that failed:', shareRecord);
           }
-        } else {
-          console.log('Skipping housing_group_shares record - group does not exist yet');
+        } catch (error) {
+          console.error('Error sharing housing group:', error);
         }
       } else if (itemToShare.item_type === 'housing_listing' && itemToShare.item_id) {
         // For housing listings, record in the shared_items table
         try {
+          console.log('Attempting to record housing listing share for item_id:', itemToShare.item_id);
+          
+          // Ensure item_id is a valid UUID for the database
+          const itemId = typeof itemToShare.item_id === 'string' ? itemToShare.item_id : itemToShare.item_id.toString();
+          
+          const shareRecord = {
+            sender_id: currentUser.id,
+            recipient_id: userToShareWith.id,
+            item_type: 'housing_listing', // This matches the check constraint
+            item_id: itemId, // Ensure it's a proper UUID string
+            is_favourited: false,
+            dismissed: false
+            // Don't include created_at - let the database handle the default
+          };
+          
           const { error: shareError } = await supabase
             .from('shared_items')
-            .insert([
-              {
-                sender_id: currentUser.id,
-                recipient_id: userToShareWith.id,
-                item_type: 'housing_listing',
-                item_id: itemToShare.item_id,
-                is_favourited: false,
-                dismissed: false
-              }
-            ]);
+            .insert([shareRecord]);
             
           if (shareError) {
             console.error('Error recording housing listing share:', shareError);
+            console.error('Share record that failed:', shareRecord);
+            // Continue execution even if share tracking fails
           }
         } catch (error) {
           console.error('Error sharing housing listing:', error);
+          // Continue with notification even if share tracking fails
         }
-      } else if (itemToShare.item_type === 'post' && itemToShare.item_id) {
-        // For posts, record in the shared_items table
+      } else if (itemToShare.item_type === 'service_provider' && itemToShare.item_id) {
+        // For service providers, record in the shared_items table
         try {
+          console.log('Attempting to record service provider share for item_id:', itemToShare.item_id);
+          
+          const itemId = typeof itemToShare.item_id === 'string' ? itemToShare.item_id : itemToShare.item_id.toString();
+          
+          const shareRecord = {
+            sender_id: currentUser.id,
+            recipient_id: userToShareWith.id,
+            item_type: 'service_provider', // This matches the check constraint
+            item_id: itemId,
+            is_favourited: false,
+            dismissed: false
+          };
+          
           const { error: shareError } = await supabase
             .from('shared_items')
-            .insert([
-              {
-                sender_id: currentUser.id,
-                recipient_id: userToShareWith.id,
-                item_type: 'post',
-                item_id: itemToShare.item_id,
-                is_favourited: false,
-                dismissed: false
-              }
-            ]);
+            .insert([shareRecord]);
             
           if (shareError) {
-            console.error('Error recording post share:', shareError);
+            console.error('Error recording service provider share:', shareError);
+            console.error('Share record that failed:', shareRecord);
           }
         } catch (error) {
-          console.error('Error sharing post:', error);
+          console.error('Error sharing service provider:', error);
         }
+      } else if (itemToShare.item_type === 'group_event' && itemToShare.item_id) {
+        // For group events, record in the shared_items table
+        try {
+          console.log('Attempting to record group event share for item_id:', itemToShare.item_id);
+          
+          const itemId = typeof itemToShare.item_id === 'string' ? itemToShare.item_id : itemToShare.item_id.toString();
+          
+          const shareRecord = {
+            sender_id: currentUser.id,
+            recipient_id: userToShareWith.id,
+            item_type: 'group_event', // This matches the check constraint
+            item_id: itemId,
+            is_favourited: false,
+            dismissed: false
+          };
+          
+          const { error: shareError } = await supabase
+            .from('shared_items')
+            .insert([shareRecord]);
+            
+          if (shareError) {
+            console.error('Error recording group event share:', shareError);
+            console.error('Share record that failed:', shareRecord);
+          }
+        } catch (error) {
+          console.error('Error sharing group event:', error);
+        }
+      } else if (itemToShare.item_type === 'post' && itemToShare.item_id) {
+        // For posts, we cannot use shared_items table as it doesn't support 'post' type
+        // The check constraint only allows: 'group_event', 'service_provider', 'housing_listing', 'housing_group'
+        console.log('Post sharing - using notification-only approach (posts not supported in shared_items table)');
+        // Skip shared_items insertion for posts and rely on notifications only
+      } else {
+        console.log(`Sharing type '${itemToShare.item_type}' not supported in shared_items table`);
       }
       
-      // Create a notification
-      const { error } = await supabase
-        .from('notifications')
-        .insert([
-          {
-            user_id: userToShareWith.id,
-            title: 'New Share',
-            body: `${currentUser?.email || 'Someone'} shared '${itemToShare.item_title}' with you!`,
-            type: notificationType,
-            content: itemToShare.item_id.toString(),
-            seen: false
-          }
-        ]);
-      
-      if (error) throw error;
+      // Create a notification - this is the most important part, so do it last
+      try {
+        const notificationRecord = {
+          user_id: userToShareWith.id,
+          title: 'New Share',
+          body: `${currentUser?.user_metadata?.full_name || currentUser?.email || 'Someone'} shared '${itemToShare.item_title}' with you!`,
+          type: notificationType,
+          content: itemToShare.item_id.toString(),
+          seen: false,
+          created_at: new Date().toISOString()
+        };
+        
+        console.log('Creating notification:', notificationRecord);
+        
+        const { error: notificationError } = await supabase
+          .from('notifications')
+          .insert([notificationRecord]);
+        
+        if (notificationError) {
+          console.error('Error creating notification:', notificationError);
+          throw notificationError;
+        }
+      } catch (error) {
+        console.error('Failed to create notification:', error);
+        throw error; // Re-throw notification errors as they are critical
+      }
       
       console.log(`Sharing item: ${itemToShare.item_title} with user: ${userToShareWith.username}`);
       

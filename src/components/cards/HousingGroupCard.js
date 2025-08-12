@@ -1,10 +1,10 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native'; 
+import { View, Text, TouchableOpacity, ActivityIndicator, Dimensions } from 'react-native'; 
 import { Image } from 'expo-image';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { format } from 'date-fns';
 import { getValidImageUrl, getOptimizedImageUrl } from '../../utils/imageHelper';
-import { CardStyles } from '../../constants/CardStyles';
+import { CardStyles, createResponsiveGridCardWrapper } from '../../constants/CardStyles';
 import { COLORS, SIZES } from '../../constants/theme';
 
 // Card label colors for consistent styling
@@ -137,8 +137,11 @@ const HousingGroupCard = ({ item, onPress, onImageLoaded, displayAs = 'grid', is
     );
   } else {
     // Grid view layout
+    const { width } = Dimensions.get('window');
+    const responsiveWrapperStyle = createResponsiveGridCardWrapper(width);
+    
     return (
-      <View style={CardStyles.gridCardWrapper}> 
+      <View style={responsiveWrapperStyle}> 
         <TouchableOpacity 
           style={[CardStyles.gridCardContainer, { alignSelf: 'stretch' }]}  
           onPress={onPress ? () => onPress(item) : undefined} 

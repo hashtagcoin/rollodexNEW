@@ -2,6 +2,7 @@ import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import ChatButton from './ChatButton';
 import { ScrollProvider } from '../../context/ScrollContext';
+import { ChatButtonProvider } from '../../context/ChatButtonContext';
 
 /**
  * ChatButtonOverlay - Provides a persistent chat button that overlays the app
@@ -9,12 +10,14 @@ import { ScrollProvider } from '../../context/ScrollContext';
  */
 const ChatButtonOverlay = ({ children }) => {
   return (
-    <ScrollProvider>
-      <View style={styles.container}>
-        {children}
-        <ChatButton />
-      </View>
-    </ScrollProvider>
+    <ChatButtonProvider>
+      <ScrollProvider>
+        <View style={styles.container}>
+          {children}
+          <ChatButton />
+        </View>
+      </ScrollProvider>
+    </ChatButtonProvider>
   );
 };
 
