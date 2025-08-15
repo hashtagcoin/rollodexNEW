@@ -10,7 +10,7 @@ const SplashScreen = ({ navigation, route }) => {
   const { isAuthenticated, userRole } = route.params || {};
   const [animationComplete, setAnimationComplete] = useState(false);
   const [showGif, setShowGif] = useState(false);
-  const [gifPlayComplete, setGifPlayComplete] = useState(false);
+  const [showLogo, setShowLogo] = useState(false);
   const [minDisplayTimeReached, setMinDisplayTimeReached] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -18,35 +18,31 @@ const SplashScreen = ({ navigation, route }) => {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const messageOpacity = useRef(new Animated.Value(0)).current;
   const heartbeatAnim = useRef(new Animated.Value(1)).current;
-  const gifFadeAnim = useRef(new Animated.Value(1)).current;
+  const gifOpacity = useRef(new Animated.Value(1)).current;
+  const logoFadeAnim = useRef(new Animated.Value(0)).current;
+  const gifTranslateY = useRef(new Animated.Value(50)).current; // Start 50px lower
 
   const taglineText = "Connect. Explore. Thrive.";
 
   useEffect(() => {
-    // Show GIF immediately - no delay to prevent slow loading
+    // Show GIF immediately
     setShowGif(true);
     
-    // Set minimum display time (3 seconds)
+    // Set minimum display time (6 seconds total)
     setTimeout(() => {
       setMinDisplayTimeReached(true);
-    }, 3000);
+    }, 6000);
 
-    // Animation sequence:
-    // 1. GIF appears instantly and starts playing immediately
-    // 2. GIF plays for 2 seconds then stops
-    // 3. 2-second delay after GIF stops
-    // 4. Logo appears and starts pulsing
-    // 5. Text fades in 0.5 seconds after logo
+    // New animation sequence:
+    // 1. GIF plays immediately and stops on last frame
+    // 2. After 3 seconds, logo appears
+    // 3. 1 second after logo (4s total), text appears
     
-    // GIF stops playing after 2 seconds
+    // Show logo after 1.5 seconds (reduced by 50%)
     setTimeout(() => {
-      setGifPlayComplete(true);
-    }, 2000); // GIF plays for 2 seconds then stops
-    
-    // Show logo 2 seconds after GIF stops (2s + 2s = 4s)
-    setTimeout(() => {
+      setShowLogo(true);
       Animated.parallel([
-        Animated.timing(fadeAnim, {
+        Animated.timing(logoFadeAnim, {
           toValue: 1,
           duration: 400,
           useNativeDriver: true,
@@ -55,6 +51,13 @@ const SplashScreen = ({ navigation, route }) => {
           toValue: 1,
           friction: 4,
           tension: 40,
+          useNativeDriver: true,
+        }),
+        // Smoothly move GIF to its final position
+        Animated.timing(gifTranslateY, {
+          toValue: 0,
+          duration: 400,
+          easing: Easing.out(Easing.ease),
           useNativeDriver: true,
         }),
       ]).start(() => {
@@ -76,9 +79,9 @@ const SplashScreen = ({ navigation, route }) => {
           ])
         ).start();
       });
-    }, 4000); // 2 seconds after GIF stops (2000 + 2000)
+    }, 1500); // Logo appears after 1.5 seconds (50% faster)
     
-    // Show text 0.5 seconds after logo appears (4s + 0.5s = 4.5s)
+    // Show text 1 second after logo appears (2.5s total)
     setTimeout(() => {
       Animated.timing(messageOpacity, {
         toValue: 1,
@@ -87,7 +90,7 @@ const SplashScreen = ({ navigation, route }) => {
       }).start(() => {
         setAnimationComplete(true);
       });
-    }, 4500); // 0.5 seconds after logo appears (4000 + 500)
+    }, 2500); // Text appears after 2.5 seconds total
 
     // Heartbeat animation
     Animated.loop(
@@ -145,98 +148,89 @@ const SplashScreen = ({ navigation, route }) => {
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       >
-        {/* Main content that includes GIF, logo and text */}
-        <Animated.View
-          style={[
-            styles.centerContent,
-            {
-              opacity: fadeAnim,
-              transform: [
-                { scale: scaleAnim },
-                {
-                  translateY: slideAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [50, 0],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          {/* Animated GIF Logo that plays once then stops */}
+        {/* Main content container with GIF, logo and text in vertical flow */}
+        <View style={styles.mainContentContainer}>
+          {/* Animated GIF that plays once and stops on last frame */}
           {showGif && (
-            <Image 
-              key={gifPlayComplete ? "static-gif" : "animated-gif"}
-              source={require('../../assets/images/Animation.gif')}
+            <Animated.View
               style={[
-                styles.animatedLogo,
+                styles.gifContainer,
                 {
-                  marginLeft: 20, // 20px to the right
-                  marginBottom: 20, // Space before logo
-                }
-              ]}
-              contentFit="contain"
-              // Use expo-image for better GIF control
-              cachePolicy="memory-disk"
-              transition={200}
-              onLoad={() => {
-                console.log('GIF loaded and will continue playing');
-              }}
-            />
-          )}
-        </Animated.View>
-
-        {/* Logo and text content */}
-        <Animated.View
-          style={[
-            styles.centerContent,
-            {
-              opacity: fadeAnim,
-              transform: [
-                { scale: scaleAnim },
-                {
-                  translateY: slideAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [50, 0],
-                  }),
+                  opacity: gifOpacity,
+                  transform: [{ translateY: gifTranslateY }],
                 },
-              ],
-            },
-          ]}
-        >
-          <Animated.View
-            style={[
-              styles.iconContainer,
-              {
-                transform: [{ scale: Animated.multiply(pulseAnim, heartbeatAnim) }],
-              },
-            ]}
-          >
-            <Image 
-              source={require('../../assets/images/logo.png')}
-              style={styles.iconImage}
-              contentFit="contain"
-            />
-          </Animated.View>
-          
-          <Animated.Text
-            style={[
-              styles.tagline,
-              {
-                opacity: messageOpacity,
-              },
-            ]}
-          >
-            {taglineText}
-          </Animated.Text>
-        </Animated.View>
+              ]}
+            >
+              <Image 
+                source={require('../../assets/images/Animation.gif')}
+                style={styles.animatedLogo}
+                contentFit="contain"
+                // Use expo-image with autoplay false to control GIF playback
+                autoplay={true}
+                loop={false} // This makes the GIF play once and stop
+                cachePolicy="memory-disk"
+                transition={0} // No transition for immediate display
+                onLoad={() => {
+                  console.log('GIF loaded and playing once');
+                }}
+              />
+            </Animated.View>
+          )}
+
+          {/* Logo and text content */}
+          {showLogo && (
+            <Animated.View
+              style={[
+                styles.logoContentContainer,
+                {
+                  opacity: logoFadeAnim,
+                  transform: [
+                    { scale: scaleAnim },
+                    {
+                      translateY: slideAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [50, 0],
+                      }),
+                    },
+                  ],
+                },
+              ]}
+            >
+              <Animated.View
+                style={[
+                  styles.iconContainer,
+                  {
+                    transform: [{ scale: Animated.multiply(pulseAnim, heartbeatAnim) }],
+                  },
+                ]}
+              >
+                <Image 
+                  source={require('../../assets/images/logo.png')}
+                  style={styles.iconImage}
+                  contentFit="contain"
+                />
+              </Animated.View>
+              
+              <Animated.Text
+                style={[
+                  styles.tagline,
+                  {
+                    opacity: messageOpacity,
+                  },
+                ]}
+              >
+                {taglineText}
+              </Animated.Text>
+            </Animated.View>
+          )}
+        </View>
 
         {animationComplete && (
           <Animated.View
             style={[
               styles.bottomContainer,
               {
-                opacity: fadeAnim,
+                opacity: logoFadeAnim,
               },
             ]}
           >
@@ -255,7 +249,7 @@ const SplashScreen = ({ navigation, route }) => {
             style={[
               styles.circle1,
               {
-                opacity: fadeAnim,
+                opacity: logoFadeAnim,
                 transform: [{ scale: scaleAnim }],
               },
             ]}
@@ -264,7 +258,7 @@ const SplashScreen = ({ navigation, route }) => {
             style={[
               styles.circle2,
               {
-                opacity: fadeAnim,
+                opacity: logoFadeAnim,
                 transform: [{ scale: scaleAnim }],
               },
             ]}
@@ -277,7 +271,7 @@ const SplashScreen = ({ navigation, route }) => {
             style={[
               styles.skipButtonContainer,
               {
-                opacity: fadeAnim,
+                opacity: logoFadeAnim,
               },
             ]}
           >
@@ -298,13 +292,24 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  mainContentContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+  },
   centerContent: {
     alignItems: 'center',
     zIndex: 2,
   },
+  gifContainer: {
+    alignItems: 'center',
+    marginBottom: 5, // Small gap between GIF and logo
+  },
+  logoContentContainer: {
+    alignItems: 'center',
+  },
   iconContainer: {
-    marginTop: 20, // Space from the GIF above
-    marginBottom: 40, // Space to the text below
+    marginBottom: 40, // 40px to the text below
   },
   iconCircle: {
     width: 120,
@@ -349,8 +354,8 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   animatedLogo: {
-    width: 200,
-    height: 60,
+    width: 250,
+    height: 80,
     alignSelf: 'center',
   },
   bottomContainer: {

@@ -535,9 +535,13 @@ const DashboardScreen = () => {
         {/* Community Events Section - Show for ALL users */}
         <View style={styles.eventsSection}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.carouselTitle}>Community Events</Text>
+            <View style={styles.titleBackground}>
+              <Text style={styles.carouselTitle}>Community Events</Text>
+            </View>
             <TouchableOpacity onPress={() => navigation.navigate('Social', { screen: 'Events' })}>
-              <Text style={styles.viewAllText}>See All</Text>
+              <View style={styles.viewAllBackground}>
+                <Text style={styles.viewAllText}>See All</Text>
+              </View>
             </TouchableOpacity>
           </View>
           {loading.events ? (
@@ -575,9 +579,13 @@ const DashboardScreen = () => {
 
         {/* Upcoming Appointments - Show for ALL users */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.carouselTitle}>Upcoming Appointments</Text>
+          <View style={styles.titleBackground}>
+            <Text style={styles.carouselTitle}>Upcoming Appointments</Text>
+          </View>
           <TouchableOpacity onPress={() => navigation.navigate('Wallet', { screen: 'BookingsScreen' })}>
-            <Text style={styles.viewAllText}>View All</Text>
+            <View style={styles.viewAllBackground}>
+              <Text style={styles.viewAllText}>View All</Text>
+            </View>
           </TouchableOpacity>
         </View>
         
@@ -599,7 +607,20 @@ const DashboardScreen = () => {
               return (
                 <TouchableOpacity 
                   style={styles.appointmentCard}
-                  onPress={() => navigation.navigate('Wallet', { screen: 'BookingDetailScreen', params: { bookingId: item.booking_id } })}
+                  onPress={() => {
+                    try {
+                      if (item?.booking_id) {
+                        navigation.navigate('Wallet', { 
+                          screen: 'BookingDetailScreen', 
+                          params: { bookingId: item.booking_id } 
+                        });
+                      } else {
+                        console.error('[Dashboard] Missing booking_id for navigation');
+                      }
+                    } catch (error) {
+                      console.error('[Dashboard] Error navigating to booking detail:', error);
+                    }
+                  }}
                   activeOpacity={0.85}
                 >
                   <View style={styles.appointmentCardContent}>
@@ -753,9 +774,13 @@ const DashboardScreen = () => {
         {/* Recommended Services */}
         <View style={styles.servicesSection}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.carouselTitle}>Recommended for You</Text>
+            <View style={styles.titleBackground}>
+              <Text style={styles.carouselTitle}>Recommended for You</Text>
+            </View>
             <TouchableOpacity onPress={() => navigation.navigate('Explore', { screen: 'ProviderDiscovery' })}>
-              <Text style={styles.viewAllText}>See More</Text>
+              <View style={styles.viewAllBackground}>
+                <Text style={styles.viewAllText}>See More</Text>
+              </View>
             </TouchableOpacity>
           </View>
           
@@ -888,7 +913,6 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '700',
     color: '#222',
-    marginTop: 18,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -1290,6 +1314,22 @@ const styles = StyleSheet.create({
   serviceCarouselContent: {
     paddingHorizontal: 16,
     paddingBottom: 8,
+  },
+  titleBackground: {
+    backgroundColor: 'rgba(245, 245, 245, 0.7)',
+    paddingHorizontal: 16,
+    paddingVertical: 4,
+    borderRadius: 20,
+    backdropFilter: 'blur(10px)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  viewAllBackground: {
+    backgroundColor: 'rgba(0, 122, 255, 0.2)',
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    borderRadius: 16,
+    backdropFilter: 'blur(10px)',
   },
 });
 

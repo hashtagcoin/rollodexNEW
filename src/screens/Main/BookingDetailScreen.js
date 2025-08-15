@@ -98,6 +98,13 @@ const BookingDetailScreen = ({ navigation }) => {
   const { bookingId } = route.params || {};
   const { profile } = useUser();
   const { hideChatButton, showChatButton } = useChatButton();
+  
+  // Error boundary for navigation params
+  useEffect(() => {
+    if (!bookingId) {
+      console.error('[BookingDetailScreen] No bookingId provided in navigation params');
+    }
+  }, [bookingId]);
 
   const [booking, setBooking] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -170,15 +177,21 @@ const BookingDetailScreen = ({ navigation }) => {
       }
 
       try {
-        // Fetch booking details
+        // Fetch booking details with error handling
         const { data, error } = await supabase
           .from('bookings_with_details')
           .select('*')
           .eq('booking_id', bookingId)
           .single();
 
-        if (error) throw error;
-        if (!data) throw new Error('Booking not found');
+        if (error) {
+          console.error('[BookingDetailScreen] Supabase error:', error);
+          throw error;
+        }
+        if (!data) {
+          console.error('[BookingDetailScreen] No booking found for ID:', bookingId);
+          throw new Error('Booking not found');
+        }
 
         setBooking(data);
 

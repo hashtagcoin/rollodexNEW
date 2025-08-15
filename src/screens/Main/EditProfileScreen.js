@@ -12,18 +12,21 @@ import { useUser } from '../../context/UserContext';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import { decode } from 'base64-arraybuffer';
+import { LinearGradient } from 'expo-linear-gradient';
 
 // Define colors for UI elements
 const COLORS = {
   primary: '#007AFF',
   success: '#34C759',
   error: '#FF3B30',
-  text: '#333333',
-  lightText: '#666666',
-  background: '#F8F7F3',
+  text: '#1C1C1E',
+  lightText: '#8E8E93',
+  background: '#F2F2F7',
   card: '#FFFFFF',
-  border: '#E0E0E0',
-  inactive: '#CCCCCC',
+  border: '#E5E5EA',
+  inactive: '#C7C7CC',
+  inputBg: '#F9F9FB',
+  sectionBg: 'rgba(255, 255, 255, 0.95)',
 };
 
 export default function EditProfileScreen() {
@@ -63,13 +66,28 @@ export default function EditProfileScreen() {
     comfort_traits: [],
     preferred_categories: [],
     preferred_service_formats: [],
-    // Provider-specific fields (removed non-existent columns)
+    // Provider-specific fields from onboarding
+    business_name: '',
+    contact_name: '',
+    provider_type: '',
+    service_types: [],
+    service_areas: [],
+    languages: [],
+    ndis_registered: false,
+    registration_number: '',
     availability: {
       weekdays: false,
       weekends: false,
       evenings: false,
       emergencies: false,
-    }
+    },
+    // Participant-specific fields from onboarding
+    preferred_name: '',
+    main_goals: [],
+    support_needs: [],
+    accessibility_needs: [],
+    comfort_preferences: [],
+    interests: []
   });
   
   // Local state for avatar preview
@@ -173,6 +191,51 @@ export default function EditProfileScreen() {
     'English', 'Mandarin', 'Arabic', 'Vietnamese', 'Greek', 'Italian',
     'Cantonese', 'Spanish', 'Hindi', 'Punjabi', 'Auslan', 'Other'
   ];
+
+  // Participant-specific options from onboarding
+  const MAIN_GOALS = [
+    { id: 'independence', label: 'Live more independently' },
+    { id: 'social', label: 'Make new friends' },
+    { id: 'skills', label: 'Learn new skills' },
+    { id: 'work', label: 'Find work opportunities' },
+    { id: 'health', label: 'Improve my health' },
+    { id: 'fun', label: 'Have more fun' }
+  ];
+
+  const SUPPORT_NEEDS = [
+    { id: 'daily', label: 'Daily living support' },
+    { id: 'therapy', label: 'Therapy services' },
+    { id: 'social', label: 'Social activities' },
+    { id: 'respite', label: 'Respite care' },
+    { id: 'transport', label: 'Transport assistance' },
+    { id: 'housing', label: 'Housing support' },
+    { id: 'employment', label: 'Employment support' },
+    { id: 'equipment', label: 'Equipment & technology' }
+  ];
+
+  const ACCESSIBILITY_NEEDS = [
+    { id: 'wheelchair', label: 'Wheelchair accessible' },
+    { id: 'parking', label: 'Accessible parking' },
+    { id: 'quiet', label: 'Quiet spaces' },
+    { id: 'visual', label: 'Visual aids' },
+    { id: 'hearing', label: 'Hearing support' },
+    { id: 'easy-read', label: 'Easy read materials' }
+  ];
+
+  const COMFORT_PREFERENCES = [
+    { id: 'animals', label: 'Love animals' },
+    { id: 'outdoors', label: 'Enjoy outdoors' },
+    { id: 'small-groups', label: 'Prefer small groups' },
+    { id: 'one-on-one', label: 'One-on-one support' },
+    { id: 'routine', label: 'Like routine' },
+    { id: 'flexible', label: 'Flexible timing' }
+  ];
+
+  const INTERESTS = [
+    'Sports & Fitness', 'Arts & Crafts', 'Music', 'Cooking', 'Gaming', 
+    'Reading', 'Nature', 'Technology', 'Volunteering', 'Travel', 
+    'Movies & TV', 'Social Events'
+  ];
   
   // Sex options
   const sexOptions = [
@@ -210,13 +273,28 @@ export default function EditProfileScreen() {
         comfort_traits: userProfile.comfort_traits ?? [],
         preferred_categories: userProfile.preferred_categories ?? [],
         preferred_service_formats: userProfile.preferred_service_formats ?? [],
-        // Provider-specific fields (removed non-existent columns)
+        // Provider-specific fields from onboarding
+        business_name: userProfile.business_name ?? '',
+        contact_name: userProfile.contact_name ?? '',
+        provider_type: userProfile.provider_type ?? '',
+        service_types: userProfile.service_types ?? [],
+        service_areas: userProfile.service_areas ?? [],
+        languages: userProfile.languages ?? [],
+        ndis_registered: userProfile.ndis_registered ?? false,
+        registration_number: userProfile.registration_number ?? '',
         availability: userProfile.availability ?? {
           weekdays: false,
           weekends: false,
           evenings: false,
           emergencies: false,
-        }
+        },
+        // Participant-specific fields from onboarding
+        preferred_name: userProfile.preferred_name ?? '',
+        main_goals: userProfile.main_goals ?? [],
+        support_needs: userProfile.support_needs ?? [],
+        accessibility_needs: userProfile.accessibility_needs ?? [],
+        comfort_preferences: userProfile.comfort_preferences ?? [],
+        interests: userProfile.interests ?? []
       });
       // Only update avatar if we're not currently uploading a new one
       if (!isUploadingAvatar) {
@@ -248,13 +326,28 @@ export default function EditProfileScreen() {
         comfort_traits: [],
         preferred_categories: [],
         preferred_service_formats: [],
-        // Provider-specific fields (removed non-existent columns)
+        // Provider-specific fields from onboarding
+        business_name: '',
+        contact_name: '',
+        provider_type: '',
+        service_types: [],
+        service_areas: [],
+        languages: [],
+        ndis_registered: false,
+        registration_number: '',
         availability: {
           weekdays: false,
           weekends: false,
           evenings: false,
           emergencies: false,
-        }
+        },
+        // Participant-specific fields from onboarding
+        preferred_name: '',
+        main_goals: [],
+        support_needs: [],
+        accessibility_needs: [],
+        comfort_preferences: [],
+        interests: []
       });
       setLoading(false);
       clearTimeout(timeoutId);
@@ -534,13 +627,29 @@ export default function EditProfileScreen() {
         accessibility_preferences: typeof profile.accessibility_preferences === 'object' ? 
           profile.accessibility_preferences : {},
         
-        // Provider-specific fields (removed non-existent columns)
+        // Provider-specific fields from onboarding
+        business_name: profile.business_name || '',
+        contact_name: profile.contact_name || '',
+        provider_type: profile.provider_type || '',
+        service_types: Array.isArray(profile.service_types) ? profile.service_types : [],
+        service_areas: Array.isArray(profile.service_areas) ? profile.service_areas : [],
+        languages: Array.isArray(profile.languages) ? profile.languages : [],
+        ndis_registered: profile.ndis_registered || false,
+        registration_number: profile.registration_number || '',
         availability: typeof profile.availability === 'object' ? profile.availability : {
           weekdays: false,
           weekends: false,
           evenings: false,
           emergencies: false,
         },
+        
+        // Participant-specific fields from onboarding
+        preferred_name: profile.preferred_name || '',
+        main_goals: Array.isArray(profile.main_goals) ? profile.main_goals : [],
+        support_needs: Array.isArray(profile.support_needs) ? profile.support_needs : [],
+        accessibility_needs: Array.isArray(profile.accessibility_needs) ? profile.accessibility_needs : [],
+        comfort_preferences: Array.isArray(profile.comfort_preferences) ? profile.comfort_preferences : [],
+        interests: Array.isArray(profile.interests) ? profile.interests : [],
           
         // Ensure text fields are defined
         bio: profile.bio || '',
@@ -693,9 +802,12 @@ export default function EditProfileScreen() {
                 disabled={uploadingBackground}
               >
                 {uploadingBackground ? (
-                  <ActivityIndicator color="#fff" size="small" />
+                  <ActivityIndicator color={COLORS.primary} size="small" />
                 ) : (
-                  <Text style={styles.backgroundButtonText}>Change Background</Text>
+                  <>
+                    <Ionicons name="image-outline" size={18} color={COLORS.primary} style={{ marginRight: 6 }} />
+                    <Text style={styles.backgroundButtonText}>Change Background</Text>
+                  </>
                 )}
               </TouchableOpacity>
             </View>
@@ -712,6 +824,7 @@ export default function EditProfileScreen() {
                 <TextInput
                   style={[styles.input, styles.usernameInput]}
                   placeholder="Enter your username"
+                  placeholderTextColor={COLORS.lightText}
                   value={profile.username ?? ''}
                   onChangeText={handleUsernameChange}
                   autoCapitalize="none"
@@ -753,6 +866,7 @@ export default function EditProfileScreen() {
               <TextInput
                 style={styles.input}
                 placeholder="Enter your full name"
+                placeholderTextColor={COLORS.lightText}
                 value={profile.full_name ?? ''}
                 onChangeText={text => setProfile(p => ({ ...p, full_name: text }))}
                 accessibilityLabel="Full name input field"
@@ -765,6 +879,7 @@ export default function EditProfileScreen() {
               <TextInput
                 style={styles.input}
                 placeholder="Enter your age"
+                placeholderTextColor={COLORS.lightText}
                 value={profile.age != null ? String(profile.age) : ''}
                 onChangeText={text => {
                   // Only allow numeric input
@@ -803,17 +918,34 @@ export default function EditProfileScreen() {
               <TextInput
                 style={styles.input}
                 placeholder="Enter your address"
+                placeholderTextColor={COLORS.lightText}
                 value={profile.address ?? ''}
                 onChangeText={text => setProfile(p => ({ ...p, address: text }))}
                 accessibilityLabel="Address input field"
               />
             </View>
             
+            {/* Preferred Name field for participants */}
+            {!isProvider && (
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Preferred Name</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="How would you like to be addressed?"
+                  placeholderTextColor={COLORS.lightText}
+                  value={profile.preferred_name ?? ''}
+                  onChangeText={text => setProfile(p => ({ ...p, preferred_name: text }))}
+                  accessibilityLabel="Preferred name input field"
+                />
+              </View>
+            )}
+
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Bio</Text>
               <TextInput
                 style={[styles.input, styles.bioInput]}
                 placeholder="Tell us about yourself"
+                placeholderTextColor={COLORS.lightText}
                 value={profile.bio ?? ''}
                 onChangeText={text => setProfile(p => ({ ...p, bio: text }))}
                 multiline
@@ -827,7 +959,161 @@ export default function EditProfileScreen() {
           {isProvider ? (
             /* Provider-specific sections */
             <>
-              {/* Provider-specific fields removed - columns don't exist in database */}
+              {/* Business Information */}
+              <View style={styles.formSection}>
+                <Text style={styles.sectionTitle}>Business Information</Text>
+                
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Business/Service Name</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Enter your business or service name"
+                    placeholderTextColor={COLORS.lightText}
+                    value={profile.business_name ?? ''}
+                    onChangeText={text => setProfile(p => ({ ...p, business_name: text }))}
+                    accessibilityLabel="Business name input field"
+                  />
+                </View>
+                
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Contact Name</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Primary contact person"
+                    placeholderTextColor={COLORS.lightText}
+                    value={profile.contact_name ?? ''}
+                    onChangeText={text => setProfile(p => ({ ...p, contact_name: text }))}
+                    accessibilityLabel="Contact name input field"
+                  />
+                </View>
+                
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Provider Type</Text>
+                  <View style={styles.optionsContainer}>
+                    {PROVIDER_TYPES.map(option => (
+                      <TouchableOpacity 
+                        key={option.id}
+                        style={[styles.optionButton, profile.provider_type === option.id && styles.optionButtonSelected]}
+                        onPress={() => setProfile(p => ({ ...p, provider_type: option.id }))}
+                        accessibilityLabel={`${option.label} provider type option`}
+                      >
+                        <Text 
+                          style={[styles.optionText, profile.provider_type === option.id && styles.optionTextSelected]}
+                        >
+                          {option.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              </View>
+
+              {/* Services & Qualifications */}
+              <View style={styles.formSection}>
+                <Text style={styles.sectionTitle}>Services & Qualifications</Text>
+                
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Service Types</Text>
+                  <Text style={styles.optionDescription}>Select all services you provide</Text>
+                  <View style={styles.checkboxContainer}>
+                    {SERVICE_TYPES.map(serviceType => {
+                      const isSelected = profile.service_types?.includes(serviceType);
+                      return (
+                        <TouchableOpacity
+                          key={serviceType}
+                          style={styles.checkboxRow}
+                          onPress={() => toggleMultiSelect(serviceType, 'service_types')}
+                          accessibilityLabel={`${serviceType} service type option`}
+                        >
+                          <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
+                            {isSelected && <Ionicons name="checkmark" size={16} color="white" />}
+                          </View>
+                          <Text style={styles.checkboxLabel}>{serviceType}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+                
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>NDIS Registration</Text>
+                  <TouchableOpacity
+                    style={styles.switchRow}
+                    onPress={() => setProfile(p => ({ ...p, ndis_registered: !p.ndis_registered }))}
+                    accessibilityLabel="NDIS registration toggle"
+                  >
+                    <Text style={styles.switchLabel}>NDIS Registered Provider</Text>
+                    <View style={[styles.switchTrack, profile.ndis_registered && styles.switchTrackActive]}>
+                      <View style={[styles.switchThumb, profile.ndis_registered && styles.switchThumbActive]} />
+                    </View>
+                  </TouchableOpacity>
+                  
+                  {profile.ndis_registered && (
+                    <View style={styles.inputGroup}>
+                      <Text style={styles.inputLabel}>Registration Number</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Enter your NDIS registration number"
+                        placeholderTextColor={COLORS.lightText}
+                        value={profile.registration_number ?? ''}
+                        onChangeText={text => setProfile(p => ({ ...p, registration_number: text }))}
+                        accessibilityLabel="NDIS registration number input field"
+                      />
+                    </View>
+                  )}
+                </View>
+              </View>
+
+              {/* Service Areas & Languages */}
+              <View style={styles.formSection}>
+                <Text style={styles.sectionTitle}>Service Areas & Languages</Text>
+                
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Service Areas</Text>
+                  <Text style={styles.optionDescription}>Select all areas you service</Text>
+                  <View style={styles.checkboxContainer}>
+                    {SERVICE_AREAS.map(area => {
+                      const isSelected = profile.service_areas?.includes(area);
+                      return (
+                        <TouchableOpacity
+                          key={area}
+                          style={styles.checkboxRow}
+                          onPress={() => toggleMultiSelect(area, 'service_areas')}
+                          accessibilityLabel={`${area} service area option`}
+                        >
+                          <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
+                            {isSelected && <Ionicons name="checkmark" size={16} color="white" />}
+                          </View>
+                          <Text style={styles.checkboxLabel}>{area}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+                
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Languages</Text>
+                  <Text style={styles.optionDescription}>Select all languages you speak</Text>
+                  <View style={styles.checkboxContainer}>
+                    {LANGUAGES.map(language => {
+                      const isSelected = profile.languages?.includes(language);
+                      return (
+                        <TouchableOpacity
+                          key={language}
+                          style={styles.checkboxRow}
+                          onPress={() => toggleMultiSelect(language, 'languages')}
+                          accessibilityLabel={`${language} language option`}
+                        >
+                          <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
+                            {isSelected && <Ionicons name="checkmark" size={16} color="white" />}
+                          </View>
+                          <Text style={styles.checkboxLabel}>{language}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+              </View>
               
               {/* Availability */}
               <View style={styles.formSection}>
@@ -878,6 +1164,7 @@ export default function EditProfileScreen() {
                   <TextInput
                     style={styles.input}
                     placeholder="Enter your NDIS number"
+                    placeholderTextColor={COLORS.lightText}
                     value={profile.ndis_number ?? ''}
                     onChangeText={text => setProfile(p => ({ ...p, ndis_number: text }))}
                     accessibilityLabel="NDIS number input field"
@@ -889,6 +1176,7 @@ export default function EditProfileScreen() {
                   <TextInput
                     style={styles.input}
                     placeholder="Enter your primary disability"
+                    placeholderTextColor={COLORS.lightText}
                     value={profile.primary_disability ?? ''}
                     onChangeText={text => setProfile(p => ({ ...p, primary_disability: text }))}
                     accessibilityLabel="Primary disability input field"
@@ -987,6 +1275,146 @@ export default function EditProfileScreen() {
                   </View>
                 </View>
               </View>
+
+              {/* Goals & Motivations */}
+              <View style={styles.formSection}>
+                <Text style={styles.sectionTitle}>Goals & Motivations</Text>
+                
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Main Goals</Text>
+                  <Text style={styles.optionDescription}>What brings you to our platform?</Text>
+                  <View style={styles.checkboxContainer}>
+                    {MAIN_GOALS.map(goal => {
+                      const isSelected = profile.main_goals?.includes(goal.id);
+                      return (
+                        <TouchableOpacity
+                          key={goal.id}
+                          style={styles.checkboxRow}
+                          onPress={() => toggleMultiSelect(goal.id, 'main_goals')}
+                          accessibilityLabel={`${goal.label} main goal option`}
+                        >
+                          <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
+                            {isSelected && <Ionicons name="checkmark" size={16} color="white" />}
+                          </View>
+                          <Text style={styles.checkboxLabel}>{goal.label}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+              </View>
+
+              {/* Support Needs */}
+              <View style={styles.formSection}>
+                <Text style={styles.sectionTitle}>Support Needs</Text>
+                
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Types of Support</Text>
+                  <Text style={styles.optionDescription}>What kind of support are you looking for?</Text>
+                  <View style={styles.checkboxContainer}>
+                    {SUPPORT_NEEDS.map(need => {
+                      const isSelected = profile.support_needs?.includes(need.id);
+                      return (
+                        <TouchableOpacity
+                          key={need.id}
+                          style={styles.checkboxRow}
+                          onPress={() => toggleMultiSelect(need.id, 'support_needs')}
+                          accessibilityLabel={`${need.label} support need option`}
+                        >
+                          <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
+                            {isSelected && <Ionicons name="checkmark" size={16} color="white" />}
+                          </View>
+                          <Text style={styles.checkboxLabel}>{need.label}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+              </View>
+
+              {/* Accessibility Needs (from onboarding) */}
+              <View style={styles.formSection}>
+                <Text style={styles.sectionTitle}>Accessibility Needs</Text>
+                
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Specific Accessibility Requirements</Text>
+                  <Text style={styles.optionDescription}>Select your specific accessibility needs</Text>
+                  <View style={styles.checkboxContainer}>
+                    {ACCESSIBILITY_NEEDS.map(need => {
+                      const isSelected = profile.accessibility_needs?.includes(need.id);
+                      return (
+                        <TouchableOpacity
+                          key={need.id}
+                          style={styles.checkboxRow}
+                          onPress={() => toggleMultiSelect(need.id, 'accessibility_needs')}
+                          accessibilityLabel={`${need.label} accessibility need option`}
+                        >
+                          <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
+                            {isSelected && <Ionicons name="checkmark" size={16} color="white" />}
+                          </View>
+                          <Text style={styles.checkboxLabel}>{need.label}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+              </View>
+
+              {/* Comfort Preferences (from onboarding) */}
+              <View style={styles.formSection}>
+                <Text style={styles.sectionTitle}>Comfort Preferences</Text>
+                
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Personal Preferences</Text>
+                  <Text style={styles.optionDescription}>What makes you feel comfortable?</Text>
+                  <View style={styles.checkboxContainer}>
+                    {COMFORT_PREFERENCES.map(preference => {
+                      const isSelected = profile.comfort_preferences?.includes(preference.id);
+                      return (
+                        <TouchableOpacity
+                          key={preference.id}
+                          style={styles.checkboxRow}
+                          onPress={() => toggleMultiSelect(preference.id, 'comfort_preferences')}
+                          accessibilityLabel={`${preference.label} comfort preference option`}
+                        >
+                          <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
+                            {isSelected && <Ionicons name="checkmark" size={16} color="white" />}
+                          </View>
+                          <Text style={styles.checkboxLabel}>{preference.label}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+              </View>
+
+              {/* Interests */}
+              <View style={styles.formSection}>
+                <Text style={styles.sectionTitle}>Interests & Hobbies</Text>
+                
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Personal Interests</Text>
+                  <Text style={styles.optionDescription}>What do you enjoy doing?</Text>
+                  <View style={styles.checkboxContainer}>
+                    {INTERESTS.map(interest => {
+                      const isSelected = profile.interests?.includes(interest);
+                      return (
+                        <TouchableOpacity
+                          key={interest}
+                          style={styles.checkboxRow}
+                          onPress={() => toggleMultiSelect(interest, 'interests')}
+                          accessibilityLabel={`${interest} interest option`}
+                        >
+                          <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
+                            {isSelected && <Ionicons name="checkmark" size={16} color="white" />}
+                          </View>
+                          <Text style={styles.checkboxLabel}>{interest}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+              </View>
             </>
           )}
           
@@ -1063,19 +1491,26 @@ export default function EditProfileScreen() {
           )}
           
           <TouchableOpacity 
-            style={[styles.saveButton, (saving || uploading) && styles.disabledButton]} 
+            style={[(saving || uploading) && styles.disabledButton]} 
             onPress={saveProfile} 
             disabled={saving || uploading}
             accessibilityLabel="Save profile button"
           >
-            {saving ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <>
-                <Ionicons name="save-outline" size={20} color="#fff" style={styles.saveIcon} />
-                <Text style={styles.saveButtonText}>Save Profile</Text>
-              </>
-            )}
+            <LinearGradient
+              colors={saving || uploading ? ['#8E8E93', '#8E8E93'] : [COLORS.primary, '#0051D5']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.saveButton}
+            >
+              {saving ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Ionicons name="checkmark-circle" size={22} color="#fff" style={styles.saveIcon} />
+                  <Text style={styles.saveButtonText}>Save Changes</Text>
+                </>
+              )}
+            </LinearGradient>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -1086,37 +1521,64 @@ export default function EditProfileScreen() {
 const styles = StyleSheet.create({
   screenContainer: {
     flex: 1,
-    backgroundColor: '#F8F7F3',
+    backgroundColor: COLORS.background,
   },
   scrollContent: {
     flexGrow: 1,
+    paddingBottom: 20,
   },
   loading: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F8F7F3',
+    backgroundColor: COLORS.background,
   },
   content: {
-    padding: 24,
+    padding: 20,
     alignItems: 'center',
   },
   avatarContainer: {
-    marginBottom: 30,
+    marginBottom: 32,
     alignItems: 'center',
+    paddingVertical: 20,
   },
   modernPicker: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    borderWidth: 3,
-    borderColor: COLORS.primary,
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    borderWidth: 4,
+    borderColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
   },
   changePhotoText: {
-    marginTop: 10,
+    marginTop: 12,
     color: COLORS.primary,
-    fontSize: 16,
-    fontWeight: '500',
+    fontSize: 15,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+  },
+  backgroundUploadContainer: {
+    marginTop: 16,
+  },
+  backgroundButton: {
+    backgroundColor: 'transparent',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: COLORS.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  backgroundButtonText: {
+    color: COLORS.primary,
+    fontSize: 14,
+    fontWeight: '600',
   },
   uploadingContainer: {
     width: 120,
@@ -1135,49 +1597,52 @@ const styles = StyleSheet.create({
   },
   formSection: {
     width: '100%',
-    marginBottom: 25,
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16,
+    marginBottom: 20,
+    backgroundColor: COLORS.sectionBg,
+    borderRadius: 20,
+    padding: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
-    elevation: 2,
+    shadowOpacity: 0.03,
+    shadowRadius: 10,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 0, 0, 0.05)',
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-    paddingBottom: 10,
+    fontSize: 20,
+    fontWeight: '700',
+    color: COLORS.text,
+    marginBottom: 20,
+    letterSpacing: 0.5,
   },
   inputGroup: {
-    marginBottom: 16,
+    marginBottom: 20,
     width: '100%',
   },
   inputLabel: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
-    marginBottom: 8,
-    color: '#333333',
+    marginBottom: 10,
+    color: COLORS.lightText,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   requiredField: {
-    color: '#FF3B30',
-    fontWeight: 'bold',
+    color: COLORS.error,
+    fontWeight: '700',
   },
   input: {
     width: '100%',
-    backgroundColor: '#f9f9f9',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    backgroundColor: COLORS.inputBg,
+    borderRadius: 14,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
     fontSize: 16,
-    color: '#222',
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
+    color: COLORS.text,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+    fontWeight: '500',
   },
   bioInput: {
     minHeight: 100,
@@ -1225,26 +1690,36 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   optionButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 25,
     marginRight: 10,
     marginBottom: 10,
-    backgroundColor: '#f0f0f0',
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
+    backgroundColor: COLORS.inputBg,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 1,
   },
   optionButtonSelected: {
     backgroundColor: COLORS.primary,
     borderColor: COLORS.primary,
+    shadowColor: COLORS.primary,
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 3,
   },
   optionText: {
-    fontSize: 14,
-    color: '#555',
+    fontSize: 15,
+    color: COLORS.text,
+    fontWeight: '500',
   },
   optionTextSelected: {
     color: '#fff',
-    fontWeight: '500',
+    fontWeight: '600',
   },
   optionDescription: {
     fontSize: 14,
@@ -1262,23 +1737,29 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 4,
+    width: 24,
+    height: 24,
+    borderRadius: 8,
     borderWidth: 2,
-    borderColor: '#ccc',
-    marginRight: 12,
+    borderColor: COLORS.border,
+    marginRight: 14,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: COLORS.inputBg,
   },
   checkboxSelected: {
     backgroundColor: COLORS.primary,
     borderColor: COLORS.primary,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2,
   },
   checkboxLabel: {
     fontSize: 16,
-    color: '#333',
+    color: COLORS.text,
+    fontWeight: '500',
   },
   switchRow: {
     flexDirection: 'row',
@@ -1325,50 +1806,63 @@ const styles = StyleSheet.create({
   },
   availabilityCard: {
     width: '48%',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
+    backgroundColor: COLORS.inputBg,
+    borderRadius: 16,
+    padding: 18,
     margin: '1%',
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#E5E7EB',
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   selectedAvailability: {
     backgroundColor: COLORS.primary,
     borderColor: COLORS.primary,
+    shadowColor: COLORS.primary,
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
   },
   availabilityText: {
-    fontSize: 14,
-    color: '#374151',
-    fontWeight: '500',
+    fontSize: 15,
+    color: COLORS.text,
+    fontWeight: '600',
   },
   selectedAvailabilityText: {
     color: '#FFFFFF',
   },
   saveButton: {
     backgroundColor: COLORS.primary,
-    paddingVertical: 14,
-    borderRadius: 18,
-    marginTop: 20,
+    paddingVertical: 18,
+    borderRadius: 16,
+    marginTop: 30,
     marginBottom: 40,
-    width: '100%',
+    marginHorizontal: 20,
+    width: '90%',
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: COLORS.primary,
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 8,
   },
   disabledButton: {
-    opacity: 0.7,
+    opacity: 0.6,
+    shadowOpacity: 0.1,
   },
   saveIcon: {
-    marginRight: 8,
+    marginRight: 10,
   },
   saveButtonText: {
     color: '#fff',
     fontWeight: '700',
     fontSize: 17,
+    letterSpacing: 0.5,
   },
 });

@@ -359,9 +359,19 @@ const BookingsScreen = ({ navigation, route }) => {
       <TouchableOpacity
         style={styles.bookingCard}
         onPress={() => {
-          console.log("Booking item pressed:", item.booking_id);
-          setSelectedBooking(item);
-          navigation.navigate('BookingDetailScreen', { bookingId: item.booking_id });
+          try {
+            console.log("Booking item pressed:", item.booking_id);
+            if (item?.booking_id) {
+              setSelectedBooking(item);
+              navigation.navigate('BookingDetailScreen', { bookingId: item.booking_id });
+            } else {
+              console.error('[BookingsScreen] Missing booking_id for navigation');
+              Alert.alert('Error', 'Unable to open booking details. Missing booking ID.');
+            }
+          } catch (error) {
+            console.error('[BookingsScreen] Error navigating to booking detail:', error);
+            Alert.alert('Error', 'Unable to open booking details. Please try again.');
+          }
         }}
       >
         <View style={styles.dateColumn}>
